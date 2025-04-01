@@ -19,7 +19,7 @@ git apply ../../AMDSEV.patch
 
 cd ../..
 
-docker run -v .:/qemu -it alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
+docker run -v "$SCRIPT_PATH:/qemu" -it alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
 PACKAGE_PATH="$SCRIPT_PATH/build/qemu-static-${COMMIT}-$(date +%d-%m-%Y).tar.gz"
 tar -czf "$PACKAGE_PATH" build/AMDSEV/usr
 

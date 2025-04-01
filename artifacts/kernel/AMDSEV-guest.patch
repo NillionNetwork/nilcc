@@ -1,0 +1,45 @@
+diff --git a/common.sh b/common.sh
+index 5f9da16..6fcb2f1 100755
+--- a/common.sh
++++ b/common.sh
+@@ -81,7 +81,7 @@ build_kernel()
+ 
+ 		pushd ${V} >/dev/null
+ 			run_cmd git fetch current
+-			run_cmd git checkout current/${BRANCH}
++			run_cmd git checkout ${BRANCH}
+ 			COMMIT=$(git log --format="%h" -1 HEAD)
+ 
+ 			run_cmd "cp $kernel_config_path .config"
+@@ -136,6 +136,10 @@ build_kernel()
+ 			run_cmd ./scripts/config --enable MLXSW_SPECTRUM_DCB
+ 			run_cmd ./scripts/config --module MLXSW_MINIMAL
+ 			run_cmd ./scripts/config --module MLXFW
++      run_cmd ./scripts/config --enable CONFIG_CRYPTO_ECC
++      run_cmd ./scripts/config --enable CONFIG_CRYPTO_ECDH
++      run_cmd ./scripts/config --enable CONFIG_CRYPTO_ECDSA
++      run_cmd ./scripts/config --enable CONFIG_CGROUP_MISC
+ 
+ 			run_cmd echo $COMMIT >../../source-commit.kernel.$V
+ 		popd >/dev/null
+diff --git a/stable-commits b/stable-commits
+index 08061b2..656499f 100644
+--- a/stable-commits
++++ b/stable-commits
+@@ -3,13 +3,13 @@
+ #
+ 
+ # hypervisor commit
+-KERNEL_GIT_URL="https://github.com/AMDESE/linux.git"
++KERNEL_GIT_URL="https://github.com/torvalds/linux.git"
+ KERNEL_HOST_BRANCH="snp-host-latest"
+-KERNEL_GUEST_BRANCH="snp-guest-latest"
++KERNEL_GUEST_BRANCH="v6.11"
+ 
+ # base/template kernel config (defaults to /boot/config-`uname -r`)
+ #KERNEL_HOST_CONFIG_TEMPLATE=/path/to/kernel/config
+-#KERNEL_GUEST_CONFIG_TEMPLATE=/path/to/kernel/config
++KERNEL_GUEST_CONFIG_TEMPLATE=/boot/config
+ 
+ # qemu commit
+ QEMU_GIT_URL="https://github.com/AMDESE/qemu.git"
