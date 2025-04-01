@@ -1,0 +1,26 @@
+diff --git a/build.sh b/build.sh
+index 9654329..626b32b 100755
+--- a/build.sh
++++ b/build.sh
+@@ -47,7 +47,7 @@ done
+ 
+ mkdir -p $INSTALL_DIR
+ IDIR=$INSTALL_DIR
+-INSTALL_DIR=$(readlink -e $INSTALL_DIR)
++INSTALL_DIR=$(realpath $INSTALL_DIR)
+ [ -n "$INSTALL_DIR" -a -d "$INSTALL_DIR" ] || {
+ 	echo "Installation directory [$IDIR] does not exist, exiting"
+ 	exit 1
+diff --git a/common.sh b/common.sh
+index 5f9da16..b308fb0 100755
+--- a/common.sh
++++ b/common.sh
+@@ -231,7 +231,7 @@ build_install_qemu()
+ 	pushd qemu >/dev/null
+ 		run_cmd git fetch current
+ 		run_cmd git checkout current/${QEMU_BRANCH}
+-		run_cmd ./configure --target-list=x86_64-softmmu --prefix=$DEST
++		run_cmd ./configure --target-list=x86_64-softmmu --prefix=$DEST --static --enable-slirp
+ 		run_cmd $MAKE
+ 		run_cmd $MAKE install
+ 
