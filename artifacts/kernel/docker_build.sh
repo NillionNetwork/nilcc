@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# docker phase of the kernel build
+
 set -e
 
 export DEBIAN_FRONTEND=noninteractive
