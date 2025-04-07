@@ -1,26 +1,33 @@
 #!/usr/bin/env bash
-# This script builds a static version of QEMU with AMDSEV support.
-# The process have two phases one in the host machine and the other in a docker container that uses alpine that provides static libraries precompiled.
+# This script builds a static version of QEMU adn OVMF with AMDSEV support.
+# The process have three phases firs in the host machine, second in a docker container that uses alpine that provides
+# static libraries precompiled and third in a docker container that uses ubuntu that provides the tools to build OVMF.
 # The second phase is in docker_build.sh.
+# The third phase is in docker_build_ovmf.sh.
 set -e
 
 SCRIPT_PATH=$(dirname $(realpath $0))
 
-[[ -d "$SCRIPT_PATH/build" ]] && rm -rf "$SCRIPT_PATH/build"
+[[ "$1" == "--clean" && -d "$SCRIPT_PATH/build" ]] && sudo rm -rf "$SCRIPT_PATH/build"
 
-mkdir -p "$SCRIPT_PATH/build"
+[[ ! -d "$SCRIPT_PATH/build" ]] && mkdir -p "$SCRIPT_PATH/build"
 cd "$SCRIPT_PATH/build"
 
-git clone https://github.com/AMDESE/AMDSEV.git
+[[ ! -d "$SCRIPT_PATH/build/AMDSEV" ]] && git clone https://github.com/AMDESE/AMDSEV.git
 cd AMDSEV/
-git checkout snp-latest
+[[ "$(git branch --show-current)" != "snp-latest" ]] && git checkout snp-latest
 COMMIT=$(git rev-parse --short HEAD)
-git apply ../../AMDSEV.patch
+if [[ -n $(git status --porcelain) ]]; then
+  echo "Repo is dirty, not applying the patch AMDSEV.patch, run with --clean start from scratch and apply the patch"
+else
+  git apply ../../AMDSEV.patch
+fi
 
 cd ../..
 
-docker run -v "$SCRIPT_PATH:/qemu" -it alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
+docker run --rm -v "$SCRIPT_PATH:/qemu" -it alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
+docker run --rm -v "$SCRIPT_PATH:/qemu" -it ubuntu:24.04 sh -c "bash /qemu/docker_build_ovmf.sh"
 PACKAGE_PATH="$SCRIPT_PATH/build/qemu-static-${COMMIT}-$(date +%d-%m-%Y).tar.gz"
-tar -czf "$PACKAGE_PATH" build/AMDSEV/usr
+tar -czf "$PACKAGE_PATH" -C build/AMDSEV usr
 
 echo "Build done, output: $PACKAGE_PATH"
