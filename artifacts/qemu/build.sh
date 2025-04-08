@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# This script builds a static version of QEMU adn OVMF with AMDSEV support.
-# The process have three phases firs in the host machine, second in a docker container that uses alpine that provides
+# This script builds a static version of QEMU and OVMF with AMDSEV support.
+# The process have three phases: first in the host machine, second in a docker container that uses alpine that provides
 # static libraries precompiled and third in a docker container that uses ubuntu that provides the tools to build OVMF.
 # The second phase is in docker_build.sh.
 # The third phase is in docker_build_ovmf.sh.
