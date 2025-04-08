@@ -12,7 +12,9 @@ autoinstall:
   network:
     network:
       ethernets:
-        ens3:
+        all-eth:
+          match:
+            name: en*
           dhcp4: true
       version: 2
   storage:
@@ -20,5 +22,4 @@ autoinstall:
       name: lvm
 
   late-commands:
-    # Install the guest AMDSEV kernel
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
