@@ -1,30 +1,45 @@
 #!/usr/bin/env bash
-# This scripts creates am ubuntu server autoinstall iso with AMDSEV support and uses it to install ubuntu in a qemu VM creating a base vm image.
-# It has two phases one in the host and the other in docker see docker_build.sh for docker phase.
-set -e
+# This scripts installs ubuntu in a qemu VM creating a base vm image.
+
+set -ex
 
 SCRIPT_PATH=$(dirname $(realpath $0))
+[[ "$1" != "cpu" && "$1" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
+TYPE=$1
+shift
+
+AUTOINSTALL_UBUNTU_ISO_PATH="${SCRIPT_PATH}/../autoinstall_ubuntu/build/guest/$TYPE/iso/ubuntu-24.04.2-live-server-amd64-autoinstall-guest-${TYPE}.iso"
+[[ ! -f "$AUTOINSTALL_UBUNTU_ISO_PATH" ]] && echo "Ubuntu autoinstall ISO not found, run 'autoinstall_ubuntu/build.sh guest $TYPE' first" && exit 1
 
 QEMU_STATIC_CHECK=($SCRIPT_PATH/../qemu/build/qemu-static-*.tar.gz)
 [[ ${#QEMU_STATIC_CHECK[@]} == 0 ]] && echo "QEMU static package not found, run 'qemu/build.sh' first" && exit 1
 [[ ${#QEMU_STATIC_CHECK[@]} > 1 ]] && echo "More than one QEMU static package found, only one can be used" && exit 1
 QEMU_STATIC_PATH=${QEMU_STATIC_CHECK[0]}
 
-GUEST_KERNEL_CHECK=($SCRIPT_PATH/../kernel/build/guest/linux-*.deb)
-[[ ${#GUEST_KERNEL_CHECK[@]} == 0 ]] && echo "Guest kernel not found, run 'kernel/build.sh guest' first" && exit 1
-
 [[ $1 == "--clean" && -d "$SCRIPT_PATH/build" ]] && sudo rm -rf "$SCRIPT_PATH/build"
 
-[[ ! -d "$SCRIPT_PATH/build/isos" ]] && mkdir -p "$SCRIPT_PATH/build/isos"
 [[ ! -d "$SCRIPT_PATH/build/vm_images" ]] && mkdir -p "$SCRIPT_PATH/build/vm_images"
 [[ ! -d "$SCRIPT_PATH/build/qemu" ]] && mkdir -p "$SCRIPT_PATH/build/qemu"
-[[ ! -d "$SCRIPT_PATH/build/guest_kernel" ]] && mkdir -p "$SCRIPT_PATH/build/guest_kernel"
 
 # Install static qemu
 [[ ! -d "$SCRIPT_PATH/build/qemu/usr" ]] && tar -xzf "$QEMU_STATIC_PATH" -C "$SCRIPT_PATH/build/qemu/"
 
-# copy guest kernel
-GUEST_KERNEL_CP_CHECK=($SCRIPT_PATH/build/guest_kernel/linux-*.deb)
-echo $GUEST_KERNEL_CP_CHECK # TODO
-[[ ${#GUEST_KERNEL_CP_CHECK[@]} == 1 ]] && cp $SCRIPT_PATH/../kernel/build/guest/linux-*.deb "$SCRIPT_PATH/build/guest_kernel/"
-docker run --rm --privileged -v "$SCRIPT_PATH:/vm_image" -it ubuntu:24.04 bash /vm_image/docker_build.sh
+export PATH=$SCRIPT_PATH/build/qemu/usr/local/bin:$PATH
+
+# Create VM image
+VM_IMAGE_PATH="$SCRIPT_PATH/build/vm_images/ubuntu24.04-$TYPE.qcow2"
+[[ ! -f "$VM_IMAGE_PATH" ]] && qemu-img create -f qcow2 "$VM_IMAGE_PATH" 500G
+
+SSH_FORWARD_PORT=2221
+
+# Install ubuntu on VM
+qemu-system-x86_64 \
+-enable-kvm -nographic -no-reboot -cpu EPYC-v4 -machine q35 \
+-smp 12,maxcpus=31 -m 16G,slots=5,maxmem=120G \
+-drive if=pflash,format=raw,unit=0,file=$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF_CODE.fd,readonly=on \
+-drive file=$VM_IMAGE_PATH,if=none,id=disk0,format=qcow2 \
+-device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
+-device scsi-hd,drive=disk0 \
+-device virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile= \
+-netdev user,id=vmnic,hostfwd=tcp::$SSH_FORWARD_PORT-:22 \
+-cdrom $AUTOINSTALL_UBUNTU_ISO_PATH
