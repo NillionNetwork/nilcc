@@ -3,9 +3,14 @@
 This directory contains the scripts to build a qcow2 VM image with AMDSEV support.
 
 ### How to build
-First build [qemu](../qemu/README.md) and the [guest kernel](../kernel/README.md) as they are dependencies of this build process.
+First build [qemu](../qemu/README.md) and the [ubuntu iso](../autoinstall_ubuntu/README.md) as they are dependencies of this build process.
 
-Then:
+#### CPU only vm
 ```bash
-./build.sh
+./build.sh cpu
+```
+
+#### GPU vm
+```bash
+./build.sh gpu
 ```
