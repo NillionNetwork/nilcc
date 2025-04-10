@@ -42,9 +42,14 @@ touch ./custom-iso/nocloud/meta-data
 mkdir -p custom-iso/packages
 cp ../kernel/*.deb custom-iso/packages
 
-# add cuda-keyring to iso if guest gpu
+# custom steps by type
 if [[ "$TYPE" == "guest" && "$SUBTYPE" == "gpu" ]]; then
+  # add cuda-keyring to iso if guest gpu
   curl -L https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -o custom-iso/packages/cuda-keyring_1.1-1_all.deb
+elif [[ "$TYPE" == "host" ]]; then
+  # add extra files for host
+  [[ ! -d custom-iso/extra ]] && mkdir -p custom-iso/extra
+  cp $SCRIPT_PATH/host/* ./custom-iso/extra
 fi
 
 # add boot entry to grub to autoinstall

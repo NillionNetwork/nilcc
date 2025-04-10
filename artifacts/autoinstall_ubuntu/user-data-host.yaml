@@ -23,3 +23,9 @@ autoinstall:
 
   late-commands:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
+    - curtin in-target -- echo "blacklist nvidia\nblacklist nvidia-drm\nblacklist nvidia-modeset\nblacklist nvidia-uvm\nblacklist nvidiafb\nblacklist nouveau" > tee /etc/modprobe.d/blacklist-nvidia.conf
+    - curtin in-target -- echo "vfio_pci" > /etc/modules-load.d/vfio.conf
+    - curtin in-target -- cp /cdrom/extra/nvflash /usr/local/bin/
+    - curtin in-target -- cp /cdrom/extra/gpu_vfio.sh /usr/local/bin/
+    - curtin in-target -- cp /cdrom/extra/amd_sev_fam19h_model1xh_1.55.39.sbin /usr/local/bin/
+
