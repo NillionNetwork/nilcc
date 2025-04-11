@@ -24,22 +24,27 @@ QEMU_STATIC_PATH=${QEMU_STATIC_CHECK[0]}
 # Install static qemu
 [[ ! -d "$SCRIPT_PATH/build/qemu/usr" ]] && tar -xzf "$QEMU_STATIC_PATH" -C "$SCRIPT_PATH/build/qemu/"
 
-export PATH=$SCRIPT_PATH/build/qemu/usr/local/bin:$PATH
+export QEMU_PATH=$SCRIPT_PATH/build/qemu/usr/local/bin
 
 # Create VM image
 VM_IMAGE_PATH="$SCRIPT_PATH/build/vm_images/ubuntu24.04-$TYPE.qcow2"
-[[ ! -f "$VM_IMAGE_PATH" ]] && qemu-img create -f qcow2 "$VM_IMAGE_PATH" 500G
+[[ ! -f "$VM_IMAGE_PATH" ]] && $QEMU_PATH/qemu-img create -f qcow2 "$VM_IMAGE_PATH" 500G
 
 SSH_FORWARD_PORT=2221
 
 # Install ubuntu on VM
-qemu-system-x86_64 \
+sudo $QEMU_PATH/qemu-system-x86_64 \
   -enable-kvm -nographic -no-reboot -cpu EPYC-v4 -machine q35 \
   -smp 12,maxcpus=31 -m 16G,slots=5,maxmem=120G \
   -drive if=pflash,format=raw,unit=0,file=$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF.fd,readonly=on \
-  -drive file=$VM_IMAGE_PATH,if=none,id=disk0,format=qcow2 \
-  -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=disk0 \
-  -device virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile= \
-  -netdev user,id=vmnic,hostfwd=tcp::$SSH_FORWARD_PORT-:22 \
-  -cdrom $AUTOINSTALL_UBUNTU_ISO_PATH
+ -drive file=$VM_IMAGE_PATH,if=none,id=disk0,format=qcow2 \
+ -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
+ -device scsi-hd,drive=disk0 \
+ -device virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile= \
+ -netdev user,id=vmnic,hostfwd=tcp::$SSH_FORWARD_PORT-:22 \
+ -cdrom $AUTOINSTALL_UBUNTU_ISO_PATH
+
+sudo chown -R $(whoami) $SCRIPT_PATH/build/
+
+[[ ! -d $SCRIPT_PATH/../dist/vm_images ]] && mkdir -p $SCRIPT_PATH/../dist/vm_images
+cp $VM_IMAGE_PATH "$SCRIPT_PATH/../dist/vm_images/"

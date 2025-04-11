@@ -29,9 +29,9 @@ autoinstall:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
     - curtin in-target -- apt-get update
     - curtin in-target -- apt-get -y install nvidia-driver-550-server-open docker-compose-v2 jq
-    - curtin in-target -- echo "install nvidia /sbin/modprobe ecdsa_generic ecdh; /sbin/modprobe --ignore-install nvidia" > /etc/modprobe.d/nvidia-lkca.conf
+    - curtin in-target -- bash -c 'echo "install nvidia /sbin/modprobe ecdsa_generic ecdh; /sbin/modprobe --ignore-install nvidia" > /etc/modprobe.d/nvidia-lkca.conf'
     - curtin in-target -- sed -i "/^ExecStart=/d" /usr/lib/systemd/system/nvidia-persistenced.service
-    - curtin in-target -- echo "ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --uvm-persistence-mode --verbose" >> /usr/lib/systemd/system/nvidia-persistenced.service
+    - curtin in-target -- bash -c 'echo "ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --uvm-persistence-mode --verbose" >> /usr/lib/systemd/system/nvidia-persistenced.service'
     # Copy over cvm-agent.
     - curtin in-target -- mkdir /opt/nillion
     - curtin in-target -- cp /cdrom/nillion/cvm-agent.sh /opt/nillion
