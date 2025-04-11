@@ -33,4 +33,8 @@ cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
 cp -r $SCRIPT_PATH/../../cvm-agent/services/ "$BUILD_PATH/custom/"
 cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
 
-docker run --rm --privileged -v "$SCRIPT_PATH:/iso" -it ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE
+docker run --rm --privileged -v "$SCRIPT_PATH:/iso" ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE
+sudo chown -R $(whoami) $SCRIPT_PATH/build/
+
+[[ ! -d $SCRIPT_PATH/../dist/isos ]] && mkdir -p $SCRIPT_PATH/../dist/isos
+cp $BUILD_PATH/iso/ubuntu-*.iso "$SCRIPT_PATH/../dist/isos"

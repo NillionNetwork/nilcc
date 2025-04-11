@@ -24,7 +24,11 @@ else
   git apply ../../../AMDSEV-$1.patch
 fi
 
-docker run --rm -v "$SCRIPT_PATH:/kernel" -it ubuntu:24.04 bash /kernel/docker_build.sh $1
+docker run --rm -v "$SCRIPT_PATH:/kernel" ubuntu:24.04 bash /kernel/docker_build.sh $1
+sudo chown -R $(whoami) $SCRIPT_PATH/build/
 
 cp $SCRIPT_PATH/build/$1/AMDSEV/linux/*.deb $SCRIPT_PATH/build/$1
 echo "Build finish, artifacts in build/$1"
+
+[[ ! -d $SCRIPT_PATH/../dist/kernel/$1 ]] && mkdir -p $SCRIPT_PATH/../dist/kernel/$1
+cp $SCRIPT_PATH/build/$1/AMDSEV/linux/*.deb "$SCRIPT_PATH/../dist/kernel/$1"

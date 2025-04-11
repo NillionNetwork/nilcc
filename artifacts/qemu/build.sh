@@ -25,9 +25,14 @@ fi
 
 cd ../..
 
-docker run --rm -v "$SCRIPT_PATH:/qemu" -it alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
-docker run --rm -v "$SCRIPT_PATH:/qemu" -it ubuntu:24.04 sh -c "bash /qemu/docker_build_ovmf.sh"
+docker run --rm -v "$SCRIPT_PATH:/qemu" alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
+docker run --rm -v "$SCRIPT_PATH:/qemu" ubuntu:24.04 sh -c "bash /qemu/docker_build_ovmf.sh"
+sudo chown -R $(whoami) $SCRIPT_PATH/build/
+
 PACKAGE_PATH="$SCRIPT_PATH/build/qemu-static-${COMMIT}-$(date +%d-%m-%Y).tar.gz"
 tar -czf "$PACKAGE_PATH" -C build/AMDSEV usr
+
+[[ ! -d $SCRIPT_PATH/../dist/ ]] && mkdir -p $SCRIPT_PATH/../dist/
+cp $PACKAGE_PATH "$SCRIPT_PATH/../dist/"
 
 echo "Build done, output: $PACKAGE_PATH"

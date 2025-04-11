@@ -1,0 +1,60 @@
+name: Artifacts
+on:
+  pull_request:
+    paths:
+      - 'artifacts/**'
+  push:
+    paths:
+      - 'artifacts/**'
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build
+    runs-on: ["nilcc-ci"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Build guest kernel
+        run: artifacts/kernel/build.sh guest
+
+      - name: Build host kernel
+        run: artifacts/kernel/build.sh host
+
+      - name: Build QEMU
+        run: artifacts/qemu/build.sh
+
+      - name: Build guest cpu iso
+        run: artifacts/autoinstall_ubuntu/build.sh guest cpu
+
+      - name: Build guest gpu iso
+        run: artifacts/autoinstall_ubuntu/build.sh guest gpu
+
+      - name: Build guest cpu qcow2
+        run: artifacts/vm_image/build.sh cpu
+
+      - name: Build guest gpu qcow2
+        run: artifacts/vm_image/build.sh gpu
+
+      - name: Configure AWS credentials
+        # if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::592920173613:role/nilcc-ci-nilcc-bucket"
+          aws-region: eu-west-1
+
+      - name: Publish
+        # if: github.ref == 'refs/heads/main'
+        run: artifacts/upload.sh
