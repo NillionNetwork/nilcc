@@ -21,5 +21,20 @@ autoinstall:
     layout:
       name: lvm
 
+  user-data:
+    mounts:
+      - [ "/dev/sr0", "/media/cvm-agent-entrypoint", "udf,iso9660", "auto,ro,utf8", "0", "0" ]
+
   late-commands:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
+    - curtin in-target -- apt update
+    - curtin in-target -- apt install -y docker-compose-v2
+    # Copy over cvm-agent.
+    - curtin in-target -- mkdir /opt/nillion
+    - curtin in-target -- cp /cdrom/nillion/cvm-agent.sh /opt/nillion
+    - curtin in-target -- chmod +x /opt/nillion/cvm-agent.sh
+    # Configure cvm-agent to auto start.
+    - curtin in-target -- cp /cdrom/nillion/cvm-agent.service /etc/systemd/system/
+    - curtin in-target -- systemctl daemon-reload
+    - curtin in-target -- systemctl enable cvm-agent.service
+
