@@ -1,0 +1,13 @@
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "443:443"
+    environment:
+      - PROXY_HOSTNAME:${PROXY_HOSTNAME}
+    command: |
+      caddy reverse-proxy --from https://$PROXY_HOSTNAME --to api:80
+

@@ -41,7 +41,7 @@ mkdir -p custom-iso/packages
 cp ../kernel/*.deb custom-iso/packages
 
 mkdir -p custom-iso/nillion
-cp ${BUILD_PATH}/custom/* custom-iso/nillion
+cp -r ${BUILD_PATH}/custom/* custom-iso/nillion
 
 # add cuda-keyring to iso if guest gpu
 if [[ "$TYPE" == "guest" && "$SUBTYPE" == "gpu" ]]; then
