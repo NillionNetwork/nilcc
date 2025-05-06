@@ -82,11 +82,12 @@ pub type Result<T> = std::result::Result<T, QemuClientError>;
 pub struct QemuClient {
     qemu_bin: PathBuf,
     qemu_img_bin: PathBuf,
+    store: PathBuf,
 }
 
 impl QemuClient {
-    pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P) -> Self {
-        Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into() }
+    pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P, store: P) -> Self {
+        Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into(), store: store.into() }
     }
 
     /// Build complete QEMU command-line
@@ -185,8 +186,8 @@ impl QemuClient {
         }
     }
 
-    async fn load_details(&self, store: &Path, name: &str) -> Result<VmDetails> {
-        let json = store.join(name).join("vm.json");
+    async fn load_details(&self, name: &str) -> Result<VmDetails> {
+        let json = self.store.join(name).join("vm.json");
         if !fs::try_exists(&json).await? {
             return Err(QemuClientError::VmNotFound);
         }
@@ -201,8 +202,8 @@ impl QemuClient {
     }
 
     /// Create and start a brand-new VM. Fails if the VM directory already exists.
-    pub async fn create_vm(&self, store: &Path, name: &str, spec: VmSpec) -> Result<VmDetails> {
-        let workdir = store.join(name);
+    pub async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails> {
+        let workdir = self.store.join(name);
         let meta_json = workdir.join("vm.json");
 
         if fs::try_exists(&meta_json).await? {
@@ -220,12 +221,12 @@ impl QemuClient {
         let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
         fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
 
-        self.start_vm(store, name).await
+        self.start_vm(name).await
     }
 
     /// Start an existing (stopped) VM.
-    pub async fn start_vm(&self, store: &Path, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(store, name).await?;
+    pub async fn start_vm(&self, name: &str) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
 
         if self.is_running(&details).await {
             return Err(QemuClientError::VmAlreadyRunning);
@@ -246,8 +247,8 @@ impl QemuClient {
     }
 
     /// Verify running VM matches spec.
-    pub async fn check_vm_spec(&self, store: &Path, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(store, name).await?;
+    pub async fn check_vm_spec(&self, name: &str) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
         let stream =
             QmpStreamTokio::open_uds(&details.qmp_sock).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
         let stream = stream.negotiate().await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
@@ -269,8 +270,8 @@ impl QemuClient {
     }
 
     /// Gracefully power down the VM
-    pub async fn stop_vm(&self, store: &Path, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(store, name).await?;
+    pub async fn stop_vm(&self, name: &str) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
         let stream =
             QmpStreamTokio::open_uds(&details.qmp_sock).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
         let stream = stream.negotiate().await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
@@ -282,8 +283,8 @@ impl QemuClient {
     }
 
     /// Delete VM directory after best effort kill
-    pub async fn delete_vm(&self, store: &Path, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(store, name).await?;
+    pub async fn delete_vm(&self, name: &str) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
 
         // Kill vm if it's running
         let _ = Command::new("pkill").args(["-f", &details.qmp_sock.to_string_lossy()]).output().await;
@@ -293,8 +294,8 @@ impl QemuClient {
     }
 
     /// Get VM status
-    pub async fn vm_status(&self, store: &Path, name: &str) -> Result<(VmDetails, bool)> {
-        let details = self.load_details(store, name).await?;
+    pub async fn vm_status(&self, name: &str) -> Result<(VmDetails, bool)> {
+        let details = self.load_details(name).await?;
         let running = self.is_running(&details).await;
         Ok((details, running))
     }
@@ -306,23 +307,22 @@ impl QemuClient {
     }
 }
 
-impl Default for QemuClient {
-    fn default() -> Self {
-        Self::new("qemu-system-x86_64", "qemu-img")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
     use tracing_test::traced_test;
 
+    fn make_client(workdir: &Path) -> QemuClient {
+        QemuClient::new(Path::new("qemu-system-x86_64"), Path::new("qemu-img"), workdir)
+    }
+
     #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {
-        let client = QemuClient::default();
+        let workdir = Path::new("/tmp").join("dummy");
+        let client = make_client(&workdir);
         let spec = VmSpec {
             cpu: 2,
             ram_mib: 2048,
@@ -333,7 +333,6 @@ mod tests {
             bios_path: None,
             display_gtk: false,
         };
-        let workdir = Path::new("/tmp").join("dummy");
         let (disk, args) = client.build_command_line(&workdir, &spec).await.expect("failed to build command line");
         assert_eq!(disk, workdir.join("disk.qcow2"));
         assert!(args.contains(&"2048".to_owned()));
@@ -345,7 +344,8 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn vm_lifecycle() {
-        let client = QemuClient::default();
+        let store = PathBuf::from("/tmp/nilcc-test-vms");
+        let client = make_client(&store);
         for bin in [&client.qemu_bin, &client.qemu_img_bin] {
             if Command::new(bin).arg("--version").output().await.is_err() {
                 eprintln!("{} missing — skipping", bin.display());
@@ -353,7 +353,6 @@ mod tests {
             }
         }
 
-        let store = PathBuf::from("/tmp/nilcc-test-vms");
         let vm_name = "test_vm";
 
         let _ = fs::remove_dir_all(&store).await;
@@ -370,12 +369,12 @@ mod tests {
             display_gtk: false,
         };
 
-        let details = client.create_vm(&store, vm_name, spec).await.unwrap();
+        let details = client.create_vm(vm_name, spec).await.unwrap();
         assert!(client.is_running(&details).await);
 
-        client.check_vm_spec(&store, vm_name).await.unwrap();
-        client.stop_vm(&store, vm_name).await.unwrap();
-        client.delete_vm(&store, vm_name).await.unwrap();
+        client.check_vm_spec(vm_name).await.unwrap();
+        client.stop_vm(vm_name).await.unwrap();
+        client.delete_vm(vm_name).await.unwrap();
 
         assert!(!store.join(vm_name).exists());
         let _ = fs::remove_dir_all(&store).await;
