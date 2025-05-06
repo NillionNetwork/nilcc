@@ -8,6 +8,7 @@ services:
       - "443:443"
     environment:
       - PROXY_HOSTNAME:${PROXY_HOSTNAME}
+      - API_CONTAINER:${API_CONTAINER}
     command: |
-      caddy reverse-proxy --from https://$PROXY_HOSTNAME --to api:80
+      caddy reverse-proxy --from https://$PROXY_HOSTNAME --to $API_CONTAINER:80
 
