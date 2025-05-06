@@ -20,19 +20,17 @@ apt install -y xorriso curl 7zip
 ISO_NAME="ubuntu-24.04.2-live-server-amd64.iso"
 AUTOINSTALL_ISO_NAME="ubuntu-24.04.2-live-server-amd64-autoinstall-${NAME}.iso"
 
-
 UBUNTU_ISO_PATH="$SCRIPT_PATH/build/$ISO_NAME"
 [[ ! -f "${UBUNTU_ISO_PATH}" ]] && curl -L https://releases.ubuntu.com/noble/ubuntu-24.04.2-live-server-amd64.iso -o "$UBUNTU_ISO_PATH"
 
-
 [[ ! -d "$BUILD_PATH/iso/" ]] && mkdir -p "$BUILD_PATH/iso/"
-cd  "$BUILD_PATH/iso"
+cd "$BUILD_PATH/iso"
 
 [[ -d custom-iso ]] && rm -rf custom-iso
 [[ -d BOOT ]] && rm -rf BOOT
 
 7z -y x "$UBUNTU_ISO_PATH" -ocustom-iso
-mv  './custom-iso/[BOOT]' ./BOOT
+mv './custom-iso/[BOOT]' ./BOOT
 
 mkdir -p custom-iso/nocloud/
 cp $SCRIPT_PATH/user-data-$NAME.yaml ./custom-iso/nocloud/user-data
@@ -41,6 +39,9 @@ touch ./custom-iso/nocloud/meta-data
 # Add kernel to iso
 mkdir -p custom-iso/packages
 cp ../kernel/*.deb custom-iso/packages
+
+mkdir -p custom-iso/nillion
+cp ${BUILD_PATH}/custom/* custom-iso/nillion
 
 # add cuda-keyring to iso if guest gpu
 if [[ "$TYPE" == "guest" && "$SUBTYPE" == "gpu" ]]; then

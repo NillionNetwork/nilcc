@@ -21,11 +21,15 @@ BUILD_PATH="$SCRIPT_PATH/build/$TYPE"
 [[ "$CLEAN" == "--clean" ]] && rm -rf "$BUILD_PATH"
 [[ ! -d "$BUILD_PATH" ]] && mkdir -p "$BUILD_PATH"
 [[ ! -d "$BUILD_PATH/kernel" ]] && mkdir -p "$BUILD_PATH/kernel"
-
+[[ ! -d "$BUILD_PATH/custom" ]] && mkdir -p "$BUILD_PATH/custom"
 
 # Copy kernel
 KERNEL_CHECK=($SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb)
 [[ ${#KERNEL_CHECK[@]} == 0 ]] && echo "$TYPE kernel not found, run 'kernel/build.sh $TYPE' first" && exit 1
 cp $SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb "$BUILD_PATH/kernel/"
+
+# Copy cvm-agent and systemd startup script.
+cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
+cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
 
 docker run --rm --privileged -v "$SCRIPT_PATH:/iso" -it ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE

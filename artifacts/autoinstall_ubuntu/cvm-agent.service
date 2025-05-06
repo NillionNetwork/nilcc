@@ -1,0 +1,9 @@
+[Unit]
+Description=Nillion CVM agent.
+
+[Service]
+Type=simple
+ExecStart=/opt/nillion/cvm-agent.sh
+
+[Install]
+WantedBy=multi-user.target
