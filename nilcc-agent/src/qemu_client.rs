@@ -227,9 +227,7 @@ impl QemuClient {
             .await?
             .success()
             .then_some(())
-            .ok_or_else(|| {
-                QemuClientError::Io(std::io::Error::other("Failed to start QEMU"))
-            })?;
+            .ok_or_else(|| QemuClientError::Io(std::io::Error::other("Failed to start QEMU")))?;
 
         while !fs::try_exists(&details.qmp_sock).await? {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
