@@ -4,8 +4,9 @@ use qapi::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    ops::Deref,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{ExitStatus, Stdio},
 };
 use thiserror::Error;
 use tokio::{fs, process::Command};
@@ -56,16 +57,24 @@ pub struct VmDetails {
 pub enum QemuClientError {
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
+
     #[error("QMP Error: {0}")]
     Qmp(String),
+
     #[error("VM not found")]
     VmNotFound,
+
     #[error("VM already exists")]
     VmAlreadyExists,
+
     #[error("VM already running")]
     VmAlreadyRunning,
-    #[error("Serde Error: {0}")]
+
+    #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
+
+    #[error("cannot find GPU: {0}")]
+    Gpu(String),
 }
 
 pub type Result<T> = std::result::Result<T, QemuClientError>;
@@ -81,7 +90,7 @@ impl QemuClient {
     }
 
     /// Build complete QEMU command-line
-    async fn build_command_line(&self, workdir: &Path, spec: &VmSpec) -> (PathBuf, Vec<String>) {
+    async fn build_command_line(&self, workdir: &Path, spec: &VmSpec) -> Result<(PathBuf, Vec<String>)> {
         let disk = workdir.join("disk.qcow2");
         let qmp_sock = workdir.join("qmp.sock");
         let mut args = vec![
@@ -143,27 +152,37 @@ impl QemuClient {
         }
 
         if spec.gpu_enabled {
-            // Resolve first NVIDIA PCI BDF
-            if let Ok(output) = Command::new("bash")
-                .arg("-c")
-                .arg("lspci -d 10de: | awk '/NVIDIA/{print $1}' | head -n1")
-                .output()
-                .await
-            {
-                if output.status.success() {
-                    let bdf = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !bdf.is_empty() {
-                        args.push("-device".into());
-                        args.push(format!("vfio-pci,host={},bus=pci.1", bdf));
-                        // Also create the downstream root-port the GPU will attach to
-                        args.push("-device".into());
-                        args.push("pcie-root-port,id=pci.1,bus=pcie.0".into());
-                    }
-                }
-            }
+            let gpu = Self::find_gpu().await?;
+            args.push("-device".into());
+            args.push(format!("vfio-pci,host={},bus=pci.1", gpu));
+            // Also create the downstream root-port the GPU will attach to
+            args.push("-device".into());
+            args.push("pcie-root-port,id=pci.1,bus=pcie.0".into());
         }
 
-        (disk, args)
+        Ok((disk, args))
+    }
+
+    async fn find_gpu() -> Result<String> {
+        // Resolve first NVIDIA PCI BDF
+        let result =
+            Command::new("bash").arg("-c").arg("lspci -d 10de: | awk '/NVIDIA/{print $1}' | head -n1").output().await;
+        let output = match result {
+            Ok(output) => output,
+            Err(e) => return Err(QemuClientError::Gpu(format!("failed to invoke command: {e}"))),
+        };
+        if !output.status.success() {
+            return Err(QemuClientError::Gpu(format!(
+                "executing command failed with status code: {}",
+                output.status.code().unwrap_or_default()
+            )));
+        }
+        let bdf = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if bdf.is_empty() {
+            Err(QemuClientError::Gpu("no GPU found".into()))
+        } else {
+            Ok(bdf)
+        }
     }
 
     async fn load_details(&self, store: &Path, name: &str) -> Result<VmDetails> {
@@ -191,16 +210,12 @@ impl QemuClient {
         }
         fs::create_dir_all(&workdir).await?;
 
-        let (disk, _) = self.build_command_line(&workdir, &spec).await;
-        let img_args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
-        debug!("Executing: {} {}", self.qemu_img_bin.display(), img_args.join(" "));
-        Command::new(&self.qemu_img_bin)
-            .args(img_args)
-            .status()
-            .await?
-            .success()
-            .then_some(())
-            .ok_or_else(|| QemuClientError::Io(std::io::Error::other("qemu-img failed")))?;
+        let (disk, _) = self.build_command_line(&workdir, &spec).await?;
+        let args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
+        let status = Self::invoke_command(&self.qemu_img_bin, &args).await?;
+        if !status.success() {
+            return Err(QemuClientError::Io(std::io::Error::other("qemu-img failed")));
+        }
 
         let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
         fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
@@ -216,18 +231,13 @@ impl QemuClient {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let (_, args) = self.build_command_line(&details.workdir, &details.spec).await;
+        let (_, args) = self.build_command_line(&details.workdir, &details.spec).await?;
+        let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
-        debug!("Executing: {} {}", self.qemu_bin.display(), args.join(" "));
-        Command::new(&self.qemu_bin)
-            .args(&args)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await?
-            .success()
-            .then_some(())
-            .ok_or_else(|| QemuClientError::Io(std::io::Error::other("Failed to start QEMU")))?;
+        let status = Self::invoke_command(&self.qemu_bin, &args).await?;
+        if !status.success() {
+            return Err(QemuClientError::Io(std::io::Error::other("Failed to start QEMU")));
+        }
 
         while !fs::try_exists(&details.qmp_sock).await? {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -288,6 +298,18 @@ impl QemuClient {
         let running = self.is_running(&details).await;
         Ok((details, running))
     }
+
+    async fn invoke_command(command: &Path, args: &[&str]) -> Result<ExitStatus> {
+        debug!("Executing: {} {}", command.display(), args.join(" "));
+        let status = Command::new(command).args(args).stdout(Stdio::null()).stderr(Stdio::null()).status().await?;
+        Ok(status)
+    }
+}
+
+impl Default for QemuClient {
+    fn default() -> Self {
+        Self::new("qemu-system-x86_64", "qemu-img")
+    }
 }
 
 #[cfg(test)]
@@ -300,7 +322,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {
-        let client = QemuClient::new("/usr/bin/qemu-system-x86_64", "qemu-img");
+        let client = QemuClient::default();
         let spec = VmSpec {
             cpu: 2,
             ram_mib: 2048,
@@ -312,7 +334,7 @@ mod tests {
             display_gtk: false,
         };
         let workdir = Path::new("/tmp").join("dummy");
-        let (disk, args) = client.build_command_line(&workdir, &spec).await;
+        let (disk, args) = client.build_command_line(&workdir, &spec).await.expect("failed to build command line");
         assert_eq!(disk, workdir.join("disk.qcow2"));
         assert!(args.contains(&"2048".to_owned()));
         assert!(args.contains(&"2".to_owned()));
@@ -323,14 +345,14 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn vm_lifecycle() {
-        for bin in ["qemu-img", "/usr/bin/qemu-system-x86_64"] {
+        let client = QemuClient::default();
+        for bin in [&client.qemu_bin, &client.qemu_img_bin] {
             if Command::new(bin).arg("--version").output().await.is_err() {
-                eprintln!("{bin} missing — skipping");
+                eprintln!("{} missing — skipping", bin.display());
                 return;
             }
         }
 
-        let client = QemuClient::new("/usr/bin/qemu-system-x86_64", "qemu-img");
         let store = PathBuf::from("/tmp/nilcc-test-vms");
         let vm_name = "test_vm";
 

@@ -36,11 +36,11 @@ struct Cli {
 
     /// Command
     #[command(subcommand)]
-    command: Commands,
+    command: Command,
 }
 
 #[derive(Subcommand)]
-enum Commands {
+enum Command {
     /// Create and start a fresh VM
     Create {
         /// Unique name of the VM
@@ -113,17 +113,7 @@ async fn main() -> Result<()> {
     let client = QemuClient::new(&cli.qemu_system_bin, &cli.qemu_img_bin);
 
     let result = match cli.command {
-        Commands::Create {
-            name,
-            cpu,
-            ram_mib,
-            disk_gib,
-            cdrom_iso_path,
-            gpu,
-            port_forward,
-            bios_path,
-            display_gtk,
-        } => {
+        Command::Create { name, cpu, ram_mib, disk_gib, cdrom_iso_path, gpu, port_forward, bios_path, display_gtk } => {
             let pf = parse_port_forward(&port_forward)?;
 
             let spec = VmSpec {
@@ -143,27 +133,27 @@ async fn main() -> Result<()> {
                 .map(|details| VmActionOutput { status: "created".into(), details })
         }
 
-        Commands::Start { name } => client
+        Command::Start { name } => client
             .start_vm(&cli.vm_store, &name)
             .await
             .map(|details| VmActionOutput { status: "started".into(), details }),
 
-        Commands::Stop { name } => client
+        Command::Stop { name } => client
             .stop_vm(&cli.vm_store, &name)
             .await
             .map(|details| VmActionOutput { status: "stopped".into(), details }),
 
-        Commands::Delete { name } => client
+        Command::Delete { name } => client
             .delete_vm(&cli.vm_store, &name)
             .await
             .map(|details| VmActionOutput { status: "deleted".into(), details }),
 
-        Commands::Check { name } => client
+        Command::Check { name } => client
             .check_vm_spec(&cli.vm_store, &name)
             .await
             .map(|details| VmActionOutput { status: "matching".into(), details }),
 
-        Commands::Status { name } => client.vm_status(&cli.vm_store, &name).await.map(|(details, running)| {
+        Command::Status { name } => client.vm_status(&cli.vm_store, &name).await.map(|(details, running)| {
             VmActionOutput { status: if running { "running".into() } else { "stopped".into() }, details }
         }),
     };
