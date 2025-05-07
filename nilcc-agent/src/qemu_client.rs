@@ -227,9 +227,7 @@ impl QemuClient {
             .await?
             .success()
             .then_some(())
-            .ok_or_else(|| {
-                QemuClientError::Io(std::io::Error::other("Failed to start QEMU"))
-            })?;
+            .ok_or_else(|| QemuClientError::Io(std::io::Error::other("Failed to start QEMU")))?;
 
         while !fs::try_exists(&details.qmp_sock).await? {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -298,6 +296,7 @@ mod tests {
     use std::path::PathBuf;
     use tracing_test::traced_test;
 
+    #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {
@@ -320,6 +319,7 @@ mod tests {
         assert!(args.iter().any(|a| a.contains("qmp.sock")));
     }
 
+    #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn vm_lifecycle() {

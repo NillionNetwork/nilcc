@@ -1,0 +1,37 @@
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+name: Merge checks
+
+jobs:
+  check:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install nightly rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cargo fmt
+        run: cargo +nightly fmt --all -- --check
+
+      - name: Install stable rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: clippy
+
+      - name: Cargo check
+        run: cargo check
+
+      - name: Cargo test
+        run: cargo test
+
+      - name: Cargo clippy
+        run: cargo clippy -- -D warnings
