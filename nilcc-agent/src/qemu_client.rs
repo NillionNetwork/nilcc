@@ -296,6 +296,7 @@ mod tests {
     use std::path::PathBuf;
     use tracing_test::traced_test;
 
+    #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {
@@ -318,6 +319,7 @@ mod tests {
         assert!(args.iter().any(|a| a.contains("qmp.sock")));
     }
 
+    #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn vm_lifecycle() {
