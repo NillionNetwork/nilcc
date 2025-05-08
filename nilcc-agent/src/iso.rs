@@ -1,5 +1,6 @@
 use docker_compose_types::{Compose, Ports};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     fs, io,
     path::Path,
@@ -47,7 +48,11 @@ pub struct IsoMaker;
 
 impl IsoMaker {
     /// Create an ISO for an application to be run in a confidential VM.
-    pub async fn create_application_iso(&self, spec: IsoSpec, iso_path: &Path) -> Result<(), ApplicationIsoError> {
+    pub async fn create_application_iso(
+        &self,
+        spec: IsoSpec,
+        iso_path: &Path,
+    ) -> Result<IsoMetadata, ApplicationIsoError> {
         let IsoSpec { docker_compose_yaml, metadata } = spec;
         info!("Parsing docker compose YAML");
         let compose: Compose = serde_yaml::from_str(&docker_compose_yaml)?;
@@ -81,8 +86,16 @@ impl IsoMaker {
             return Err(ApplicationIsoError::MkisofsExit(status));
         }
         info!("ISO file generated at {}", iso_path.display());
-        Ok(())
+
+        let metadata = IsoMetadata { docker_compose_hash: Sha256::digest(&docker_compose_yaml).into() };
+        Ok(metadata)
     }
+}
+
+#[derive(Serialize)]
+pub struct IsoMetadata {
+    #[serde(with = "hex::serde")]
+    docker_compose_hash: [u8; 32],
 }
 
 struct ComposeValidator<'a> {
