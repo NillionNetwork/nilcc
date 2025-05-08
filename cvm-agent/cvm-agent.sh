@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT_PATH="/media/cvm-agent-entrypoint"
 cd "${ROOT_PATH}"
 export PROXY_HOSTNAME=$(cat metadata.json | jq -r .hostname)
-export API_CONTAINER=$(cat metadata.json | jq -r .api_container)
+export API_CONTAINER=$(cat metadata.json | jq -r .api.container)
+export API_PORT=$(cat metadata.json | jq -r .api.port)
 
 echo "Using hostname: ${PROXY_HOSTNAME}"
 
