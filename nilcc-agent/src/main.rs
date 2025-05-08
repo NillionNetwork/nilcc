@@ -5,7 +5,7 @@ mod qemu_client;
 use crate::qemu_client::VmDetails;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoSpec};
+use iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoMetadata, IsoSpec};
 use output::{serialize_error, serialize_output, SerializeAsAny};
 use qemu_client::{QemuClient, QemuClientError, VmSpec};
 use serde::Serialize;
@@ -143,20 +143,14 @@ fn default_vm_store() -> PathBuf {
     dirs::home_dir().expect("Unable to resolve $HOME").join(".nilcc/vms")
 }
 
-/// JSON wrapper for VM success responses
+/// JSON wrapper for success responses
 #[derive(Serialize)]
-struct VmActionOutput {
+struct ActionOutput<T: Serialize> {
     status: String,
-    details: VmDetails,
+    details: T,
 }
 
-/// JSON wrapper for ISO success responses
-#[derive(Serialize)]
-struct IsoActionOutput {
-    status: String,
-}
-
-async fn run_iso_command(command: IsoCommand) -> Result<IsoActionOutput> {
+async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata>> {
     match command {
         IsoCommand::Create { container, port, hostname, output, docker_compose_path } => {
             let compose = std::fs::read_to_string(docker_compose_path).context("reading docker compose")?;
@@ -164,13 +158,13 @@ async fn run_iso_command(command: IsoCommand) -> Result<IsoActionOutput> {
                 docker_compose_yaml: compose,
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
             };
-            IsoMaker.create_application_iso(spec, &output).await.context("creating ISO")?;
-            Ok(IsoActionOutput { status: "ISO created".into() })
+            let details = IsoMaker.create_application_iso(spec, &output).await.context("creating ISO")?;
+            Ok(ActionOutput { status: "created".into(), details })
         }
     }
 }
 
-async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<VmActionOutput, QemuClientError> {
+async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOutput<VmDetails>, QemuClientError> {
     let client = QemuClient::new(configs.qemu_system_bin, configs.qemu_img_bin, configs.vm_store);
     match command {
         VmCommand::Create {
@@ -197,21 +191,21 @@ async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<VmAction
                 display_gtk,
             };
 
-            client.create_vm(&name, spec).await.map(|details| VmActionOutput { status: "created".into(), details })
+            client.create_vm(&name, spec).await.map(|details| ActionOutput { status: "created".into(), details })
         }
         VmCommand::Start { name } => {
-            client.start_vm(&name).await.map(|details| VmActionOutput { status: "started".into(), details })
+            client.start_vm(&name).await.map(|details| ActionOutput { status: "started".into(), details })
         }
         VmCommand::Stop { name } => {
-            client.stop_vm(&name).await.map(|details| VmActionOutput { status: "stopped".into(), details })
+            client.stop_vm(&name).await.map(|details| ActionOutput { status: "stopped".into(), details })
         }
         VmCommand::Delete { name } => {
-            client.delete_vm(&name).await.map(|details| VmActionOutput { status: "deleted".into(), details })
+            client.delete_vm(&name).await.map(|details| ActionOutput { status: "deleted".into(), details })
         }
         VmCommand::Check { name } => {
-            client.check_vm_spec(&name).await.map(|details| VmActionOutput { status: "matching".into(), details })
+            client.check_vm_spec(&name).await.map(|details| ActionOutput { status: "matching".into(), details })
         }
-        VmCommand::Status { name } => client.vm_status(&name).await.map(|(details, running)| VmActionOutput {
+        VmCommand::Status { name } => client.vm_status(&name).await.map(|(details, running)| ActionOutput {
             status: if running { "running".into() } else { "stopped".into() },
             details,
         }),
