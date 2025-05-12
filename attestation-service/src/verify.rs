@@ -48,32 +48,34 @@ impl ReportVerifier {
         Ok(())
     }
 
-    fn verify_certs(certs: &Certs) -> anyhow::Result<()> {
+    fn verify_certs(certs: &Certs) -> Result<(), CertificateValidationError> {
         let ark = &certs.chain.ark;
         let ask = &certs.chain.ask;
 
-        // Verify each signature and print result in console
+        // Ensure ARK is self signed.
         match (ark, ark).verify() {
             Ok(()) => {}
             Err(e) => match e.kind() {
-                io::ErrorKind::Other => bail!("AMD ARK is not self-signed!"),
-                _ => bail!("failed to verify the ARK cerfificate: {e:?}"),
+                io::ErrorKind::Other => return Err(CertificateValidationError::ArkNotSelfSigned),
+                _ => return Err(CertificateValidationError::VerificationFailure("ARK", e.to_string())),
             },
         }
 
+        // Ensure ARK signs ASK.
         match (ark, ask).verify() {
             Ok(()) => {}
             Err(e) => match e.kind() {
-                io::ErrorKind::Other => bail!("AMD ASK was not signed by the AMD ARK!"),
-                _ => bail!("failed to verify ASK certificate: {e:?}"),
+                io::ErrorKind::Other => return Err(CertificateValidationError::AskNotSignedByArk),
+                _ => return Err(CertificateValidationError::VerificationFailure("ASK", e.to_string())),
             },
         }
 
+        // Ensure ASK signs VCEK.
         match (ask, &certs.vcek).verify() {
             Ok(()) => {}
             Err(e) => match e.kind() {
-                io::ErrorKind::Other => bail!("the VCEK was not signed by the AMD ASK!"),
-                _ => bail!("failed to verify VEK certificate: {e:?}"),
+                io::ErrorKind::Other => return Err(CertificateValidationError::VcekNotSignedByAsk),
+                _ => return Err(CertificateValidationError::VerificationFailure("VCEK", e.to_string())),
             },
         }
         Ok(())
@@ -95,7 +97,7 @@ impl ReportVerifier {
 
         let mut hasher = Sha384::new();
         hasher.update(signed_bytes);
-        let digest: [u8; 48] = hasher.finish();
+        let digest = hasher.finish();
 
         // Verify signature
         if ar_signature
@@ -165,8 +167,8 @@ impl ReportVerifier {
         report: &AttestationReport,
         processor: &Processor,
     ) -> anyhow::Result<()> {
-        let vek_der = vcek.to_der().context("Could not convert VEK to der.")?;
-        let (_, vek_x509) = X509Certificate::from_der(&vek_der).context("Could not create X509Certificate from der")?;
+        let vek_der = vcek.to_der().context("converting VEK to DER")?;
+        let (_, vek_x509) = X509Certificate::from_der(&vek_der).context("creating x509 cert from DER")?;
 
         // Collect extensions from VEK
         let extensions = vek_x509.extensions_map().context("getting VEK Oids")?;
@@ -312,5 +314,154 @@ impl SnpOid {
             SnpOid::HwId => oid!(1.3.6 .1 .4 .1 .3704 .1 .4),
             SnpOid::Fmc => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .9),
         }
+    }
+}
+
+#[derive(thiserror::Error, Debug, PartialEq)]
+enum CertificateValidationError {
+    #[error("ARK is not self signed")]
+    ArkNotSelfSigned,
+
+    #[error("ASK is not signed by ARK")]
+    AskNotSignedByArk,
+
+    #[error("VCEK is not signed by ASK")]
+    VcekNotSignedByAsk,
+
+    #[error("{0} verification failure: {1}")]
+    VerificationFailure(&'static str, String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openssl::{
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::{PKey, Private},
+        x509::X509,
+    };
+    use rstest::rstest;
+    use sev::certs::snp::ca::Chain;
+
+    struct CertBuilder<'a> {
+        signer: &'a PKey<Private>,
+        owner: &'a PKey<Private>,
+    }
+
+    impl CertBuilder<'_> {
+        fn make_cert(&self) -> Certificate {
+            let mut builder = X509::builder().expect("failed to create builder");
+            builder.set_pubkey(self.owner).expect("failed to set pubkey");
+            builder.sign(self.signer, MessageDigest::sha256()).expect("failed to sign");
+            Certificate::from(builder.build())
+        }
+    }
+
+    struct Keys {
+        ark: PKey<Private>,
+        ask: PKey<Private>,
+        vcek: PKey<Private>,
+    }
+
+    struct CertsBuilder;
+
+    impl CertsBuilder {
+        fn new_valid() -> Certs {
+            let keys = Self::make_keys();
+            // ark is self signed
+            let ark = CertBuilder { signer: &keys.ark, owner: &keys.ark }.make_cert();
+
+            // ask is signed by ark key
+            let ask = CertBuilder { signer: &keys.ark, owner: &keys.ask }.make_cert();
+
+            // vcek is signed by ask key
+            let vcek = CertBuilder { signer: &keys.ask, owner: &keys.vcek }.make_cert();
+            Certs { chain: Chain { ark, ask }, vcek }
+        }
+
+        fn new_ark_not_self_signed() -> Certs {
+            let other_key = Self::make_key();
+            let keys = Self::make_keys();
+            let ark = CertBuilder { signer: &other_key, owner: &keys.ark }.make_cert();
+            let ask = CertBuilder { signer: &keys.ark, owner: &keys.ask }.make_cert();
+            let vcek = CertBuilder { signer: &keys.ask, owner: &keys.vcek }.make_cert();
+            Certs { chain: Chain { ark, ask }, vcek }
+        }
+
+        fn new_ask_not_signed_by_ark() -> Certs {
+            let other_key = Self::make_key();
+            let keys = Self::make_keys();
+            let ark = CertBuilder { signer: &keys.ark, owner: &keys.ark }.make_cert();
+            let ask = CertBuilder { signer: &other_key, owner: &keys.ask }.make_cert();
+            let vcek = CertBuilder { signer: &keys.ask, owner: &keys.vcek }.make_cert();
+            Certs { chain: Chain { ark, ask }, vcek }
+        }
+
+        fn new_vcek_not_signed_by_ask() -> Certs {
+            let other_key = Self::make_key();
+            let keys = Self::make_keys();
+            let ark = CertBuilder { signer: &keys.ark, owner: &keys.ark }.make_cert();
+            let ask = CertBuilder { signer: &keys.ark, owner: &keys.ask }.make_cert();
+            let vcek = CertBuilder { signer: &other_key, owner: &keys.vcek }.make_cert();
+            Certs { chain: Chain { ark, ask }, vcek }
+        }
+
+        fn make_keys() -> Keys {
+            let ark = Self::make_key();
+            let ask = Self::make_key();
+            let vcek = Self::make_key();
+            Keys { ark, ask, vcek }
+        }
+
+        fn make_key() -> PKey<Private> {
+            // NIST P-256 curve
+            let nid = Nid::X9_62_PRIME256V1;
+            let group = EcGroup::from_curve_name(nid).expect("invalid curve name");
+            EcKey::generate(&group).expect("failed to generate key").try_into().expect("failed to convert key")
+        }
+    }
+
+    #[test]
+    fn validate_certificates() {
+        let certs = CertsBuilder::new_valid();
+        ReportVerifier::verify_certs(&certs).expect("verification failed");
+    }
+
+    #[rstest]
+    #[case(CertsBuilder::new_ark_not_self_signed(), CertificateValidationError::ArkNotSelfSigned)]
+    #[case(CertsBuilder::new_ask_not_signed_by_ark(), CertificateValidationError::AskNotSignedByArk)]
+    #[case(CertsBuilder::new_vcek_not_signed_by_ask(), CertificateValidationError::VcekNotSignedByAsk)]
+    fn invalid_cert_chain(#[case] certs: Certs, #[case] expected_error: CertificateValidationError) {
+        let err = ReportVerifier::verify_certs(&certs).expect_err("verification succeeded");
+        assert_eq!(err, expected_error);
+    }
+
+    #[test]
+    fn valid_signature_verification() {
+        let vcek = CertsBuilder::make_key();
+        let vcek_cert = CertBuilder { signer: &vcek, owner: &vcek }.make_cert();
+        let vcek = EcKey::try_from(vcek).expect("failed to construct EC key");
+        let mut report = AttestationReport::default();
+
+        let mut report_bytes = Vec::new();
+        report.write_bytes(&mut report_bytes).unwrap();
+        let signed_bytes = &report_bytes[0x0..0x2A0];
+
+        let mut hasher = Sha384::new();
+        hasher.update(signed_bytes);
+        let digest = hasher.finish();
+
+        let signature = EcdsaSig::sign(&digest, &vcek).expect("failed to sign");
+        report.signature = signature.try_into().expect("could not convert signature");
+        ReportVerifier::verify_report_signature(&vcek_cert, &report).expect("signature verification failed");
+    }
+
+    #[test]
+    fn invalid_signature_verification() {
+        let vcek = CertsBuilder::new_valid().vcek;
+        let report = AttestationReport::default();
+        ReportVerifier::verify_report_signature(&vcek, &report).expect_err("signature verification succeeded");
     }
 }
