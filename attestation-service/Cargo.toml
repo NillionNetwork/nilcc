@@ -17,7 +17,4 @@ thiserror = "2.0"
 tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-x509-parser = { version = "0.17.0", features=["verify"] }
-
-[dev-dependencies]
-serde_json = "1.0"
+x509-parser = { version = "0.17.0", features=["verify"] } 

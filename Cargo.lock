@@ -162,13 +162,26 @@ dependencies = [
  "rand",
  "reqwest",
  "serde",
- "serde_json",
  "sev",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "x509-parser",
+]
+
+[[package]]
+name = "attestation-verifier"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "attestation-service",
+ "clap",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
