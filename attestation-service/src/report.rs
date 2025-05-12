@@ -1,7 +1,7 @@
 use anyhow::Context;
 use sev::firmware::guest::{AttestationReport, Firmware};
 
-const VMPL: u32 = 1;
+pub const VMPL: u32 = 1;
 
 pub(crate) type ReportData = [u8; 64];
 
