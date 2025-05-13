@@ -39,6 +39,9 @@ impl Default for ServerConfig {
 pub struct AttestationConfig {
     #[serde(default)]
     pub processor: Option<Processor>,
+
+    #[serde(default)]
+    pub verify_on_startup: bool,
 }
 
 fn default_bind_endpoint() -> SocketAddr {

@@ -29,18 +29,20 @@ async fn main() {
         }
     };
 
-    info!("Getting report to use during initial verification");
-    let report = request_hardware_report(rand::random()).expect("failed to get hardware report");
+    if config.attestation.verify_on_startup {
+        info!("Getting report to use during initial verification");
+        let report = request_hardware_report(rand::random()).expect("failed to get hardware report");
 
-    info!("Verifying report");
-    let fetcher = DefaultCertificateFetcher::new(CertFetchPolicy::PreferHardware);
-    let mut verifier = ReportVerifier::new(Box::new(fetcher));
-    if let Some(processor) = config.attestation.processor {
-        info!("Forcing processor to be {processor:?}");
-        verifier = verifier.with_processor(processor);
+        info!("Verifying report");
+        let fetcher = DefaultCertificateFetcher::new(CertFetchPolicy::PreferHardware);
+        let mut verifier = ReportVerifier::new(Box::new(fetcher));
+        if let Some(processor) = config.attestation.processor {
+            info!("Forcing processor to be {processor:?}");
+            verifier = verifier.with_processor(processor);
+        }
+        verifier.verify_report(report).await.expect("failed to fetch certs");
+        info!("Verification succeeded");
     }
-    verifier.verify_report(report).await.expect("failed to fetch certs");
-    info!("Verification succeeded");
 
     let bind_endpoint = &config.server.bind_endpoint;
     info!("Running server on {bind_endpoint}");
