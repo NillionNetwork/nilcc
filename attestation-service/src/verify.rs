@@ -2,6 +2,7 @@ use crate::certs::{CertificateFetcher, Certs};
 use anyhow::{anyhow, bail, Context};
 use clap::ValueEnum;
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
+use serde::Deserialize;
 use sev::{
     certs::snp::{Certificate, Verifiable},
     firmware::{guest::AttestationReport, host::CertType},
@@ -230,7 +231,8 @@ impl ReportVerifier {
     }
 }
 
-#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
+#[derive(ValueEnum, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum Processor {
     /// 3rd Gen AMD EPYC Processor (Standard)
     Milan,
