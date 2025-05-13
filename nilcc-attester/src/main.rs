@@ -1,3 +1,4 @@
+use clap::Parser;
 use nilcc_attester::{
     certs::{CertFetchPolicy, DefaultCertificateFetcher},
     config::Config,
@@ -5,8 +6,7 @@ use nilcc_attester::{
     routes::build_router,
     verify::ReportVerifier,
 };
-use clap::Parser;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
 
 #[derive(Parser)]
@@ -14,6 +14,25 @@ struct Cli {
     /// The path to the config file.
     #[clap(short, long)]
     config_path: Option<String>,
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("Received shutdown signal");
 }
 
 #[tokio::main]
@@ -49,5 +68,5 @@ async fn main() {
 
     let router = build_router();
     let listener = TcpListener::bind(bind_endpoint).await.expect("failed to bind");
-    axum::serve(listener, router).await.expect("failed to run");
+    axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await.expect("failed to run");
 }
