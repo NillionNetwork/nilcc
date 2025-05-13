@@ -162,6 +162,7 @@ dependencies = [
  "openssl",
  "rand",
  "reqwest",
+ "rstest",
  "serde",
  "sev",
  "thiserror",
