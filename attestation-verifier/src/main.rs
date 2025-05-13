@@ -1,5 +1,8 @@
 use anyhow::Context;
-use attestation_service::verify::{Processor, ReportVerifier};
+use attestation_service::{
+    certs::{CertFetchPolicy, DefaultCertificateFetcher},
+    verify::{Processor, ReportVerifier},
+};
 use clap::Parser;
 use std::{fs::File, io::stdin};
 use tracing::{error, info};
@@ -20,7 +23,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         path => serde_json::from_reader(File::open(path).context("opening input file")?),
     }
     .context("parsing report")?;
-    let mut verifier = ReportVerifier::default();
+    let fetcher = DefaultCertificateFetcher::new(CertFetchPolicy::AmdKmsApi);
+    let mut verifier = ReportVerifier::new(Box::new(fetcher));
     if let Some(processor) = cli.processor {
         verifier = verifier.with_processor(processor);
     }

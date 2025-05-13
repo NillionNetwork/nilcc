@@ -1,9 +1,9 @@
+use crate::certs::{CertificateFetcher, Certs};
 use anyhow::{anyhow, bail, Context};
 use clap::ValueEnum;
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
-use reqwest::{get, StatusCode};
 use sev::{
-    certs::snp::{ca::Chain, Certificate, Verifiable},
+    certs::snp::{Certificate, Verifiable},
     firmware::{guest::AttestationReport, host::CertType},
 };
 use std::io;
@@ -15,14 +15,16 @@ use x509_parser::{
     x509::X509Name,
 };
 
-const KDS_CERT_SITE: &str = "https://kdsintf.amd.com";
-
-#[derive(Default)]
 pub struct ReportVerifier {
     processor: Option<Processor>,
+    fetcher: Box<dyn CertificateFetcher>,
 }
 
 impl ReportVerifier {
+    pub fn new(fetcher: Box<dyn CertificateFetcher>) -> Self {
+        Self { processor: None, fetcher }
+    }
+
     pub fn with_processor(mut self, processor: Processor) -> Self {
         self.processor = Some(processor);
         self
@@ -38,18 +40,17 @@ impl ReportVerifier {
         };
         info!("Using processor model {processor:?} for verification");
 
-        let vcek = Self::request_vcek_kds(&processor, &report).await.context("fetching VCEK")?;
-        let chain = Self::request_ca_kds(&processor).await.context("fetching CA certs")?;
-        Self::verify_certs(&chain, &vcek).context("verifying certs")?;
+        let certs = self.fetcher.fetch_certs(&processor, &report).await.context("fetching certs")?;
+        Self::verify_certs(&certs).context("verifying certs")?;
 
-        Self::verify_report_signature(&vcek, &report).context("verifying report signature")?;
-        Self::verify_attestation_tcb(&vcek, &report, &processor).context("verifying attestation TCB")?;
+        Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;
+        Self::verify_attestation_tcb(&certs.vcek, &report, &processor).context("verifying attestation TCB")?;
         Ok(())
     }
 
-    fn verify_certs(chain: &Chain, vcek: &Certificate) -> anyhow::Result<()> {
-        let ark = &chain.ark;
-        let ask = &chain.ask;
+    fn verify_certs(certs: &Certs) -> anyhow::Result<()> {
+        let ark = &certs.chain.ark;
+        let ask = &certs.chain.ask;
 
         // Verify each signature and print result in console
         match (ark, ark).verify() {
@@ -68,7 +69,7 @@ impl ReportVerifier {
             },
         }
 
-        match (ask, vcek).verify() {
+        match (ask, &certs.vcek).verify() {
             Ok(()) => {}
             Err(e) => match e.kind() {
                 io::ErrorKind::Other => bail!("the VCEK was not signed by the AMD ASK!"),
@@ -225,84 +226,6 @@ impl ReportVerifier {
         }
         Ok(())
     }
-
-    async fn request_vcek_kds(processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certificate> {
-        // Get hardware id
-        let hw_id: String = if report.chip_id.as_slice() != [0; 64] {
-            match processor {
-                Processor::Turin => {
-                    let shorter_bytes: &[u8] = &report.chip_id[0..8];
-                    hex::encode(shorter_bytes)
-                }
-                _ => hex::encode(report.chip_id),
-            }
-        } else {
-            bail!("hardware ID is 0s on attestation report");
-        };
-
-        // Request VCEK from KDS
-        let url: String = match processor {
-            Processor::Turin => {
-                let fmc = if let Some(fmc) = report.reported_tcb.fmc {
-                    fmc
-                } else {
-                    bail!("Turin processors must have a fmc value");
-                };
-                format!(
-                    "{KDS_CERT_SITE}/vcek/v1/{}/\
-                    {hw_id}?fmcSPL={:02}&blSPL={:02}&teeSPL={:02}&snpSPL={:02}&ucodeSPL={:02}",
-                    processor.to_kds_url(),
-                    fmc,
-                    report.reported_tcb.bootloader,
-                    report.reported_tcb.tee,
-                    report.reported_tcb.snp,
-                    report.reported_tcb.microcode
-                )
-            }
-            _ => {
-                format!(
-                    "{KDS_CERT_SITE}/vcek/v1/{}/\
-                    {hw_id}?blSPL={:02}&teeSPL={:02}&snpSPL={:02}&ucodeSPL={:02}",
-                    processor.to_kds_url(),
-                    report.reported_tcb.bootloader,
-                    report.reported_tcb.tee,
-                    report.reported_tcb.snp,
-                    report.reported_tcb.microcode
-                )
-            }
-        };
-
-        info!("Fetching VCEK from {url}");
-
-        // VCEK in DER format
-        let response = get(url).await.context("unable to send request for VCEK")?;
-
-        match response.status() {
-            StatusCode::OK => {
-                let bytes = response.bytes().await.context("unable to parse VCEK")?.to_vec();
-                let cert = Certificate::from_bytes(&bytes).context("parsing VCEK")?;
-                Ok(cert)
-            }
-            status => bail!("unable to fetch VCEK from URL: {status:?}"),
-        }
-    }
-
-    async fn request_ca_kds(processor: &Processor) -> anyhow::Result<Chain> {
-        // Should make -> https://kdsintf.amd.com/vcek/v1/{SEV_PROD_NAME}/cert_chain
-        let url = format!("{KDS_CERT_SITE}/vcek/v1/{}/cert_chain", processor.to_kds_url());
-        info!("Fetching CA chain from {url}");
-
-        let rsp = get(url).await.context("unable to send request for certs to URL")?;
-        match rsp.status() {
-            StatusCode::OK => {
-                // Parse the request
-                let body = rsp.bytes().await.context("unable to parse AMD certificate chain")?.to_vec();
-                let certificates = Chain::from_pem_bytes(&body)?;
-                Ok(certificates)
-            }
-            status => bail!("unable to fetch certificate: {status:?}"),
-        }
-    }
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
@@ -324,7 +247,7 @@ pub enum Processor {
 }
 
 impl Processor {
-    fn to_kds_url(&self) -> &'static str {
+    pub(crate) fn to_kds_url(&self) -> &'static str {
         match self {
             Processor::Genoa | Processor::Siena | Processor::Bergamo => "Genoa",
             Processor::Milan => "Milan",

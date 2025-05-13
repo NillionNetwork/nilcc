@@ -1,4 +1,5 @@
 use attestation_service::{
+    certs::{CertFetchPolicy, DefaultCertificateFetcher},
     report::request_hardware_report,
     routes::build_router,
     verify::{Processor, ReportVerifier},
@@ -25,7 +26,8 @@ async fn main() {
     let report = request_hardware_report(rand::random()).expect("failed to get hardware report");
 
     info!("Verifying report");
-    ReportVerifier::default()
+    let fetcher = DefaultCertificateFetcher::new(CertFetchPolicy::PreferHardware);
+    ReportVerifier::new(Box::new(fetcher))
         // TODO make configurable
         .with_processor(Processor::Genoa)
         .verify_report(report)
