@@ -1,4 +1,4 @@
-use attestation_service::{
+use nilcc_attester::{
     certs::{CertFetchPolicy, DefaultCertificateFetcher},
     config::Config,
     report::request_hardware_report,

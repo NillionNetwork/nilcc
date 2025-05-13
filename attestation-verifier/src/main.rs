@@ -1,9 +1,9 @@
 use anyhow::Context;
-use attestation_service::{
+use clap::Parser;
+use nilcc_attester::{
     certs::{CertFetchPolicy, DefaultCertificateFetcher},
     verify::{Processor, ReportVerifier},
 };
-use clap::Parser;
 use std::{fs::File, io::stdin};
 use tracing::{error, info};
 
