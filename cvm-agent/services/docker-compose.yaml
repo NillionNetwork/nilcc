@@ -1,0 +1,21 @@
+services:
+  nilcc-attester:
+    image: ghcr.io/nillionnetwork/nilcc-attester:latest
+    restart: unless-stopped
+    environment:
+      APP__SERVER__BIND_ENDPOINT: "0.0.0.0:59812"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "443:443"
+    environment:
+      PROXY_HOSTNAME: "${PROXY_HOSTNAME}"
+      API_CONTAINER: "${API_CONTAINER}"
+      API_PORT: "${API_PORT}"
+    command: |
+      caddy reverse-proxy --from https://$PROXY_HOSTNAME --to $API_CONTAINER:$API_PORT
+

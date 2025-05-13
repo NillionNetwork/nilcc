@@ -33,8 +33,8 @@ autoinstall:
     - curtin in-target -- mkdir /opt/nillion
     - curtin in-target -- cp /cdrom/nillion/cvm-agent.sh /opt/nillion
     - curtin in-target -- chmod +x /opt/nillion/cvm-agent.sh
-    # Copy caddy config
-    - curtin in-target -- cp -r /cdrom/nillion/caddy /opt/nillion
+    # Copy services config
+    - curtin in-target -- cp -r /cdrom/nillion/services /opt/nillion
     # Configure cvm-agent to auto start.
     - curtin in-target -- cp /cdrom/nillion/cvm-agent.service /etc/systemd/system/
     - curtin in-target -- systemctl daemon-reload
