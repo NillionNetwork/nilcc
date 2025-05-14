@@ -2,7 +2,7 @@ use docker_compose_types::{Compose, Ports};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
-    fs, io,
+    fs, io, iter,
     path::Path,
     process::{ExitStatus, Stdio},
     str::FromStr,
@@ -12,6 +12,9 @@ use tracing::info;
 
 // The list of ports that can't be exported.
 static RESERVED_PORTS: &[u16] = &[443];
+
+// The list of container names that are reserved.
+static RESERVED_CONTAINERS: &[&str] = &["nilcc-attester", "nilcc-proxy"];
 
 /// Information about the API container that will be the entrypoint to the VM image.
 #[derive(Debug, Serialize)]
@@ -113,9 +116,17 @@ impl ComposeValidator<'_> {
         let mut found_api_container = false;
         for (name, spec) in &self.compose.services.0 {
             let spec = spec.as_ref().ok_or_else(|| ComposeValidationError::ServiceBodyMissing(name.clone()))?;
-            if name == &self.api.container || spec.container_name.as_deref() == Some(&self.api.container) {
+            // The container name is the one in `services:` and optionally also its
+            // `container_name`, if any.
+            let mut names = iter::once(name).chain(spec.container_name.as_ref());
+            if let Some(reserved) = names.clone().find(|n| RESERVED_CONTAINERS.contains(&n.as_str())) {
+                return Err(ComposeValidationError::ReservedContainerName(reserved.clone()));
+            }
+
+            if names.any(|n| *n == self.api.container) {
                 found_api_container = true;
             }
+
             Self::validate_ports(&spec.ports)?;
         }
         if !found_api_container {
@@ -230,6 +241,9 @@ pub enum ComposeValidationError {
     #[error("container cannot publish reserved port: {0}")]
     PublishedPorts(u16),
 
+    #[error("container '{0}' cannot use reserved container name")]
+    ReservedContainerName(String),
+
     #[error("api container not defined in docker compose")]
     ApiContainerMissing,
 
@@ -273,6 +287,23 @@ services:
     ports:
       - target: 80
         published: 443
+"#
+    )]
+    #[case::reserved_name_top_level(
+        ComposeValidationError::ReservedContainerName("nilcc-attester".to_string()),
+        r#"
+services:
+  nilcc-attester:
+    image: foo:latest
+"#
+    )]
+    #[case::reserved_name_container_name(
+        ComposeValidationError::ReservedContainerName("nilcc-proxy".to_string()),
+        r#"
+services:
+  api:
+    container_name: nilcc-proxy
+    image: foo:latest
 "#
     )]
     fn invalid_docker_composes(#[case] expected_error: ComposeValidationError, #[case] input: &str) {
