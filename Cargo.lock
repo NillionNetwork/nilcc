@@ -157,35 +157,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "attestation-service"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "clap",
- "config",
- "hex",
- "openssl",
- "rand",
- "reqwest",
- "rstest",
- "serde",
- "sev",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "x509-parser",
-]
-
-[[package]]
 name = "attestation-verifier"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "attestation-service",
  "clap",
+ "nilcc-attester",
  "reqwest",
  "serde_json",
  "tokio",
@@ -1286,6 +1263,29 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-test",
+]
+
+[[package]]
+name = "nilcc-attester"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "clap",
+ "config",
+ "hex",
+ "openssl",
+ "rand",
+ "reqwest",
+ "rstest",
+ "serde",
+ "sev",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "x509-parser",
 ]
 
 [[package]]

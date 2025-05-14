@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-attestation-service = { path = "../attestation-service" }
+nilcc-attester = { path = "../nilcc-attester" }
 clap = { version = "4.5", features = ["derive"] }
 reqwest = "0.12"
 serde_json = "1.0"
