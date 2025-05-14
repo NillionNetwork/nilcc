@@ -5,12 +5,13 @@ services:
     environment:
       APP__SERVER__BIND_ENDPOINT: "0.0.0.0:59812"
 
-  caddy:
+  nilcc-proxy:
     image: caddy:2
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
     ports:
+      - "80:80"
       - "443:443"
     environment:
       PROXY_HOSTNAME: "${PROXY_HOSTNAME}"
