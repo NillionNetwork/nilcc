@@ -30,7 +30,7 @@ cp $SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb "$BUILD_PATH/kernel/"
 
 # Copy cvm-agent script and dependencies.
 cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
-cp -r $SCRIPT_PATH/../../cvm-agent/caddy/ "$BUILD_PATH/custom/"
+cp -r $SCRIPT_PATH/../../cvm-agent/services/ "$BUILD_PATH/custom/"
 cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
 
 docker run --rm --privileged -v "$SCRIPT_PATH:/iso" -it ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE

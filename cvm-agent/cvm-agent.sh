@@ -10,5 +10,5 @@ export API_PORT=$(cat metadata.json | jq -r .api.port)
 
 echo "Using hostname: ${PROXY_HOSTNAME}"
 
-# Start user's containers and the caddy proxy
-docker compose -f docker-compose.yaml -f /opt/nillion/caddy/docker-compose.yaml up -d
+# Start user's containers and the built-in services in a single compose network
+docker compose -f docker-compose.yaml -f /opt/nillion/services/docker-compose.yaml up -d
