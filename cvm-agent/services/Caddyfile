@@ -8,7 +8,7 @@ https://{NILCC_PROXY_HOSTNAME} {
     import ssl_config
 
     handle_path /nilcc/* {
-      reverse_proxy http://nilcc-attester:59812
+      reverse_proxy http://nilcc-attester
     }
 
     reverse_proxy /* {NILCC_PROXY_TARGET}
