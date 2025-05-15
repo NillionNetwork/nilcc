@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     ops::Deref,
     path::{Path, PathBuf},
-    process::{ExitStatus, Stdio},
+    process::ExitStatus,
 };
 use thiserror::Error;
 use tokio::{fs, process::Command};
@@ -42,6 +42,10 @@ pub struct VmSpec {
     /// If true, show VM display using GTK.
     #[serde(default)]
     pub display_gtk: bool,
+
+    /// Enable CVM (Confidential VM) support.
+    #[serde(default)]
+    pub enable_cvm: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +89,11 @@ pub struct QemuClient {
     store: PathBuf,
 }
 
+pub struct CommandOutput {
+    pub status: ExitStatus,
+    pub stderr: String,
+}
+
 impl QemuClient {
     pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P, store: P) -> Self {
         Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into(), store: store.into() }
@@ -94,71 +103,98 @@ impl QemuClient {
     async fn build_command_line(&self, workdir: &Path, spec: &VmSpec) -> Result<(PathBuf, Vec<String>)> {
         let disk = workdir.join("disk.qcow2");
         let qmp_sock = workdir.join("qmp.sock");
-        let mut args = vec![
+
+        let mut args: Vec<String> = Vec::new();
+
+        // --- CVM support ---
+        if spec.enable_cvm {
+            args.extend([
+                "-machine".into(),
+                "confidential-guest-support=sev0,vmport=off".into(),
+                "-object".into(),
+                "sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1".into(),
+            ]);
+        }
+
+        // --- Base machine + CPU / RAM ---
+        args.extend([
             "-enable-kvm".into(),
-            "-nodefaults".into(),
-            "-machine".into(),
-            "q35,accel=kvm".into(),
+            "-no-reboot".into(),
             "-cpu".into(),
-            "host".into(),
-            "-m".into(),
-            spec.ram_mib.to_string(),
+            "EPYC-v4".into(),
             "-smp".into(),
             spec.cpu.to_string(),
+            "-m".into(),
+            spec.ram_mib.to_string(),
+            "-machine".into(),
+            "q35,accel=kvm".into(),
+        ]);
+
+        // --- Main system drive ---
+        args.extend([
             "-drive".into(),
-            format!("file={},if=virtio,format=qcow2", disk.display()),
+            format!("file={},if=none,id=disk0,format=qcow2", disk.display()),
+            "-device".into(),
+            "virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true".into(),
+            "-device".into(),
+            "scsi-hd,drive=disk0".into(),
+        ]);
+
+        // --- Network backend ---
+        args.extend(["-device".into(), "pcie-root-port,id=pci.1,bus=pcie.0".into()]);
+
+        args.extend([
+            "-fw_cfg".into(),
+            "name=opt/ovmf/X-PciMmio64Mb,string=151072".into(),
             "-qmp".into(),
             format!("unix:{},server,nowait", qmp_sock.display()),
             "-daemonize".into(),
-        ];
+        ]);
 
+        // --- CD-ROM ---
         if let Some(iso) = &spec.cdrom_iso_path {
             args.push("-drive".into());
             args.push(format!("file={},media=cdrom,readonly=on", iso.display()));
         }
 
+        // --- BIOS ---
         if let Some(bios) = &spec.bios_path {
-            args.push("-bios".into());
-            args.push(bios.display().to_string());
+            args.extend(["-bios".into(), bios.display().to_string()]);
         }
 
+        // --- Display ---
         if spec.display_gtk {
-            args.push("-device".into());
-            args.push("virtio-vga".into());
-            args.push("-display".into());
-            args.push("gtk,gl=off".into());
+            args.extend(["-device".into(), "virtio-vga".into(), "-display".into(), "gtk,gl=off".into()]);
         } else {
-            // Default: Completely headless VM
-            args.push("-display".into());
-            args.push("none".into());
+            args.extend(["-display".into(), "none".into()]);
         }
 
-        if !spec.port_forwarding.is_empty() {
-            let fwd = spec
-                .port_forwarding
-                .iter()
-                .map(|(host, guest)| format!("hostfwd=tcp::{}-:{}", host, guest))
-                .collect::<Vec<_>>()
-                .join(",");
+        // --- Port forwarding ---
+        let fwd = spec
+            .port_forwarding
+            .iter()
+            .map(|(h, g)| format!("hostfwd=tcp::{}-:{}", h, g))
+            .collect::<Vec<_>>()
+            .join(",");
 
-            let netdev = if fwd.is_empty() {
-                "-netdev user,id=vmnic".to_owned()
-            } else {
-                format!("-netdev user,id=vmnic,{}", fwd)
-            };
+        let netdev = if fwd.is_empty() {
+            "-netdev".to_owned() + " user,id=vmnic"
+        } else {
+            format!("-netdev user,id=vmnic,{}", fwd)
+        };
+        args.extend(netdev.split_whitespace().map(|s| s.to_owned()));
+        args.push("-device".into());
+        args.push("virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into());
 
-            args.extend(netdev.split_whitespace().map(|s| s.to_owned()));
-            args.push("-device".into());
-            args.push("virtio-net-pci,netdev=vmnic".into());
-        }
-
+        // --- GPU passthrough ---
         if spec.gpu_enabled {
             let gpu = Self::find_gpu().await?;
-            args.push("-device".into());
-            args.push(format!("vfio-pci,host={},bus=pci.1", gpu));
-            // Also create the downstream root-port the GPU will attach to
-            args.push("-device".into());
-            args.push("pcie-root-port,id=pci.1,bus=pcie.0".into());
+            args.extend([
+                "-device".into(),
+                "pcie-root-port,id=pci.1,bus=pcie.0".into(),
+                "-device".into(),
+                format!("vfio-pci,host={},bus=pci.1", gpu),
+            ]);
         }
 
         Ok((disk, args))
@@ -213,9 +249,9 @@ impl QemuClient {
 
         let (disk, _) = self.build_command_line(&workdir, &spec).await?;
         let args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
-        let status = Self::invoke_command(&self.qemu_img_bin, &args).await?;
-        if !status.success() {
-            return Err(QemuClientError::Io(std::io::Error::other("qemu-img failed")));
+        let output = Self::invoke_command(&self.qemu_img_bin, &args).await?;
+        if !output.status.success() {
+            return Err(QemuClientError::Io(std::io::Error::other(format!("qemu-img failed: {}", output.stderr))));
         }
 
         let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
@@ -235,9 +271,9 @@ impl QemuClient {
         let (_, args) = self.build_command_line(&details.workdir, &details.spec).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
-        let status = Self::invoke_command(&self.qemu_bin, &args).await?;
-        if !status.success() {
-            return Err(QemuClientError::Io(std::io::Error::other("Failed to start QEMU")));
+        let output = Self::invoke_command(&self.qemu_bin, &args).await?;
+        if !output.status.success() {
+            return Err(QemuClientError::Io(std::io::Error::other(format!("qemu failed: {}", output.stderr))));
         }
 
         while !fs::try_exists(&details.qmp_sock).await? {
@@ -300,10 +336,12 @@ impl QemuClient {
         Ok((details, running))
     }
 
-    async fn invoke_command(command: &Path, args: &[&str]) -> Result<ExitStatus> {
+    pub async fn invoke_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
         debug!("Executing: {} {}", command.display(), args.join(" "));
-        let status = Command::new(command).args(args).stdout(Stdio::null()).stderr(Stdio::null()).status().await?;
-        Ok(status)
+
+        let output = Command::new(command).args(args).output().await?;
+
+        Ok(CommandOutput { status: output.status, stderr: String::from_utf8_lossy(&output.stderr).trim().to_string() })
     }
 }
 
@@ -332,6 +370,7 @@ mod tests {
             port_forwarding: vec![],
             bios_path: None,
             display_gtk: false,
+            enable_cvm: false,
         };
         let (disk, args) = client.build_command_line(&workdir, &spec).await.expect("failed to build command line");
         assert_eq!(disk, workdir.join("disk.qcow2"));
@@ -367,6 +406,7 @@ mod tests {
             port_forwarding: vec![],
             bios_path: None,
             display_gtk: false,
+            enable_cvm: false,
         };
 
         let details = client.create_vm(vm_name, spec).await.unwrap();

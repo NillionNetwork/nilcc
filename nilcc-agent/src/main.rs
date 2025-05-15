@@ -11,8 +11,8 @@ use qemu_client::{QemuClient, QemuClientError, VmSpec};
 use serde::Serialize;
 use std::{ops::Deref, path::PathBuf};
 
-const DEFAULT_QEMU_SYSTEM: &str = "/usr/bin/qemu-system-x86_64";
-const DEFAULT_QEMU_IMG: &str = "/usr/bin/qemu-img";
+const DEFAULT_QEMU_SYSTEM: &str = "qemu-system-x86_64";
+const DEFAULT_QEMU_IMG: &str = "qemu-img";
 
 #[derive(Parser)]
 struct Cli {
@@ -96,6 +96,10 @@ enum VmCommand {
         /// Show GTK ;display for VM, defaults to headless VM
         #[clap(long = "display-gtk")]
         display_gtk: bool,
+
+        /// Enable CVM
+        #[clap(long = "enable-cvm")]
+        enable_cvm: bool,
     },
 
     /// Start already created VM
@@ -177,6 +181,7 @@ async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOu
             port_forward,
             bios_path,
             display_gtk,
+            enable_cvm,
         } => {
             let pf = parse_port_forward(&port_forward).expect("TODO");
 
@@ -189,6 +194,7 @@ async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOu
                 port_forwarding: pf,
                 bios_path,
                 display_gtk,
+                enable_cvm,
             };
 
             client.create_vm(&name, spec).await.map(|details| ActionOutput { status: "created".into(), details })
@@ -222,7 +228,7 @@ async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let cli = Cli::parse();
     match run(cli).await {
