@@ -8,7 +8,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 clap = { version = "4.5", features = ["derive", "env"] }
 dirs = "6"
-docker-compose-types = "0.16"
+docker-compose-types = "0.17"
 erased-serde = "0.4"
 hex = { version = "0.4", features = ["serde"] }
 metrics = "0.24"
