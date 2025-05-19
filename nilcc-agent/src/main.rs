@@ -9,10 +9,12 @@ use iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoMetadata, IsoSpec
 use output::{serialize_error, serialize_output, SerializeAsAny};
 use qemu_client::{QemuClient, QemuClientError, VmSpec};
 use serde::Serialize;
-use std::{ops::Deref, path::PathBuf};
+use std::{env, ops::Deref, path::PathBuf};
+use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
 
 const DEFAULT_QEMU_SYSTEM: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
+const DEFAULT_VM_STORE: &str = ".nilcc/vms";
 
 #[derive(Parser)]
 struct Cli {
@@ -143,8 +145,23 @@ enum IsoCommand {
     },
 }
 
-fn default_vm_store() -> PathBuf {
-    dirs::home_dir().expect("Unable to resolve $HOME").join(".nilcc/vms")
+/// Resolve ~/.nilcc/vms
+pub fn default_vm_store() -> PathBuf {
+    // if launched through sudo SUDO_UID will be our user
+    if let Ok(uid_str) = env::var("SUDO_UID") {
+        if let Ok(uid) = uid_str.parse::<u32>() {
+            if let Some(u) = get_user_by_uid(uid) {
+                return u.home_dir().join(DEFAULT_VM_STORE);
+            }
+        }
+    }
+
+    if let Some(u) = get_user_by_uid(get_current_uid()) {
+        return u.home_dir().join(DEFAULT_VM_STORE);
+    }
+
+    // fallback to the current directory
+    PathBuf::from(DEFAULT_VM_STORE)
 }
 
 /// JSON wrapper for success responses
