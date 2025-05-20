@@ -2,6 +2,9 @@ services:
   nilcc-attester:
     image: ghcr.io/nillionnetwork/nilcc-attester:latest
     restart: unless-stopped
+    privileged: true
+    volumes:
+      - "/dev/sev-guest:/dev/sev-guest"
     environment:
       APP__SERVER__BIND_ENDPOINT: "0.0.0.0:80"
     healthcheck:
