@@ -49,12 +49,12 @@ jobs:
         run: artifacts/vm_image/build.sh gpu
 
       - name: Configure AWS credentials
-        # if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: "arn:aws:iam::592920173613:role/nilcc-ci-nilcc-bucket"
           aws-region: eu-west-1
 
       - name: Publish
-        # if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: artifacts/upload.sh
