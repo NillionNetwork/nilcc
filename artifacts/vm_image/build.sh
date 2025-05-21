@@ -39,7 +39,7 @@ SSH_FORWARD_PORT=2221
 sudo $QEMU_PATH/qemu-system-x86_64 \
  -enable-kvm -nographic -no-reboot -cpu EPYC-v4 -machine q35 \
  -smp 12,maxcpus=31 -m 16G,slots=5,maxmem=120G \
- -drive if=pflash,format=raw,unit=0,file=$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF_CODE.fd,readonly=on \
+ -drive if=pflash,format=raw,unit=0,file=$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF.fd,readonly=on \
  -drive file=$VM_IMAGE_PATH,if=none,id=disk0,format=qcow2 \
  -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
  -device scsi-hd,drive=disk0 \
