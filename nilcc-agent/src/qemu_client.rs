@@ -169,7 +169,8 @@ impl QemuClient {
             args.extend(["-display".into(), "none".into()]);
         }
 
-        // --- Port forwarding ---
+        // --- Network and Port forwarding ---
+        args.push("-netdev".into());
         let fwd = spec
             .port_forwarding
             .iter()
@@ -177,12 +178,11 @@ impl QemuClient {
             .collect::<Vec<_>>()
             .join(",");
 
-        let netdev = if fwd.is_empty() {
-            "-netdev".to_owned() + " user,id=vmnic"
+        if fwd.is_empty() {
+            args.push("user,id=vmnic".into());
         } else {
-            format!("-netdev user,id=vmnic,{}", fwd)
-        };
-        args.extend(netdev.split_whitespace().map(|s| s.to_owned()));
+            args.push(format!("user,id=vmnic,{}", fwd));
+        }
         args.push("-device".into());
         args.push("virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into());
 
