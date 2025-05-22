@@ -57,3 +57,6 @@ find . -print0 | cpio --null -ov --format=newc 2>/dev/null | gzip -1 >$OUT
 popd >/dev/null
 
 echo "initrd image generated at $OUT"
+
+[[ ! -d $SCRIPT_PATH/../dist/initramfs ]] && mkdir -p $SCRIPT_PATH/../dist/initramfs
+cp "$OUT" "$SCRIPT_PATH/../dist/initramfs"
