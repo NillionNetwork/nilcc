@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
   "attestation-verifier",
+  "initrd-helper",
   "nilcc-attester",
   "nilcc-agent"
 ]

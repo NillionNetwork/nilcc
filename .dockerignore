@@ -2,8 +2,11 @@
 
 !/nilcc-attester
 !/nilcc-agent
+!/initrd-helper
 !/attestation-verifier
 !/Cargo.toml
 !/Cargo.lock
+!/artifacts/initramfs/build/kernel/kernel.deb
+!/artifacts/initramfs/init.sh
 target
 

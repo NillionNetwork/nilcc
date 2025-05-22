@@ -20,8 +20,20 @@ mount -t devpts -o noexec,nosuid,gid=5,mode=0620 devpts /dev/pts || true
 
 MNT_DIR=/root
 ROOT=/dev/sda2
+BOOT_PROOF_DIR=$MNT_DIR/etc/nilcc-boot
 
 mount $ROOT $MNT_DIR
+
+# Note, eventually we will want to not do this rm so `mkdir` fails. For now it's good to have it so we can
+# boot a vm multiple times from the same .cow2
+rm -rf $BOOT_PROOF_DIR
+mkdir $BOOT_PROOF_DIR
+
+head -c 64 /dev/urandom >$BOOT_PROOF_DIR/input
+
+modprobe sev-guest
+/opt/nillion/initrd-helper report $BOOT_PROOF_DIR/report.json --data $(cat $BOOT_PROOF_DIR/input | base64 -w 0)
+
 mount --move /proc $MNT_DIR/proc
 mount --move /sys $MNT_DIR/sys
 exec switch_root $MNT_DIR/ /sbin/init
