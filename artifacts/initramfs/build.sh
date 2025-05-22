@@ -36,10 +36,6 @@ trap cleanup EXIT
 echo "Exporting filesystem"
 docker export $DOCKER_CONTAINER | tar xpf - -C $INITRD_DIR
 
-# Patch the init script to perform everything that needs to happen on boot.
-echo "Copying init script"
-cp "${SCRIPT_PATH}/init.sh" $INITRD_DIR/init
-
 # Clean up.
 echo "Removing unnecessary files and directories"
 rm -rf $INITRD_DIR/dev $INITRD_DIR/proc $INITRD_DIR/sys $INITRD_DIR/boot \
