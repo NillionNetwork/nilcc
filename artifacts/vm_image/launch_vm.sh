@@ -15,7 +15,6 @@ INITRD="${INITRD:-$SCRIPT_PATH/../initramfs/build/initramfs.cpio.gz}"
 
 QEMU_BASE_PATH="$SCRIPT_PATH/build/qemu/"
 $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
-  -m 1G \
   -enable-kvm -nographic -no-reboot \
   -machine confidential-guest-support=sev0,vmport=off \
   -object sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on \
