@@ -19,7 +19,7 @@ autoinstall:
       version: 2
   storage:
     layout:
-      name: lvm
+      name: direct
 
   user-data:
     mounts:
