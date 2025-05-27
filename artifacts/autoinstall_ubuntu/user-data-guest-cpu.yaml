@@ -25,6 +25,7 @@ autoinstall:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
     - curtin in-target -- apt update
     - curtin in-target -- apt install -y docker-compose-v2 jq
+    - curtin in-target -- apt purge -y linux-image-6.8* linux-headers-6.8* linux-tools-6.8*
     # Copy over cvm-agent.
     - curtin in-target -- mkdir /opt/nillion
     - curtin in-target -- cp /cdrom/nillion/cvm-agent.sh /opt/nillion
