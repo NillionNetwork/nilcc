@@ -1,0 +1,47 @@
+name: nilcc API CI
+
+on:
+  pull_request:
+    paths:
+      - 'nilcc-api/**'
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: ./nilcc-api
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "23"
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install
+      - run: pnpm exec biome ci
+      - run: tsc
+
+  test:
+    needs: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "23"
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install
+      - run: pnpm vitest --coverage
+      - uses: davelosert/vitest-coverage-report-action@v2
+        if: always()
+        with:
+          comment-on: "pr"
