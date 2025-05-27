@@ -107,8 +107,15 @@ enum VmCommand {
     /// Start already created VM
     Start { name: String },
 
-    /// Stop running VM
-    Stop { name: String },
+    /// Gracefully stop running VM or force stop if `force` is true
+    Stop {
+        name: String,
+        #[arg(short, long, help = "Force stop the VM (power-off)")]
+        force: bool,
+    },
+
+    /// Gracefully restart VM
+    Restart { name: String },
 
     /// Delete VM and all its files
     Delete { name: String },
@@ -219,8 +226,11 @@ async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOu
         VmCommand::Start { name } => {
             client.start_vm(&name).await.map(|details| ActionOutput { status: "started".into(), details })
         }
-        VmCommand::Stop { name } => {
-            client.stop_vm(&name).await.map(|details| ActionOutput { status: "stopped".into(), details })
+        VmCommand::Stop { name, force } => {
+            client.stop_vm(&name, force).await.map(|details| ActionOutput { status: "stopped".into(), details })
+        }
+        VmCommand::Restart { name } => {
+            client.restart_vm(&name).await.map(|details| ActionOutput { status: "restarted".into(), details })
         }
         VmCommand::Delete { name } => {
             client.delete_vm(&name).await.map(|details| ActionOutput { status: "deleted".into(), details })
