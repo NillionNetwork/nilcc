@@ -1,6 +1,7 @@
 use qapi::{
-    futures::QmpStreamTokio,
-    qmp::{query_cpus_fast, system_powerdown},
+    futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
+    qmp::{query_cpus_fast, quit, system_powerdown, system_reset, QmpCommand},
+    Command as QapiCommandTrait, ExecuteError,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,8 +10,20 @@ use std::{
     process::ExitStatus,
 };
 use thiserror::Error;
-use tokio::{fs, process::Command};
+use tokio::{
+    fs,
+    io::{ReadHalf, WriteHalf},
+    net::UnixStream,
+    process::Command,
+    task::JoinHandle,
+};
 use tracing::debug;
+
+type QmpReadStreamHalf = QmpStreamTokio<ReadHalf<UnixStream>>;
+type QmpWriteStreamHalf = QmpStreamTokio<WriteHalf<UnixStream>>;
+type NegotiatedQmpStream = QapiStream<QmpReadStreamHalf, QmpWriteStreamHalf>;
+type QmpCommandService = QapiService<QmpWriteStreamHalf>;
+type QmpDriverTaskHandle = JoinHandle<()>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmSpec {
@@ -73,6 +86,9 @@ pub enum QemuClientError {
 
     #[error("VM already running")]
     VmAlreadyRunning,
+
+    #[error("VM not running")]
+    VmNotRunning,
 
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
@@ -230,11 +246,57 @@ impl QemuClient {
         Ok(serde_json::from_str(&fs::read_to_string(json).await?)?)
     }
 
-    async fn is_running(&self, details: &VmDetails) -> bool {
-        match QmpStreamTokio::open_uds(&details.qmp_sock).await {
+    async fn is_running(&self, qmp_sock: &Path) -> bool {
+        match QmpStreamTokio::open_uds(qmp_sock).await {
             Ok(stream) => stream.negotiate().await.is_ok(),
             Err(_) => false,
         }
+    }
+
+    async fn connect_qmp(&self, qmp_sock_path: &Path) -> Result<(QmpCommandService, QmpDriverTaskHandle)> {
+        debug!("Connecting to QMP socket at: {}", qmp_sock_path.display());
+
+        let pre_negotiation_stream: QmpStreamNegotiation<QmpReadStreamHalf, QmpWriteStreamHalf> =
+            QmpStreamTokio::open_uds(qmp_sock_path).await.map_err(|io_err| {
+                QemuClientError::Qmp(format!(
+                    "Failed to connect to QMP socket at '{}': {}",
+                    qmp_sock_path.display(),
+                    io_err
+                ))
+            })?;
+
+        let negotiated_stream: NegotiatedQmpStream =
+            pre_negotiation_stream.negotiate().await.map_err(|io_err: std::io::Error| {
+                QemuClientError::Qmp(format!(
+                    "QMP negotiation failed for socket at '{}': {}",
+                    qmp_sock_path.display(),
+                    io_err
+                ))
+            })?;
+
+        debug!("QMP connection established and negotiated for socket: {}", qmp_sock_path.display());
+        Ok(negotiated_stream.spawn_tokio())
+    }
+
+    pub async fn execute_qmp_command<C>(&self, qmp_sock: &Path, command: C) -> Result<<C as QapiCommandTrait>::Ok>
+    where
+        C: QapiCommandTrait + QmpCommand,
+    {
+        if !self.is_running(qmp_sock).await {
+            return Err(QemuClientError::VmNotRunning);
+        }
+
+        let (qmp, driver) = self.connect_qmp(qmp_sock).await?;
+
+        let response = qmp.execute(command).await.map_err(|exec_err: ExecuteError| {
+            QemuClientError::Qmp(format!("QMP command '{}' execution failed:: {}", C::NAME, exec_err))
+        })?;
+
+        // Explicitly drop the service handle to signal that no more commands will be sent and to allow the driver_task to shut down if it depends on this.
+        drop(qmp);
+        driver.await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
+
+        Ok(response)
     }
 
     /// Create and start a brand-new VM. Fails if the VM directory already exists.
@@ -249,7 +311,7 @@ impl QemuClient {
 
         let (disk, _) = self.build_command_line(&workdir, &spec).await?;
         let args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
-        let output = Self::invoke_command(&self.qemu_img_bin, &args).await?;
+        let output = Self::invoke_cli_command(&self.qemu_img_bin, &args).await?;
         if !output.status.success() {
             return Err(QemuClientError::Io(std::io::Error::other(format!("qemu-img failed: {}", output.stderr))));
         }
@@ -264,14 +326,14 @@ impl QemuClient {
     pub async fn start_vm(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
 
-        if self.is_running(&details).await {
+        if self.is_running(&details.qmp_sock).await {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
         let (_, args) = self.build_command_line(&details.workdir, &details.spec).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
-        let output = Self::invoke_command(&self.qemu_bin, &args).await?;
+        let output = Self::invoke_cli_command(&self.qemu_bin, &args).await?;
         if !output.status.success() {
             return Err(QemuClientError::Io(std::io::Error::other(format!("qemu failed: {}", output.stderr))));
         }
@@ -285,15 +347,9 @@ impl QemuClient {
     /// Verify running VM matches spec.
     pub async fn check_vm_spec(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
-        let stream =
-            QmpStreamTokio::open_uds(&details.qmp_sock).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        let stream = stream.negotiate().await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        let (qmp, driver) = stream.spawn_tokio();
 
-        // TODO: add more checks (e.g. RAM, disk)
-        let cpus = qmp.execute(&query_cpus_fast {}).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        drop(qmp);
-        driver.await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
+        // TODO: add more checks here, like checking disk size, RAM, etc.
+        let cpus = self.execute_qmp_command(&details.qmp_sock, query_cpus_fast {}).await?;
 
         if cpus.len() as u8 != details.spec.cpu {
             return Err(QemuClientError::Qmp(format!(
@@ -305,16 +361,23 @@ impl QemuClient {
         Ok(details)
     }
 
-    /// Gracefully power down the VM
-    pub async fn stop_vm(&self, name: &str) -> Result<VmDetails> {
+    /// Restart the VM
+    pub async fn restart_vm(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
-        let stream =
-            QmpStreamTokio::open_uds(&details.qmp_sock).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        let stream = stream.negotiate().await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        let (qmp, driver) = stream.spawn_tokio();
-        qmp.execute(&system_powerdown {}).await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-        drop(qmp);
-        driver.await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
+        self.execute_qmp_command(&details.qmp_sock, system_reset {}).await?;
+        Ok(details)
+    }
+
+    /// Gracefully stop the VM, waiting for it to shut down
+    pub async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
+
+        if force {
+            self.execute_qmp_command(&details.qmp_sock, quit {}).await?;
+        } else {
+            self.execute_qmp_command(&details.qmp_sock, system_powerdown {}).await?;
+        };
+
         Ok(details)
     }
 
@@ -332,11 +395,11 @@ impl QemuClient {
     /// Get VM status
     pub async fn vm_status(&self, name: &str) -> Result<(VmDetails, bool)> {
         let details = self.load_details(name).await?;
-        let running = self.is_running(&details).await;
+        let running = self.is_running(&details.qmp_sock).await;
         Ok((details, running))
     }
 
-    pub async fn invoke_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
+    async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
         debug!("Executing: {} {}", command.display(), args.join(" "));
 
         let output = Command::new(command).args(args).output().await?;
@@ -387,7 +450,7 @@ mod tests {
         let client = make_client(&store);
         for bin in [&client.qemu_bin, &client.qemu_img_bin] {
             if Command::new(bin).arg("--version").output().await.is_err() {
-                eprintln!("{} missing — skipping", bin.display());
+                eprintln!("QEMU binary {} not found or not executable", bin.display());
                 return;
             }
         }
@@ -410,10 +473,10 @@ mod tests {
         };
 
         let details = client.create_vm(vm_name, spec).await.unwrap();
-        assert!(client.is_running(&details).await);
+        assert!(client.is_running(&details.qmp_sock).await);
 
         client.check_vm_spec(vm_name).await.unwrap();
-        client.stop_vm(vm_name).await.unwrap();
+        client.stop_vm(vm_name, false).await.unwrap();
         client.delete_vm(vm_name).await.unwrap();
 
         assert!(!store.join(vm_name).exists());
