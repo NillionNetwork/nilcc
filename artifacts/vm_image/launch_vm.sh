@@ -18,16 +18,33 @@ VM_IMAGE_ROOT_HASH=$(cat "${1:-$SCRIPT_PATH/build/vm_images/ubuntu24.04-cpu-veri
 INITRD="${INITRD:-$SCRIPT_PATH/../initramfs/build/initramfs.cpio.gz}"
 [[ ! -f "$INITRD" ]] && echo "initrd not found, run '../initramfs/build.sh' first" && exit 1
 
+ISO_FILE=/tmp/nilcc.iso
+
+# Mount the ISO file to figure out what the docker compose file hash is.
+ISO_MOUNT=$(mktemp -d)
+mount -o ro,loop "$ISO_FILE" "$ISO_MOUNT"
+if [ ! -f "$ISO_MOUNT/docker-compose.yaml" ]; then
+  echo "Missing docker-compose.yaml file in ISO"
+  umount "$ISO_MOUNT"
+  exit 1
+fi
+
+DOCKER_COMPOSE_HASH=$(sha256sum "$ISO_MOUNT/docker-compose.yaml" | awk '{{ print $1 }}')
+umount "$ISO_MOUNT"
+
 STATE_DISK=$(mktemp)
 
 cleanup() {
-  rm ${STATE_DISK}
+  rm "${STATE_DISK}"
+  rmdir "${ISO_MOUNT}"
 }
 
 trap cleanup EXIT SIGINT
 
 QEMU_BASE_PATH="$SCRIPT_PATH/build/qemu/"
 $QEMU_BASE_PATH/usr/local/bin/qemu-img create -f raw "$STATE_DISK" 10G
+
+OPTIONS="root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=$DOCKER_COMPOSE_HASH"
 
 $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
   -enable-kvm -nographic -no-reboot \
@@ -37,15 +54,17 @@ $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
   -bios $QEMU_BASE_PATH/usr/local/share/qemu/OVMF.fd \
   -kernel ${SCRIPT_PATH}/build/kernel/cpu/vmlinuz-6.11.0-snp-guest-98f7e32f20d2 \
   -initrd "${INITRD}" \
-  -append "console=ttyS0 earlyprintk=serial root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc" \
+  -append "console=ttyS0 earlyprintk=serial panic=-1 ${OPTIONS}" \
   -drive file=$VM_IMAGE,if=none,id=disk0,format=qcow2 \
   -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
   -device scsi-hd,drive=disk0,bootindex=1 \
-  -drive file=$VM_IMAGE_HASH_DEV,if=none,id=disk1,format=raw \
+  -drive file=$VM_IMAGE_HASH_DEV,if=none,id=root-disk,format=raw \
   -device virtio-scsi-pci,id=scsi1,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=disk1,bootindex=2 \
-  -drive file=$STATE_DISK,if=none,id=disk2,format=raw \
+  -device scsi-hd,drive=root-disk,bootindex=2 \
+  -drive file=$STATE_DISK,if=none,id=state-disk,format=raw \
   -device virtio-scsi-pci,id=scsi2,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=disk2,bootindex=3 \
-  -drive file=/tmp/nilcc.iso,id=disk3,media=cdrom,readonly=true \
+  -device scsi-hd,drive=state-disk,bootindex=3 \
+  -drive file=$ISO_FILE,id=docker-compose-cdrom,if=none,readonly=true \
+  -device virtio-scsi-pci,id=scsi3 \
+  -device scsi-cd,bus=scsi3.0,drive=docker-compose-cdrom \
   -fw_cfg name=opt/ovmf/X-PciMmio64Mb,string=151072

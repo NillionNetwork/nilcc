@@ -2,6 +2,10 @@
 
 set -e
 
+log() {
+  echo >/dev/kmsg $@
+}
+
 # Constrain where binaries are looked up
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -36,10 +40,24 @@ for x in $(cat /proc/cmdline); do
   state_disk=*)
     STATE_DISK=${x#state_disk=}
     ;;
+  docker_compose_disk=*)
+    DOCKER_COMPOSE_DISK=${x#docker_compose_disk=}
+    ;;
+  docker_compose_hash=*)
+    DOCKER_COMPOSE_HASH=${x#docker_compose_hash=}
+    ;;
   esac
 done
 
+for var in ROOT VERITY_DISK VERITY_ROOT_HASH STATE_DISK DOCKER_COMPOSE_DISK DOCKER_COMPOSE_HASH; do
+  if [ ! -n "$var" ]; then
+    log "${var} not set!"
+    exit 1
+  fi
+done
+
 # unlock verity device
+log "Opening $ROOT device and ensuring it matches root hash $VERITY_ROOT_HASH"
 veritysetup open $ROOT root $VERITY_DISK $VERITY_ROOT_HASH
 
 # mount root disk as read-only
@@ -67,15 +85,34 @@ cp -r "${MNT_DIR}/ro/etc" "${MNT_DIR}/"
 # Create a tmpfs for /tmp.
 mount -t tmpfs -o size=1024M tmpfs "$MNT_DIR/tmp"
 
-# Create a mount where the cvm-agent will mount the docker-compose ISO.
-mount -t tmpfs -o size=4M tmpfs "$MNT_DIR/media/cvm-agent-entrypoint"
+# Mount the ISO that contains the docker compose file into the path where cvm-agent will look it up.
+mount -o loop "$DOCKER_COMPOSE_DISK" "$MNT_DIR/media/cvm-agent-entrypoint"
+
+# Ensure docker compose hash exists.
+DOCKER_COMPOSE_PATH="${MNT_DIR}/media/cvm-agent-entrypoint/docker-compose.yaml"
+if [ ! -f "$DOCKER_COMPOSE_PATH" ]; then
+  log "Docker compose file not found"
+  exit 1
+fi
+
+# Validate the docker compose hash.
+ACTUAL_HASH=$(sha256sum "$DOCKER_COMPOSE_PATH" | awk '{{ print $1 }}')
+if [ "$ACTUAL_HASH" != "$DOCKER_COMPOSE_HASH" ]; then
+  log "Docker compose hash mismatch: expected ${DOCKER_COMPOSE_HASH}, got ${ACTUAL_HASH}"
+  exit 1
+fi
+
+log "Docker compose hash matches expected one: ${ACTUAL_HASH}"
 
 # Generate an attestation using random data
 modprobe sev-guest
 mkdir -p $BOOT_PROOF_DIR
 head -c 64 /dev/urandom >$BOOT_PROOF_DIR/input
+log "Generating boot attestation in $BOOT_PROOF_DIR/report.json"
 /opt/nillion/initrd-helper report $BOOT_PROOF_DIR/report.json --data $(cat $BOOT_PROOF_DIR/input | base64 -w 0)
 
 mount --move /proc $MNT_DIR/proc
 mount --move /sys $MNT_DIR/sys
+
+log "Continuing normal boot"
 exec switch_root $MNT_DIR/ /sbin/init
