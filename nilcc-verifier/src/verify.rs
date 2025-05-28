@@ -31,7 +31,7 @@ impl ReportVerifier {
         self
     }
 
-    pub fn verify_report(&self, report: AttestationReport) -> anyhow::Result<()> {
+    pub fn verify_report(&self, report: AttestationReport, measurement: Vec<u8>) -> anyhow::Result<()> {
         let processor = match self.processor.clone() {
             Some(processor) => processor,
             None => {
@@ -43,6 +43,15 @@ impl ReportVerifier {
 
         let certs = self.fetcher.fetch_certs(&processor, &report).context("fetching certs")?;
         Self::verify_certs(&certs).context("verifying certs")?;
+
+        if report.measurement.as_slice() != measurement {
+            bail!(
+                "Measurement is incorrect, expected {} got {}",
+                hex::encode(measurement),
+                hex::encode(report.measurement)
+            );
+        }
+        info!("Measurement matches expected: {}", hex::encode(measurement));
 
         Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;
         Self::verify_attestation_tcb(&certs.vcek, &report, &processor).context("verifying attestation TCB")?;

@@ -128,7 +128,6 @@ impl DefaultCertificateFetcher {
 
 impl CertificateFetcher for DefaultCertificateFetcher {
     fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certs> {
-        info!("Fetching certificates from AMD API");
         let chain = self.fetch_cert_chain(processor).context("fetching cert chain")?;
         let vcek = self.fetch_vcek(processor, report).context("fetching VCEK")?;
         Ok(Certs { chain, vcek })
