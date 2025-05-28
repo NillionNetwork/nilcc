@@ -16,7 +16,9 @@ NBD_DEVICE=/dev/nbd1
 
 cleanup() {
   set +e
+  echo "Disconnecting nbd"
   sudo "${QEMU_PATH}/qemu-nbd" --disconnect $NBD_DEVICE
+  sleep 2
   sudo rmmod nbd
 }
 

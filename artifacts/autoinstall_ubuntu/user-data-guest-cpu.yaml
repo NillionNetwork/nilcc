@@ -42,6 +42,5 @@ autoinstall:
         mkdir -p /mnt/shared
         mount -t 9p -o trans=virtio hostshare /mnt/shared
         cp /boot/vmlinuz-*snp* /mnt/shared/
-        cp /boot/initrd.img-*snp* /mnt/shared/
       '
 

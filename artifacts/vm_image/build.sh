@@ -11,10 +11,8 @@ shift
 AUTOINSTALL_UBUNTU_ISO_PATH="${SCRIPT_PATH}/../autoinstall_ubuntu/build/guest/$TYPE/iso/ubuntu-24.04.2-live-server-amd64-autoinstall-guest-${TYPE}.iso"
 [[ ! -f "$AUTOINSTALL_UBUNTU_ISO_PATH" ]] && echo "Ubuntu autoinstall ISO not found, run 'autoinstall_ubuntu/build.sh guest $TYPE' first" && exit 1
 
-QEMU_STATIC_CHECK=($SCRIPT_PATH/../qemu/build/qemu-static-*.tar.gz)
-[[ ${#QEMU_STATIC_CHECK[@]} == 0 ]] && echo "QEMU static package not found, run 'qemu/build.sh' first" && exit 1
-[[ ${#QEMU_STATIC_CHECK[@]} > 1 ]] && echo "More than one QEMU static package found, only one can be used" && exit 1
-QEMU_STATIC_PATH=${QEMU_STATIC_CHECK[0]}
+QEMU_STATIC_PATH=($SCRIPT_PATH/../qemu/build/qemu-static.tar.gz)
+[[ ! -f "$QEMU_STATIC_PATH" ]] && echo "QEMU static package not found, run 'qemu/build.sh' first" && exit 1
 
 [[ $1 == "--clean" && -d "$SCRIPT_PATH/build" ]] && sudo rm -rf "$SCRIPT_PATH/build"
 
@@ -57,10 +55,13 @@ $SCRIPT_PATH/setup-verity.sh "$VM_IMAGE_PATH" "$VERITY_OUTPUT"
 
 sudo chown -R $(whoami) "$VERITY_OUTPUT"
 
+# Copy VM image.
 [[ ! -d $SCRIPT_PATH/../dist/vm_images ]] && mkdir -p $SCRIPT_PATH/../dist/vm_images
-cp $VM_IMAGE_PATH "$SCRIPT_PATH/../dist/vm_images/"
-[[ ! -d "$SCRIPT_PATH/../dist/vm_images/kernel/" ]] && mkdir -p "$SCRIPT_PATH/../dist/vm_images/kernel/"
-cp -r $KERNEL_PATH "$SCRIPT_PATH/../dist/vm_images/kernel/"
+cp $VM_IMAGE_PATH "$SCRIPT_PATH/../dist/vm_images/cvm-${TYPE}.qcow2"
 
-# Copy the verity output directory entirely
-cp -r "$VERITY_OUTPUT" "$SCRIPT_PATH/../dist/vm_images/"
+# Copy kernel.
+[[ ! -d "$SCRIPT_PATH/../dist/vm_images/kernel/" ]] && mkdir -p "$SCRIPT_PATH/../dist/vm_images/kernel/"
+cp $KERNEL_PATH/vmlinuz-*-snp* "$SCRIPT_PATH/../dist/vm_images/kernel/vmlinuz"
+
+# Copy the verity output directory entirely.
+cp -r "$VERITY_OUTPUT" "$SCRIPT_PATH/../dist/vm_images/cvm-verity"
