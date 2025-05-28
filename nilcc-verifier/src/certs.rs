@@ -1,15 +1,12 @@
-use crate::{report::VMPL, verify::Processor};
+use crate::verify::Processor;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use reqwest::{get, StatusCode};
 use sev::{
     certs::snp::{ca::Chain, Certificate},
-    firmware::{
-        guest::{AttestationReport, Firmware},
-        host::{CertTableEntry, CertType},
-    },
+    firmware::guest::AttestationReport,
 };
-use tracing::{error, info};
+use tracing::info;
 
 const KDS_CERT_SITE: &str = "https://kdsintf.amd.com";
 
@@ -29,28 +26,10 @@ pub trait CertificateFetcher: Send + Sync + 'static {
     async fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certs>;
 }
 
-/// The policy used when fetching certificates
-pub enum CertFetchPolicy {
-    /// Prefer fetching the certificates from hypervisor memory.
-    ///
-    /// This will fall back to using the AMD KDS API if there's an error fetching them from memory.
-    PreferHardware,
-
-    /// Fetch the certificates from the AMD KMS API.
-    AmdKmsApi,
-}
-
 /// A default implementation of the certificate fetcher.
-pub struct DefaultCertificateFetcher {
-    policy: CertFetchPolicy,
-}
+pub struct DefaultCertificateFetcher;
 
 impl DefaultCertificateFetcher {
-    /// Construct a new fetcher using the given policy.
-    pub fn new(policy: CertFetchPolicy) -> Self {
-        Self { policy }
-    }
-
     async fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certificate> {
         let hw_id = if report.chip_id.as_slice() != [0; 64] {
             match processor {
@@ -123,58 +102,11 @@ impl DefaultCertificateFetcher {
             status => bail!("unable to fetch certificate: {status:?}"),
         }
     }
-
-    fn fetch_from_memory(&self) -> anyhow::Result<Certs> {
-        let mut fw = Firmware::open().context("unable to open /dev/sev-guest")?;
-        // Create random data and create an extended report to get the certificates from memory.
-        let data = rand::random();
-        let (_, certs) =
-            fw.get_ext_report(None, Some(data), Some(VMPL)).context("unable to fetch attestation report")?;
-        let Some(certs) = certs else {
-            bail!("no certificates returned when fetching extended report");
-        };
-        let mut ark = None;
-        let mut ask = None;
-        let mut vcek = None;
-        for cert in certs {
-            let CertTableEntry { cert_type, data } = cert;
-            let target_cert = match cert_type {
-                CertType::ARK => &mut ark,
-                CertType::ASK => &mut ask,
-                CertType::VCEK => &mut vcek,
-                _ => continue,
-            };
-            if target_cert.is_some() {
-                bail!("found more than one {target_cert:?} certificate");
-            }
-            let parsed_cert = Certificate::from_bytes(&data).context(format!("parsing {cert_type:?}"))?;
-            *target_cert = Some(parsed_cert);
-        }
-        let Some(ark) = ark else {
-            bail!("ARK not found");
-        };
-        let Some(ask) = ask else {
-            bail!("ASK not found");
-        };
-        let Some(vcek) = vcek else {
-            bail!("VCEK not found");
-        };
-        Ok(Certs { chain: Chain { ark, ask }, vcek })
-    }
 }
 
 #[async_trait]
 impl CertificateFetcher for DefaultCertificateFetcher {
     async fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certs> {
-        if let CertFetchPolicy::PreferHardware = &self.policy {
-            info!("Fetching certificates from memory");
-            match self.fetch_from_memory() {
-                Ok(certs) => return Ok(certs),
-                Err(e) => {
-                    error!("Failed to fetch certificates from memory: {e}");
-                }
-            }
-        }
         info!("Fetching certificates from AMD API");
         let chain = self.fetch_cert_chain(processor).await.context("fetching cert chain")?;
         let vcek = self.fetch_vcek(processor, report).await.context("fetching VCEK")?;

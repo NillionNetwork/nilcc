@@ -1,11 +1,12 @@
 use anyhow::Context;
+use certs::DefaultCertificateFetcher;
 use clap::Parser;
-use nilcc_attester::{
-    certs::{CertFetchPolicy, DefaultCertificateFetcher},
-    verify::{Processor, ReportVerifier},
-};
 use std::{fs::File, io::stdin};
 use tracing::{error, info};
+use verify::{Processor, ReportVerifier};
+
+mod certs;
+mod verify;
 
 #[derive(Parser)]
 struct Cli {
@@ -23,7 +24,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         path => serde_json::from_reader(File::open(path).context("opening input file")?),
     }
     .context("parsing report")?;
-    let fetcher = DefaultCertificateFetcher::new(CertFetchPolicy::AmdKmsApi);
+    let fetcher = DefaultCertificateFetcher;
     let mut verifier = ReportVerifier::new(Box::new(fetcher));
     if let Some(processor) = cli.processor {
         verifier = verifier.with_processor(processor);

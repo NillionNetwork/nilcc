@@ -1,4 +1,3 @@
-use crate::verify::Processor;
 use anyhow::Context;
 use serde::Deserialize;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -7,9 +6,6 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
-
-    #[serde(default)]
-    pub attestation: AttestationConfig,
 }
 
 impl Config {
@@ -33,15 +29,6 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self { bind_endpoint: default_bind_endpoint() }
     }
-}
-
-#[derive(Deserialize, Default)]
-pub struct AttestationConfig {
-    #[serde(default)]
-    pub processor: Option<Processor>,
-
-    #[serde(default)]
-    pub verify_on_startup: bool,
 }
 
 fn default_bind_endpoint() -> SocketAddr {

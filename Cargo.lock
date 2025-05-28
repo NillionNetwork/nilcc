@@ -1272,17 +1272,13 @@ dependencies = [
  "clap",
  "config",
  "hex",
- "openssl",
  "rand",
- "reqwest",
- "rstest",
  "serde",
  "sev",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "x509-parser",
 ]
 
 [[package]]
@@ -1290,13 +1286,21 @@ name = "nilcc-verifier"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
+ "hex",
  "nilcc-attester",
+ "openssl",
  "reqwest",
+ "rstest",
+ "serde",
  "serde_json",
+ "sev",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "x509-parser",
 ]
 
 [[package]]
