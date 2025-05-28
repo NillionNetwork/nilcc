@@ -31,7 +31,7 @@ impl ReportVerifier {
         self
     }
 
-    pub async fn verify_report(&self, report: AttestationReport) -> anyhow::Result<()> {
+    pub fn verify_report(&self, report: AttestationReport) -> anyhow::Result<()> {
         let processor = match self.processor.clone() {
             Some(processor) => processor,
             None => {
@@ -41,7 +41,7 @@ impl ReportVerifier {
         };
         info!("Using processor model {processor:?} for verification");
 
-        let certs = self.fetcher.fetch_certs(&processor, &report).await.context("fetching certs")?;
+        let certs = self.fetcher.fetch_certs(&processor, &report).context("fetching certs")?;
         Self::verify_certs(&certs).context("verifying certs")?;
 
         Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;

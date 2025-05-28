@@ -1286,10 +1286,8 @@ name = "nilcc-verifier"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "clap",
  "hex",
- "nilcc-attester",
  "openssl",
  "reqwest",
  "rstest",
@@ -1297,7 +1295,6 @@ dependencies = [
  "serde_json",
  "sev",
  "thiserror",
- "tokio",
  "tracing",
  "tracing-subscriber",
  "x509-parser",
@@ -1729,6 +1726,7 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",

@@ -18,7 +18,7 @@ struct Cli {
     processor: Option<Processor>,
 }
 
-async fn run(cli: Cli) -> anyhow::Result<()> {
+fn run(cli: Cli) -> anyhow::Result<()> {
     let report = match cli.report_path.as_str() {
         "-" => serde_json::from_reader(stdin()),
         path => serde_json::from_reader(File::open(path).context("opening input file")?),
@@ -29,16 +29,15 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     if let Some(processor) = cli.processor {
         verifier = verifier.with_processor(processor);
     }
-    verifier.verify_report(report).await.context("verification failed")?;
+    verifier.verify_report(report).context("verification failed")?;
     Ok(())
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::fmt().init();
 
     let cli = Cli::parse();
-    match run(cli).await {
+    match run(cli) {
         Ok(()) => {
             info!("Verification successful");
         }
