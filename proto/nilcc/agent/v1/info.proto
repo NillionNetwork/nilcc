@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package nilcc.agent.v1.info;
+
+import "google/protobuf/timestamp.proto";
+
+// Basic information about the agent itself
+message AgentInfo {
+  // UUID
+  string agent_id = 1;
+  // SemVer version string with optional build metadata
+  string agent_version = 2;
+}
+
+// Information about the host machine
+message MachineInfo {
+  // OS DMI UUID or similar unique identifier
+  string hardware_id = 1;
+  CPUInfo cpu_info = 2;
+  GPUInfo gpu_info = 3;
+  OSInfo os_info = 4;
+  int32 total_memory_mb = 5;
+  int32 total_disk_gb = 6;
+}
+
+// CPU information
+message CPUInfo {
+  int32 core_count = 1;
+  string model_name = 2;
+  // x86_64, aarch64
+  string architecture = 3;
+}
+
+// GPU information
+message GPUInfo {
+  int32 count = 1;
+  string model_name = 2;
+}
+
+// Operating System information
+message OSInfo {
+  // e.g., Ubuntu, CentOS
+  string name = 1;
+  string version = 2;
+  string kernel_version = 3;
+}
+
+// Information about the virtualization capabilities
+message VirtualizationInfo {
+  string qemu_version = 1;
+  repeated string supported_machine_types = 2; // e.g., "vm", "cvm", "gpu"
+}
+
+// Resources the agent can allocate for VMs
+message AllocatableResources {
+  int32 vcpus = 1;
+  int32 gpus = 2; // Number of allocatable GPU units/cards
+  int32 memory_mb = 3;
+  int32 disk_gb = 4;
+  int32 max_vms = 5;
+}
+
+// Condition type for agent status
+enum ConditionType {
+  CONDITION_TYPE_UNSPECIFIED = 0;
+  AGENT_READY = 1; // Agent is ready to accept workloads
+  AGENT_HEALTHY = 2; // Agent is healthy
+}
+
+// Represents the condition of the agent
+message AgentCondition {
+  ConditionType type = 1;
+  string status = 2; // "True", "False", "Unknown"
+  google.protobuf.Timestamp last_transition_time = 3;
+  // A brief reason for the condition's last transition.
+  optional string reason = 4;
+  // A human-readable message indicating details about the last transition.
+  optional string message = 5;
+}

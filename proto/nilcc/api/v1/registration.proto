@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package nilcc.api.v1.registration;
+
+import "nilcc/agent/v1/info.proto";
+
+// Request message for registering an agent
+message RegisterAgentRequest {
+  nilcc.agent.v1.info.AgentInfo agent_info = 1;
+  nilcc.agent.v1.info.MachineInfo machine_info = 2;
+  nilcc.agent.v1.info.VirtualizationInfo virtualization_info = 3;
+  nilcc.agent.v1.info.AllocatableResources allocatable_resources = 4;
+  optional string agent_grpc_endpoint = 5;
+}
+
+// Response message for agent registration
+message RegisterAgentResponse {
+  // Confirms the agent_id or assigns a new one if server-generated
+  string agent_id = 1;
+  // "Registration successful" or error details
+  string message = 2;
+  bool success = 3;
+}
+
+// Service for agent registration
+service RegistrationService {
+  rpc RegisterAgent (RegisterAgentRequest) returns (RegisterAgentResponse);
+  // TODO:
+  // rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // rpc UpdateAgentStatus(UpdateAgentStatusRequest) returns (UpdateAgentStatusResponse);
+}
