@@ -21,10 +21,6 @@ autoinstall:
     layout:
       name: direct
 
-  user-data:
-    mounts:
-      - [ "/dev/sr0", "/media/cvm-agent-entrypoint", "udf,iso9660", "auto,ro,utf8", "0", "0" ]
-
   late-commands:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
     - curtin in-target -- apt-get update

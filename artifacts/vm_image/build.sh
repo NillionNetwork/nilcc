@@ -34,8 +34,6 @@ VM_IMAGE_PATH="$SCRIPT_PATH/build/vm_images/ubuntu24.04-$TYPE.qcow2"
 rm -f "$VM_IMAGE_PATH"
 [[ ! -f "$VM_IMAGE_PATH" ]] && $QEMU_PATH/qemu-img create -f qcow2 "$VM_IMAGE_PATH" 10G
 
-SSH_FORWARD_PORT=2221
-
 # Install ubuntu on VM
 sudo $QEMU_PATH/qemu-system-x86_64 \
   -enable-kvm -nographic -no-reboot -cpu EPYC-v4 -machine q35 \
@@ -45,7 +43,7 @@ sudo $QEMU_PATH/qemu-system-x86_64 \
   -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
   -device scsi-hd,drive=disk0 \
   -device virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile= \
-  -netdev user,id=vmnic,hostfwd=tcp::$SSH_FORWARD_PORT-:22 \
+  -netdev user,id=vmnic \
   -cdrom $AUTOINSTALL_UBUNTU_ISO_PATH \
   -virtfs local,path="$KERNEL_PATH",mount_tag=hostshare,security_model=passthrough,id=hostshare
 
