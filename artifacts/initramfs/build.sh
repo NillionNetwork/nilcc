@@ -37,7 +37,7 @@ docker build -t $DOCKER_IMG -f $SCRIPT_PATH/Dockerfile $SCRIPT_PATH/../../
 # Run the container. This will run and stop it immediately since it does nothing by default.
 echo "Running container ${DOCKER_CONTAINER}"
 docker run --name $DOCKER_CONTAINER $DOCKER_IMG
-trap cleanup EXIT
+trap cleanup EXIT SIGINT
 
 # Now export the stopped container's filesystem so we use that as a base for our inintrd.
 echo "Exporting filesystem"
