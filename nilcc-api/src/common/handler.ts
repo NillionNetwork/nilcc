@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
+import { z } from "zod";
 import type {
   CreateEntityError,
   DataValidationError,
@@ -17,12 +18,15 @@ export type ApiSuccessResponse<T> = {
   data: T;
 };
 
-export type ApiErrorResponse = {
-  errors: string[];
-  ts: string;
-};
-
 export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+export const ApiErrorResponse = z
+  .object({
+    errors: z.array(z.string()),
+    ts: z.string(),
+  })
+  .openapi({ ref: "ApiErrorResponse" });
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
 
 type KnownError =
   | DataValidationError
