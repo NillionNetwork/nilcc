@@ -32,6 +32,7 @@ cp $SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb "$BUILD_PATH/kernel/"
 cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
 cp -r $SCRIPT_PATH/../../cvm-agent/services/ "$BUILD_PATH/custom/"
 cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
+echo "$(git rev-parse --short HEAD)" >"$BUILD_PATH/custom/nilcc-version"
 
 docker run --rm --privileged -v "$SCRIPT_PATH:/iso" ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE
 sudo chown -R $(whoami) $SCRIPT_PATH/build/
