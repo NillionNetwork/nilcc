@@ -51,6 +51,9 @@ jobs:
       - name: Build guest gpu qcow2
         run: artifacts/vm_image/build.sh gpu
 
+      - name: Generate build metadata
+        run: artifacts/generate-metadata.sh
+
       - name: Configure AWS credentials
         if: github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v4
