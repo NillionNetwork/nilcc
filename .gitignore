@@ -3,3 +3,6 @@ dist/
 .idea/
 target/
 node_modules/
+coverage/
+vitest.config.js
+.env
