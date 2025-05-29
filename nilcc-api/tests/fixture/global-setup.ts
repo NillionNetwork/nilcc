@@ -1,14 +1,14 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import dockerCompose from "docker-compose";
 import type { TestProject } from "vitest/node";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
 
 const filename = fileURLToPath(import.meta.url);
 const current_dirname = dirname(filename);
 
 const MAX_RETRIES = 300;
 const composeOptions = {
-  cwd: current_dirname + "/../docker",
+  cwd: `${current_dirname}/../docker`,
   composeOptions: [["--project-name", "nilcc-tests"]],
 };
 

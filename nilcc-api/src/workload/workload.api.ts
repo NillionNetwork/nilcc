@@ -48,6 +48,11 @@ export const ApiRequestUpdateWorkloadSchema = z.object({
     .string()
     .min(1, "Service to expose is required")
     .optional(),
+  servicePortToExpose: z
+    .number()
+    .int()
+    .min(1, "Service port to expose is required")
+    .optional(),
   memory: z
     .number()
     .int()

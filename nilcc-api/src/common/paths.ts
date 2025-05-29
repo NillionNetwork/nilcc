@@ -19,4 +19,4 @@ export const PathsV1 = {
     update: PathSchema.parse("/api/v1/workloads"),
     remove: PathSchema.parse("/api/v1/workloads/:id"),
   },
-};
+} as const;

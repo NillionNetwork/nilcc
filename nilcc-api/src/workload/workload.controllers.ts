@@ -45,7 +45,7 @@ export function create(options: ControllerOptions): void {
     async (c) => {
       return pipe(
         c.req.valid("json"),
-        (payload) => WorkloadService.create(payload, bindings),
+        (payload) => WorkloadService.create(bindings, payload),
         E.flatMap((workload) =>
           validateResponseE(
             ApiResponseCreateWorkloadSchema,
@@ -87,7 +87,7 @@ export function read(options: ControllerOptions): void {
   app.get(path, paramsValidator(idParamSchema), async (c) => {
     return pipe(
       c.req.valid("param"),
-      (params) => WorkloadService.read(params.id, bindings),
+      (params) => WorkloadService.read(bindings, params.id),
       E.flatMap((workload) => {
         if (!workload) {
           return E.succeed(c.notFound()) as E.Effect<Response, never, never>;
@@ -111,7 +111,7 @@ export function update(options: ControllerOptions): void {
   app.put(path, payloadValidator(ApiRequestUpdateWorkloadSchema), async (c) => {
     return pipe(
       c.req.valid("json"),
-      (payload) => WorkloadService.update(payload, bindings),
+      (payload) => WorkloadService.update(bindings, payload),
       E.flatMap((updated) => {
         if (!updated) {
           return E.succeed(c.notFound()) as E.Effect<Response, never, never>;
@@ -131,7 +131,7 @@ export function remove(options: ControllerOptions): void {
   app.delete(path, paramsValidator(idParamSchema), async (c) => {
     return pipe(
       c.req.valid("param").id,
-      (workloadId) => WorkloadService.remove(workloadId, bindings),
+      (workloadId) => WorkloadService.remove(bindings, workloadId),
       E.flatMap((deleted) => {
         if (!deleted) {
           return E.succeed(c.notFound()) as E.Effect<Response, never, never>;

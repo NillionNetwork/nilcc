@@ -43,8 +43,8 @@ function createWorkloadEntity(
 }
 
 export function create(
-  workload: CreateWorkloadRequest,
   bindings: AppBindings,
+  workload: CreateWorkloadRequest,
 ): E.Effect<WorkloadEntity, GetRepositoryError | CreateEntityError> {
   return pipe(
     getRepository(bindings),
@@ -67,8 +67,8 @@ export function list(
 }
 
 export function read(
-  workloadId: string,
   bindings: AppBindings,
+  workloadId: string,
 ): E.Effect<WorkloadEntity | null, GetRepositoryError | FindEntityError> {
   return pipe(
     getRepository(bindings),
@@ -82,8 +82,8 @@ export function read(
 }
 
 export function update(
-  payload: UpdateWorkloadRequest,
   bindings: AppBindings,
+  payload: UpdateWorkloadRequest,
 ): E.Effect<boolean, GetRepositoryError | UpdateEntityError> {
   return pipe(
     getRepository(bindings),
@@ -108,8 +108,8 @@ export function update(
 }
 
 export function remove(
-  workloadId: string,
   bindings: AppBindings,
+  workloadId: string,
 ): E.Effect<boolean, GetRepositoryError | RemoveEntityError> {
   return pipe(
     getRepository(bindings),

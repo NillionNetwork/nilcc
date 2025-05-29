@@ -1,4 +1,4 @@
-import { ControllerOptions } from "#/common/types";
+import type { ControllerOptions } from "#/common/types";
 import * as WorkloadController from "./workload.controllers";
 
 export function buildWorkloadRouter(options: ControllerOptions): void {

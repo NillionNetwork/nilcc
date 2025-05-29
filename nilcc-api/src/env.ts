@@ -1,8 +1,8 @@
-import { z } from "zod";
 import type { Logger } from "pino";
+import type { DataSource } from "typeorm";
+import { z } from "zod";
 import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
-import { DataSource } from "typeorm";
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export const FeatureFlag = {
@@ -25,7 +25,7 @@ export type AppEnv = {
   Variables: AppVariables;
 };
 
-export type AppVariables = {};
+export type AppVariables = undefined;
 
 export type AppBindings = {
   config: EnvVars;
