@@ -2,14 +2,12 @@ import type { ZodType } from "zod";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
 import {
-  ApiResponseCreateWorkloadSchema,
-  ApiResponseListWorkloadsSchema,
   type CreateWorkloadRequest,
-  type CreateWorkloadResponse,
-  type GetWorkloadResponse,
-  type ListWorkloadsResponse,
+  CreateWorkloadResponse,
+  GetWorkloadResponse,
+  ListWorkloadsResponse,
   type UpdateWorkloadRequest,
-} from "#/workload/workload.api";
+} from "#/workload/workload.dto";
 
 export type TestClientOptions = {
   app: App;
@@ -75,7 +73,7 @@ export class WorkloadClient extends TestClient {
     });
     return new ParseableResponse<CreateWorkloadResponse>(
       response,
-      ApiResponseCreateWorkloadSchema,
+      CreateWorkloadResponse,
     );
   }
 
@@ -90,7 +88,7 @@ export class WorkloadClient extends TestClient {
     );
     return new ParseableResponse<GetWorkloadResponse>(
       response,
-      ApiResponseCreateWorkloadSchema,
+      GetWorkloadResponse,
     );
   }
 
@@ -100,7 +98,7 @@ export class WorkloadClient extends TestClient {
     });
     return new ParseableResponse<ListWorkloadsResponse>(
       response,
-      ApiResponseListWorkloadsSchema,
+      ListWorkloadsResponse,
     );
   }
 

@@ -1,4 +1,3 @@
-import "reflect-metadata";
 import { serve } from "@hono/node-server";
 import { Command } from "commander";
 import dotenv from "dotenv";

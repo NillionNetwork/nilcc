@@ -47,28 +47,6 @@ export function validateResponse<T extends Schema>(
   schema: T,
   data: z.infer<T>,
   c: Context<AppEnv>,
-) {
-  const result = schema.safeParse(data);
-
-  if (result.success) {
-    return c.json(result.data);
-  }
-
-  const errors = new DataValidationError({
-    issues: [result.error],
-    cause: null,
-  }).humanize();
-
-  return c.json(
-    { ts: Temporal.Now.instant().toString(), errors },
-    StatusCodes.INTERNAL_SERVER_ERROR,
-  );
-}
-
-export function validateResponseE<T extends Schema>(
-  schema: T,
-  data: z.infer<T>,
-  c: Context<AppEnv>,
 ): E.Effect<Response, never, never> {
   const result = schema.safeParse(data);
 

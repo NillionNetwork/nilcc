@@ -6,7 +6,7 @@ import { buildDataSource } from "#/data-source";
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export const FeatureFlag = {
-  OPENAPI_DOCS: "openapi-docs",
+  OPENAPI_SPEC: "openapi",
   PROMETHEUS_METRICS: "prometheus-metrics",
   MIGRATIONS: "migrations",
 } as const;

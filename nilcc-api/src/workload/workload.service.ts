@@ -11,7 +11,7 @@ import type { AppBindings } from "#/env";
 import type {
   CreateWorkloadRequest,
   UpdateWorkloadRequest,
-} from "./workload.api";
+} from "./workload.dto";
 import { WorkloadEntity } from "./workload.entity";
 
 function getRepository(
