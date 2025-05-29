@@ -44,7 +44,12 @@ trap cleanup EXIT SIGINT
 QEMU_BASE_PATH="$SCRIPT_PATH/build/qemu/"
 $QEMU_BASE_PATH/usr/local/bin/qemu-img create -f raw "$STATE_DISK" 10G
 
-OPTIONS="root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=$DOCKER_COMPOSE_HASH"
+DEBUG_ARGS=""
+if [ "${NILCC_DEBUG}" == "1" ]; then
+  DEBUG_ARGS="console=ttyS0 earlyprintk=serial panic=-1 "
+fi
+BOOT_ARGS="root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=$DOCKER_COMPOSE_HASH"
+KERNEL_ARGS="${DEBUG_ARGS}${BOOT_ARGS}"
 
 $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
   -enable-kvm -nographic -no-reboot \
@@ -54,7 +59,7 @@ $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
   -bios $QEMU_BASE_PATH/usr/local/share/qemu/OVMF.fd \
   -kernel ${SCRIPT_PATH}/build/kernel/cpu/vmlinuz-6.11.0-snp-guest-98f7e32f20d2 \
   -initrd "${INITRD}" \
-  -append "console=ttyS0 earlyprintk=serial panic=-1 ${OPTIONS}" \
+  -append "${KERNEL_ARGS}" \
   -drive file=$VM_IMAGE,if=none,id=disk0,format=qcow2 \
   -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
   -device scsi-hd,drive=disk0,bootindex=1 \
