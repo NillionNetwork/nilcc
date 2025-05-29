@@ -9,25 +9,25 @@ import {
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
-  CreateWorkloadRequest,
-  UpdateWorkloadRequest,
-} from "./workload.dto";
-import { WorkloadEntity } from "./workload.entity";
+  CreateMetalInstanceRequest,
+  UpdateMetalInstanceRequest,
+} from "./metal-instance.dto";
+import { MetalInstanceEntity } from "./metal-instance.entity";
 
 function getRepository(
   bindings: AppBindings,
-): E.Effect<Repository<WorkloadEntity>, GetRepositoryError> {
+): E.Effect<Repository<MetalInstanceEntity>, GetRepositoryError> {
   try {
-    return E.succeed(bindings.dataSource.getRepository(WorkloadEntity));
+    return E.succeed(bindings.dataSource.getRepository(MetalInstanceEntity));
   } catch (e) {
     return E.fail(new GetRepositoryError({ cause: e }));
   }
 }
 
-function createWorkloadEntity(
-  repo: Repository<WorkloadEntity>,
-  workload: CreateWorkloadRequest,
-): E.Effect<WorkloadEntity, CreateEntityError> {
+function createMetalInstanceEntity(
+  repo: Repository<MetalInstanceEntity>,
+  workload: CreateMetalInstanceRequest,
+): E.Effect<MetalInstanceEntity, CreateEntityError> {
   return E.tryPromise({
     try: async () => {
       const now = new Date();
@@ -44,17 +44,17 @@ function createWorkloadEntity(
 
 export function create(
   bindings: AppBindings,
-  workload: CreateWorkloadRequest,
-): E.Effect<WorkloadEntity, GetRepositoryError | CreateEntityError> {
+  workload: CreateMetalInstanceRequest,
+): E.Effect<MetalInstanceEntity, GetRepositoryError | CreateEntityError> {
   return pipe(
     getRepository(bindings),
-    E.flatMap((repository) => createWorkloadEntity(repository, workload)),
+    E.flatMap((repository) => createMetalInstanceEntity(repository, workload)),
   );
 }
 
 export function list(
   bindings: AppBindings,
-): E.Effect<WorkloadEntity[], GetRepositoryError | FindEntityError> {
+): E.Effect<MetalInstanceEntity[], GetRepositoryError | FindEntityError> {
   return pipe(
     getRepository(bindings),
     E.flatMap((repository) =>
@@ -69,7 +69,7 @@ export function list(
 export function read(
   bindings: AppBindings,
   workloadId: string,
-): E.Effect<WorkloadEntity | null, GetRepositoryError | FindEntityError> {
+): E.Effect<MetalInstanceEntity | null, GetRepositoryError | FindEntityError> {
   return pipe(
     getRepository(bindings),
     E.flatMap((repo) =>
@@ -83,7 +83,7 @@ export function read(
 
 export function update(
   bindings: AppBindings,
-  payload: UpdateWorkloadRequest,
+  payload: UpdateMetalInstanceRequest,
 ): E.Effect<boolean, GetRepositoryError | UpdateEntityError> {
   return pipe(
     getRepository(bindings),
@@ -93,14 +93,12 @@ export function update(
           const updated = await repo.update(
             { id: payload.id },
             {
-              name: payload.name,
-              description: payload.description,
-              tags: payload.tags,
-              dockerCompose: payload.dockerCompose,
-              serviceToExpose: payload.serviceToExpose,
-              servicePortToExpose: payload.servicePortToExpose,
+              hostname: payload.hostname,
               memory: payload.memory,
               cpu: payload.cpu,
+              gpu: payload.gpu,
+              gpuModel: payload.gpuModel,
+              ipAddress: payload.ipAddress,
               updatedAt: new Date(),
             },
           );
