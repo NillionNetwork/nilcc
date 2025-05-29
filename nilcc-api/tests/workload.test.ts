@@ -1,5 +1,5 @@
 import { describe } from "vitest";
-import type { CreateWorkloadResponse } from "#/workload/workload.api";
+import type { CreateWorkloadResponse } from "#/workload/workload.dto";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("workload CRUD", () => {

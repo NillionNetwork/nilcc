@@ -1,3 +1,5 @@
+import "./effects";
+
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -9,6 +11,7 @@ import {
   FeatureFlag,
   hasFeatureFlag,
 } from "./env";
+import { createOpenApiRouter } from "./openapi/openapi.router";
 import { buildWorkloadRouter } from "./workload/workload.router";
 
 export type App = Hono<AppEnv>;
@@ -27,9 +30,9 @@ export async function buildApp(
   });
 
   if (
-    hasFeatureFlag(bindings.config.enabledFeatures, FeatureFlag.OPENAPI_DOCS)
+    hasFeatureFlag(bindings.config.enabledFeatures, FeatureFlag.OPENAPI_SPEC)
   ) {
-    // TODO
+    createOpenApiRouter({ app, bindings });
   }
 
   buildWorkloadRouter({ app, bindings });
