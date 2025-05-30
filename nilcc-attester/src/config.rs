@@ -6,6 +6,8 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
+    pub nilcc_version: String,
+    pub vm_type: String,
 }
 
 impl Config {
