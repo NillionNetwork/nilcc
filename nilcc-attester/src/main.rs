@@ -1,5 +1,6 @@
 use clap::Parser;
 use nilcc_attester::{config::Config, routes::build_router};
+use std::process::exit;
 use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
 
@@ -38,14 +39,20 @@ async fn main() {
         Ok(config) => config,
         Err(e) => {
             error!("Failed to load config: {e:#}");
-            std::process::exit(1);
+            exit(1);
         }
     };
 
     let bind_endpoint = &config.server.bind_endpoint;
     info!("Running server on {bind_endpoint}");
 
-    let router = build_router();
+    let router = match build_router() {
+        Ok(router) => router,
+        Err(e) => {
+            error!("Failed to create router: {e}");
+            exit(1);
+        }
+    };
     let listener = TcpListener::bind(bind_endpoint).await.expect("failed to bind");
     axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await.expect("failed to run");
 }

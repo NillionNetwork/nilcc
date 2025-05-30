@@ -33,6 +33,10 @@ cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
 cp -r $SCRIPT_PATH/../../cvm-agent/services/ "$BUILD_PATH/custom/"
 cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
 
+# Store version and type so the VM can store this persistently.
+echo "$(git rev-parse --short HEAD)" >"$BUILD_PATH/custom/nilcc-version"
+echo "$SUBTYPE" >"$BUILD_PATH/custom/nilcc-vm-type"
+
 docker run --rm --privileged -v "$SCRIPT_PATH:/iso" ubuntu:24.04 bash /iso/docker_build.sh $TYPE $SUBTYPE
 sudo chown -R $(whoami) $SCRIPT_PATH/build/
 
