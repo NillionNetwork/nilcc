@@ -63,5 +63,9 @@ cp $VM_IMAGE_PATH "$SCRIPT_PATH/../dist/vm_images/cvm-${TYPE}.qcow2"
 [[ ! -d "$SCRIPT_PATH/../dist/vm_images/kernel/" ]] && mkdir -p "$SCRIPT_PATH/../dist/vm_images/kernel/"
 cp $KERNEL_PATH/vmlinuz-*-snp* "$SCRIPT_PATH/../dist/vm_images/kernel/vmlinuz"
 
+# Copy OVMF.
+[[ ! -d "$SCRIPT_PATH/../dist/vm_images/ovmf/" ]] && mkdir -p "$SCRIPT_PATH/../dist/vm_images/ovmf/"
+cp $SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF.fd "$SCRIPT_PATH/../dist/vm_images/ovmf"
+
 # Copy the verity output directory entirely.
 cp -r "$VERITY_OUTPUT" "$SCRIPT_PATH/../dist/vm_images/cvm-verity"
