@@ -16,12 +16,17 @@ pub(crate) struct Request {
 #[derive(Serialize)]
 pub(crate) struct Response {
     report: AttestationReport,
-    nilcc_version: Option<String>,
+    environment: EnvironmentSpec,
+}
+
+#[derive(Serialize)]
+pub(crate) struct EnvironmentSpec {
+    nilcc_version: String,
+    vm_type: String,
     cpu_count: usize,
 }
 
 pub(crate) async fn handler(state: State<AppState>, request: Json<Request>) -> Result<Json<Response>, StatusCode> {
-    let state = state.0;
     let data = request.nonce;
     info!("Generating report using nonce {}", hex::encode(data));
     let report = match request_hardware_report(data) {
@@ -31,5 +36,7 @@ pub(crate) async fn handler(state: State<AppState>, request: Json<Request>) -> R
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
-    Ok(Json(Response { report, nilcc_version: state.nilcc_version, cpu_count: state.cpu_count }))
+    let AppState { nilcc_version, vm_type, cpu_count } = state.0;
+    let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count };
+    Ok(Json(Response { report, environment }))
 }

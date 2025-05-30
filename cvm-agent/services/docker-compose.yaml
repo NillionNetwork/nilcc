@@ -10,6 +10,7 @@ services:
     environment:
       APP__SERVER__BIND_ENDPOINT: "0.0.0.0:80"
       APP__NILCC_VERSION: ${NILCC_VERSION}
+      APP__NILCC_VM_TYPE: ${NILCC_VM_TYPE}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
 

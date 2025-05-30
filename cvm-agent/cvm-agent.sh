@@ -21,9 +21,11 @@ echo "$caddyfile" >"$caddyfile_path"
 # Export the path so docker compose sees it
 export "CADDY_INPUT_FILE=${caddyfile_path}"
 
-NILCC_VERSION=$(cat /opt/nillion/nilcc-version)
+export NILCC_VERSION=$(cat /opt/nillion/nilcc-version)
+export NILCC_VM_TYPE=$(cat /opt/nillion/nilcc-vm-type)
 echo "Using NILCC_VERSION ${NILCC_VERSION}"
+echo "Using NILCC_VM_TYPE ${NILCC_VM_TYPE}"
 
 # Start user's containers and the built-in services in a single compose network
 echo "Redirecting traffic for ${proxy_hostname} to ${proxy_target}"
-NILCC_VERSION=${NILCC_VERSION} docker compose -f docker-compose.yaml -f /opt/nillion/services/docker-compose.yaml up -d
+docker compose -f docker-compose.yaml -f /opt/nillion/services/docker-compose.yaml up -d
