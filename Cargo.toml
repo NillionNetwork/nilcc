@@ -2,7 +2,6 @@
 resolver = "2"
 
 members = [
-  "initrd-helper",
   "nilcc-attester",
   "nilcc-agent",
   "nilcc-verifier",

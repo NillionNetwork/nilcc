@@ -104,13 +104,6 @@ fi
 
 log "Docker compose hash matches expected one: ${ACTUAL_HASH}"
 
-# Generate an attestation using random data
-modprobe sev-guest
-mkdir -p $BOOT_PROOF_DIR
-head -c 64 /dev/urandom >$BOOT_PROOF_DIR/input
-log "Generating boot attestation in $BOOT_PROOF_DIR/report.json"
-/opt/nillion/initrd-helper report $BOOT_PROOF_DIR/report.json --data $(cat $BOOT_PROOF_DIR/input | base64 -w 0)
-
 mount --move /proc $MNT_DIR/proc
 mount --move /sys $MNT_DIR/sys
 

@@ -2,7 +2,6 @@
 
 !/nilcc-attester
 !/nilcc-agent
-!/initrd-helper
 !/nilcc-verifier
 !/Cargo.toml
 !/Cargo.lock
