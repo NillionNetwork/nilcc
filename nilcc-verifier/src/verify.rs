@@ -1,5 +1,5 @@
 use crate::certs::{CertificateFetcher, Certs};
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use clap::ValueEnum;
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
 use serde::Deserialize;
@@ -8,7 +8,7 @@ use sev::{
     firmware::{guest::AttestationReport, host::CertType},
 };
 use std::io;
-use tracing::info;
+use tracing::{info, warn};
 use x509_parser::{
     asn1_rs::Oid,
     der_parser::oid,
@@ -17,28 +17,16 @@ use x509_parser::{
 };
 
 pub struct ReportVerifier {
-    processor: Option<Processor>,
     fetcher: Box<dyn CertificateFetcher>,
 }
 
 impl ReportVerifier {
     pub fn new(fetcher: Box<dyn CertificateFetcher>) -> Self {
-        Self { processor: None, fetcher }
-    }
-
-    pub fn with_processor(mut self, processor: Processor) -> Self {
-        self.processor = Some(processor);
-        self
+        Self { fetcher }
     }
 
     pub fn verify_report(&self, report: AttestationReport, measurement: Vec<u8>) -> anyhow::Result<()> {
-        let processor = match self.processor.clone() {
-            Some(processor) => processor,
-            None => {
-                info!("Detecting processor type based on attestation report");
-                Processor::try_from(&report).context("detecting processor")?
-            }
-        };
+        let processor = Self::detect_processor(&report).context("detecting processor")?;
         info!("Using processor model {processor:?} for verification");
 
         let certs = self.fetcher.fetch_certs(&processor, &report).context("fetching certs")?;
@@ -56,6 +44,18 @@ impl ReportVerifier {
         Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;
         Self::verify_attestation_tcb(&certs.vcek, &report, &processor).context("verifying attestation TCB")?;
         Ok(())
+    }
+
+    fn detect_processor(report: &AttestationReport) -> anyhow::Result<Processor> {
+        info!("Detecting processor type based on attestation report");
+        match Processor::try_from(report) {
+            Ok(processor) => Ok(processor),
+            Err(FromReportError::AmbiguousMilanGenoa) => {
+                warn!("Processor could be Milan or Genoa, assuming Genoa");
+                Ok(Processor::Genoa)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     fn verify_certs(certs: &Certs) -> Result<(), CertificateValidationError> {
@@ -242,7 +242,7 @@ impl ReportVerifier {
 
 #[derive(ValueEnum, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum Processor {
+pub(crate) enum Processor {
     /// 3rd Gen AMD EPYC Processor (Standard)
     Milan,
 
@@ -270,40 +270,59 @@ impl Processor {
 }
 
 impl TryFrom<&AttestationReport> for Processor {
-    type Error = anyhow::Error;
+    type Error = FromReportError;
 
     fn try_from(report: &AttestationReport) -> Result<Self, Self::Error> {
         if report.version < 3 {
             if [0u8; 64] == *report.chip_id {
-                bail!("attestation report version is lower than 3 and Chip ID is all 0s");
+                return Err(FromReportError::ZeroChipIp);
             } else {
                 let chip_id = *report.chip_id;
                 if chip_id[8..64] == [0; 56] {
                     return Ok(Processor::Turin);
                 } else {
-                    bail!("attestation report could be either Milan or Genoa");
+                    return Err(FromReportError::AmbiguousMilanGenoa);
                 }
             }
         }
 
-        let family =
-            report.cpuid_fam_id.ok_or_else(|| anyhow!("attestation report version 3+ is missing CPU family ID"))?;
-        let model =
-            report.cpuid_mod_id.ok_or_else(|| anyhow!("attestation report version 3+ is missing CPU model ID"))?;
+        let family = report.cpuid_fam_id.ok_or(FromReportError::MissingFamilyId)?;
+        let model = report.cpuid_mod_id.ok_or(FromReportError::MissingModelId)?;
 
         match family {
             0x19 => match model {
                 0x0..=0xF => Ok(Processor::Milan),
                 0x10..=0x1F | 0xA0..0xAF => Ok(Processor::Genoa),
-                _ => Err(anyhow!("processor model not supported")),
+                _ => Err(FromReportError::ModelNotSupported),
             },
             0x1A => match model {
                 0x0..=0x11 => Ok(Processor::Turin),
-                _ => Err(anyhow!("processor model not supported")),
+                _ => Err(FromReportError::ModelNotSupported),
             },
-            _ => Err(anyhow!("processor family not supported")),
+            _ => Err(FromReportError::FamilyNotSupported),
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum FromReportError {
+    #[error("attestation report version is lower than 3 and Chip ID is all 0s")]
+    ZeroChipIp,
+
+    #[error("attestation report could be either Milan or Genoa")]
+    AmbiguousMilanGenoa,
+
+    #[error("report version 3+ is missing family ID")]
+    MissingFamilyId,
+
+    #[error("report version 3+ is missing model ID")]
+    MissingModelId,
+
+    #[error("processor model not supported")]
+    ModelNotSupported,
+
+    #[error("processor family not supported")]
+    FamilyNotSupported,
 }
 
 enum SnpOid {

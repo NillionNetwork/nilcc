@@ -1,26 +1,43 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use certs::DefaultCertificateFetcher;
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use std::{fs::File, io::stdin, path::PathBuf};
+use object_store::{
+    aws::{AmazonS3Builder, AwsCredential},
+    StaticCredentialProvider,
+};
+use report::{Artifacts, ReportFetcher};
+use std::{fs::File, io::stdin, path::PathBuf, sync::Arc};
 use tracing::{error, info};
-use verify::{Processor, ReportVerifier};
+use verify::ReportVerifier;
 
 mod certs;
 mod measurement;
+mod report;
 mod verify;
 
 #[derive(Parser)]
 struct Cli {
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run an offline verification using already downloaded input files and hashes.
+    Offline(OfflineArgs),
+
+    /// Run an online verification, pulling an attestation report from a CVM running in nilcc.
+    Online(OnlineArgs),
+}
+
+#[derive(Args)]
+struct OfflineArgs {
     /// The path to the report file or '-' for stdin.
     report_path: String,
 
-    /// The processor the report was generated in.
-    #[clap(long)]
-    processor: Option<Processor>,
-
     /// The path where certificates will be cached.
-    #[clap(short, long, default_value = default_cache_path().into_os_string())]
+    #[clap(short, long, default_value = default_cert_cache_path().into_os_string())]
     cert_cache: PathBuf,
 
     /// The path to the OVMF file used by the CVM.
@@ -52,34 +69,142 @@ struct Cli {
     kernel_debug_options: bool,
 }
 
+#[derive(Args)]
+struct OnlineArgs {
+    /// The public endpoint for the CVM, e.g. `https://example.com`
+    endpoint: String,
+
+    /// The path where artifacts will be cached.
+    #[clap(short, long, default_value = default_artifact_cache_path().into_os_string())]
+    artifact_cache: PathBuf,
+
+    /// The path where certificates will be cached.
+    #[clap(short, long, default_value = default_cert_cache_path().into_os_string())]
+    cert_cache: PathBuf,
+
+    /// Whether to include debug options in kernel command line (e.g. console/earlyprintk/panic).
+    #[clap(long)]
+    kernel_debug_options: bool,
+
+    /// The docker compose hash that the CVM executes.
+    #[clap(long)]
+    docker_compose_hash: String,
+
+    /// The base s3 endpoint from which artifacts should be fetched.
+    #[clap(long, default_value = default_s3_endpoint())]
+    s3_endpoint: String,
+
+    /// The AWS access key id to use when fetching artifacts.
+    #[clap(long, env = "AWS_ACCESS_KEY_ID")]
+    s3_access_key_id: String,
+
+    /// The AWS secret access key to use when fetching artifacts.
+    #[clap(long, env = "AWS_SECRET_ACCESS_KEY")]
+    s3_secret_access_key: String,
+}
+
 fn default_cache_path() -> PathBuf {
     std::env::temp_dir().join("nilcc-verifier-cache")
 }
 
-fn run(cli: Cli) -> anyhow::Result<()> {
-    let report = match cli.report_path.as_str() {
+fn default_cert_cache_path() -> PathBuf {
+    default_cache_path().join("certs")
+}
+
+fn default_artifact_cache_path() -> PathBuf {
+    default_cache_path().join("artifacts")
+}
+
+fn default_s3_endpoint() -> String {
+    "https://nilcc.s3.eu-west-1.amazonaws.com".into()
+}
+
+fn decode_hash(name: &str, input: &str) -> anyhow::Result<[u8; 32]> {
+    let mut hash: [u8; 32] = [0; 32];
+    hex::decode_to_slice(input, &mut hash).map_err(|e| anyhow!("invalid {name} hash: {e}"))?;
+    Ok(hash)
+}
+
+fn run_offline(args: OfflineArgs) -> anyhow::Result<()> {
+    let OfflineArgs {
+        report_path,
+        cert_cache,
+        ovmf,
+        kernel,
+        initrd,
+        docker_compose_hash,
+        filesystem_root_hash,
+        vcpus,
+        kernel_debug_options,
+    } = args;
+    let report = match report_path.as_str() {
         "-" => serde_json::from_reader(stdin()),
         path => serde_json::from_reader(File::open(path).context("opening input file")?),
     }
     .context("parsing report")?;
+    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
+    let filesystem_root_hash = decode_hash("filesystem root hash", &filesystem_root_hash)?;
 
     let measurement = MeasurementGenerator {
-        vcpus: cli.vcpus,
-        ovmf: cli.ovmf,
-        kernel: cli.kernel,
-        initrd: cli.initrd,
-        docker_compose_hash: cli.docker_compose_hash,
-        filesystem_root_hash: cli.filesystem_root_hash,
-        kernel_debug_options: cli.kernel_debug_options,
+        vcpus,
+        ovmf,
+        kernel,
+        initrd,
+        docker_compose_hash,
+        filesystem_root_hash,
+        kernel_debug_options,
     }
     .generate()?;
-    let fetcher = DefaultCertificateFetcher::new(cli.cert_cache).context("creating certificate fetcher")?;
-    let mut verifier = ReportVerifier::new(Box::new(fetcher));
-    if let Some(processor) = cli.processor {
-        verifier = verifier.with_processor(processor);
-    }
+    let fetcher = DefaultCertificateFetcher::new(cert_cache).context("creating certificate fetcher")?;
+    let verifier = ReportVerifier::new(Box::new(fetcher));
     verifier.verify_report(report, measurement).context("verification failed")?;
     Ok(())
+}
+
+fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
+    let OnlineArgs {
+        endpoint,
+        artifact_cache,
+        cert_cache,
+        docker_compose_hash,
+        kernel_debug_options,
+        s3_endpoint,
+        s3_access_key_id,
+        s3_secret_access_key,
+    } = args;
+    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
+    let credentials = AwsCredential { key_id: s3_access_key_id, secret_key: s3_secret_access_key, token: None };
+    let s3_client = AmazonS3Builder::from_env()
+        .with_url(s3_endpoint)
+        .with_allow_http(true)
+        .with_credentials(Arc::new(StaticCredentialProvider::new(credentials)))
+        .build()
+        .context("building s3 client")?;
+    let fetcher = ReportFetcher::new(artifact_cache, s3_client);
+    let bundle = fetcher.fetch_report(&endpoint).context("fetching report")?;
+    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash } = bundle.artifacts;
+
+    let measurement = MeasurementGenerator {
+        vcpus: bundle.cpu_count,
+        ovmf: ovmf_path,
+        kernel: kernel_path,
+        initrd: initrd_path,
+        docker_compose_hash,
+        filesystem_root_hash,
+        kernel_debug_options,
+    }
+    .generate()?;
+    let fetcher = DefaultCertificateFetcher::new(cert_cache).context("creating certificate fetcher")?;
+    let verifier = ReportVerifier::new(Box::new(fetcher));
+    verifier.verify_report(bundle.report, measurement).context("verification failed")?;
+    Ok(())
+}
+
+fn run(cli: Cli) -> anyhow::Result<()> {
+    match cli.command {
+        Command::Offline(args) => run_offline(args),
+        Command::Online(args) => run_online(args),
+    }
 }
 
 fn main() {

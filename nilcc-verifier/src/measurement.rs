@@ -5,6 +5,7 @@ use sev::measurement::{
     vmsa::{GuestFeatures, VMMType},
 };
 use std::path::PathBuf;
+use tracing::info;
 
 /// Generates the measurement that a CVM should have generated given the parameters.
 pub struct MeasurementGenerator {
@@ -12,8 +13,8 @@ pub struct MeasurementGenerator {
     pub ovmf: PathBuf,
     pub kernel: PathBuf,
     pub initrd: PathBuf,
-    pub docker_compose_hash: String,
-    pub filesystem_root_hash: String,
+    pub docker_compose_hash: [u8; 32],
+    pub filesystem_root_hash: [u8; 32],
     pub kernel_debug_options: bool,
 }
 
@@ -32,7 +33,10 @@ impl MeasurementGenerator {
             true => "console=ttyS0 earlyprintk=serial panic=-1 ",
             false => "",
         };
+        let docker_compose_hash = hex::encode(docker_compose_hash);
+        let filesystem_root_hash = hex::encode(filesystem_root_hash);
         let cmd_line = format!("{debug_options}root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}");
+        info!("Using kernel parameters for measurement: {cmd_line}");
         let guest_features = GuestFeatures(0x01);
         let args = SnpMeasurementArgs {
             vcpus,
