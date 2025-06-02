@@ -1,0 +1,2 @@
+vm_store: /tmp/nilcc-agent/vm_store
+nilcc_api_endpoint: "http://127.0.0.1:50051"

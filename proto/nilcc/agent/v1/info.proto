@@ -39,7 +39,7 @@ message GPUInfo {
 
 // Operating System information
 message OSInfo {
-  // e.g., Ubuntu, CentOS
+  // Ubuntu, CentOS
   string name = 1;
   string version = 2;
   string kernel_version = 3;
@@ -48,7 +48,7 @@ message OSInfo {
 // Information about the virtualization capabilities
 message VirtualizationInfo {
   string qemu_version = 1;
-  repeated string supported_machine_types = 2; // e.g., "vm", "cvm", "gpu"
+  repeated string supported_machine_types = 2; // "vm", "cvm", "gpu"
 }
 
 // Resources the agent can allocate for VMs

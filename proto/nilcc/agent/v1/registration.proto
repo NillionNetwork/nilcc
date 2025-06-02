@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package nilcc.api.v1.registration;
+package nilcc.agent.v1.registration;
 
 import "nilcc/agent/v1/info.proto";
 

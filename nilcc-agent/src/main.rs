@@ -1,33 +1,43 @@
+mod grpc;
 mod iso;
 mod output;
 mod qemu_client;
 
-use crate::qemu_client::VmDetails;
+use crate::{output::RunOutput, qemu_client::VmDetails};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoMetadata, IsoSpec};
-use output::{serialize_error, serialize_output, SerializeAsAny};
+use output::{serialize_error, serialize_output};
 use qemu_client::{QemuClient, QemuClientError, VmSpec};
-use serde::Serialize;
-use std::{env, ops::Deref, path::PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{env, fs, ops::Deref, path::PathBuf};
+use tracing::{debug, info};
 use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
 
 const DEFAULT_QEMU_SYSTEM: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
 const DEFAULT_VM_STORE: &str = ".nilcc/vms";
 
+fn default_qemu_system_bin() -> PathBuf {
+    PathBuf::from(DEFAULT_QEMU_SYSTEM)
+}
+
+fn default_qemu_img_bin() -> PathBuf {
+    PathBuf::from(DEFAULT_QEMU_IMG)
+}
+
 #[derive(Parser)]
 struct Cli {
     #[clap(flatten)]
-    configs: Configs,
+    configs: AgentConfig,
 
     /// The command to be ran.
     #[command(subcommand)]
     command: Command,
 }
 
-#[derive(Args)]
-struct Configs {
+#[derive(Args, Deserialize, Debug)]
+struct AgentConfig {
     /// Directory where VM folders live (default: $HOME/.nilcc/vms)
     #[clap(env, long, short, default_value_os_t = default_vm_store())]
     vm_store: PathBuf,
@@ -38,6 +48,7 @@ struct Configs {
         env = "VM_QEMU_SYSTEM_BIN",
         default_value = DEFAULT_QEMU_SYSTEM
     )]
+    #[serde(default = "default_qemu_system_bin")]
     qemu_system_bin: PathBuf,
 
     /// Optional; qemu-img binary
@@ -46,7 +57,12 @@ struct Configs {
         env = "VM_QEMU_IMG_BIN",
         default_value = DEFAULT_QEMU_IMG
     )]
+    #[serde(default = "default_qemu_img_bin")]
     qemu_img_bin: PathBuf,
+
+    /// nilCC API endpoint to connect to when running as daemon
+    #[clap(long = "nilcc-api-endpoint", short = 'e', env = "NILCC_API_ENDPOINT")]
+    nilcc_api_endpoint: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -58,6 +74,14 @@ enum Command {
     /// ISO commands.
     #[clap(subcommand)]
     Iso(IsoCommand),
+
+    /// Run the agent in daemon mode and connect to nilCC API.
+    #[clap(name = "daemon")]
+    Daemon {
+        /// Path to the agent configuration file
+        #[clap(long, short, default_value = "nilcc-agent-config.yaml")]
+        config: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -192,7 +216,7 @@ async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata
     }
 }
 
-async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOutput<VmDetails>, QemuClientError> {
+async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<ActionOutput<VmDetails>, QemuClientError> {
     let client = QemuClient::new(configs.qemu_system_bin, configs.qemu_img_bin, configs.vm_store);
     match command {
         VmCommand::Create {
@@ -245,11 +269,53 @@ async fn run_vm_command(configs: Configs, command: VmCommand) -> Result<ActionOu
     }
 }
 
-async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
+async fn run_daemon(config: AgentConfig) -> Result<()> {
+    let api_endpoint = config
+        .nilcc_api_endpoint
+        .ok_or_else(|| anyhow::anyhow!("nilCC API endpoint is required when running in daemon mode"))?;
+    debug!("Connecting to nilCC API endpoint: {}", api_endpoint);
+
+    tokio::spawn(async move {
+        let mut counter = 0;
+        loop {
+            counter += 1;
+            debug!("Daemon task alive: {}", counter);
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(())
+}
+
+fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
+    debug!("Loading configuration from: {}", config_path.display());
+
+    let config_file = fs::File::open(&config_path)
+        .map_err(|e| anyhow::anyhow!("Failed to open config file {}: {}", config_path.display(), e))?;
+
+    let config: AgentConfig = serde_yaml::from_reader(config_file)
+        .map_err(|e| anyhow::anyhow!("Failed to parse YAML from config file {}: {}", config_path.display(), e))?;
+
+    Ok(config)
+}
+
+async fn run(cli: Cli) -> anyhow::Result<RunOutput> {
     let Cli { configs, command } = cli;
+
     match command {
-        Command::Vm(command) => Ok(Box::new(run_vm_command(configs, command).await?)),
-        Command::Iso(command) => Ok(Box::new(run_iso_command(command).await?)),
+        Command::Vm(command) => {
+            let output = run_vm_command(configs, command).await?;
+            Ok(RunOutput::Data(Box::new(output)))
+        }
+        Command::Iso(command) => {
+            let output = run_iso_command(command).await?;
+            Ok(RunOutput::Data(Box::new(output)))
+        }
+        Command::Daemon { config: config_path } => {
+            let app_config = load_config(config_path).context("loading agent configuration")?;
+            run_daemon(app_config).await?;
+            Ok(RunOutput::DaemonSuccessfullyStarted)
+        }
     }
 }
 
@@ -259,7 +325,18 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     match run(cli).await {
-        Ok(val) => println!("{}", serialize_output(val.deref()).unwrap()),
+        Ok(output) => match output {
+            RunOutput::DaemonSuccessfullyStarted => {
+                info!("Daemon successfully started");
+                if let Err(e) = tokio::signal::ctrl_c().await {
+                    eprintln!("Failed to listen for Ctrl+C signal: {}", e);
+                }
+            }
+            RunOutput::Data(val) => {
+                println!("{}", serialize_output(val.deref())?);
+            }
+        },
+
         Err(e) => {
             eprintln!("{}", serialize_error(&e));
             std::process::exit(1);

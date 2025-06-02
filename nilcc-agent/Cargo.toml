@@ -19,10 +19,16 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 tempfile = "3.19.1"
 thiserror = "2"
-tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "net", "process", "time", "fs"] }
+tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "net", "process", "signal", "time", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
 users = "0.11"
+tonic = { version = "0.13" }
+tonic-types = "0.13"
+uuid = { version = "1.17", features = ["v4", "serde"] }
+config = "0.15"
+prost = "0.13"
+prost-types = "0.13"
 
 [dev-dependencies]
 libc = "0.2"
@@ -30,3 +36,6 @@ rstest = { version = "0.25", default-features = false }
 tracing-test = "0.2.5"
 test-with = { version = "0.14", default-features = false }
 
+[build-dependencies]
+tonic-build = "0.13"
+protobuf-src = "2.1"
