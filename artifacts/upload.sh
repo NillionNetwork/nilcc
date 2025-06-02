@@ -6,4 +6,4 @@ set -euo pipefail
 SCRIPT_PATH=$(dirname $(realpath $0))
 
 COMMIT=$(git rev-parse --short HEAD)
-aws s3 cp --recursive "$SCRIPT_PATH/dist" "s3://nilcc/$(COMMIT)/"
+aws s3 cp --recursive "$SCRIPT_PATH/dist" "s3://nilcc/${COMMIT}/"
