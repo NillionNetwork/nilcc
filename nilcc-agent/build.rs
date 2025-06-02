@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional")
         .build_client(true)
-        .build_server(false)
+        .build_server(true)
         .compile_protos(proto_files, include_paths)?;
 
     println!("cargo:rustc-env=BUILD_GIT_COMMIT_HASH={hash}");

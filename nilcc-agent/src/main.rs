@@ -1,4 +1,3 @@
-mod grpc;
 mod iso;
 mod output;
 mod qemu_client;
@@ -7,6 +6,7 @@ use crate::{output::RunOutput, qemu_client::VmDetails};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoMetadata, IsoSpec};
+use nilcc_agent::agent_service::AgentService;
 use output::{serialize_error, serialize_output};
 use qemu_client::{QemuClient, QemuClientError, VmSpec};
 use serde::{Deserialize, Serialize};
@@ -273,16 +273,10 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let api_endpoint = config
         .nilcc_api_endpoint
         .ok_or_else(|| anyhow::anyhow!("nilCC API endpoint is required when running in daemon mode"))?;
+
     debug!("Connecting to nilCC API endpoint: {}", api_endpoint);
 
-    tokio::spawn(async move {
-        let mut counter = 0;
-        loop {
-            counter += 1;
-            debug!("Daemon task alive: {}", counter);
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-        }
-    });
+    tokio::spawn(async move { AgentService::connect(api_endpoint).await.context("connecting to nilCC API") });
 
     Ok(())
 }

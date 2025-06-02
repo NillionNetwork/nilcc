@@ -26,6 +26,9 @@ jobs:
         with:
           components: clippy
 
+      - name: Install proto compiler
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Cargo check
         run: cargo check
 

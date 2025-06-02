@@ -10,7 +10,6 @@ message RegisterAgentRequest {
   nilcc.agent.v1.info.MachineInfo machine_info = 2;
   nilcc.agent.v1.info.VirtualizationInfo virtualization_info = 3;
   nilcc.agent.v1.info.AllocatableResources allocatable_resources = 4;
-  optional string agent_grpc_endpoint = 5;
 }
 
 // Response message for agent registration
