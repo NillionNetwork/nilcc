@@ -1,0 +1,91 @@
+use crate::{
+    agent_service::AgentService,
+    data_schemas::{RegistrationResponse, SyncResponse},
+};
+use anyhow::Context;
+use std::time::Duration;
+use tracing::{error, info};
+use tracing_test::traced_test;
+use uuid::Uuid;
+use wiremock::{
+    matchers::{header, method, path, path_regex},
+    Mock, MockServer, ResponseTemplate,
+};
+
+#[traced_test]
+#[tokio::test]
+async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
+    let mock_server = MockServer::start().await;
+    let api_base_url = mock_server.uri();
+    let api_key = "test-api-key-123";
+    let agent_id = Uuid::parse_str("f7b27e21-eabb-4acb-8cd7-1d8113fd2237").context("Failed to parse test agent ID")?;
+
+    info!("Mock server started at: {}", api_base_url);
+
+    let registration_response = RegistrationResponse {
+        agent_id: agent_id.to_string(),
+        message: "Agent registered successfully.".to_string(),
+        success: true,
+    };
+    Mock::given(method("POST"))
+        .and(path("/api/v1/metal-instances/~/register"))
+        .and(header("x-api-key", api_key))
+        .respond_with(ResponseTemplate::new(201).set_body_json(&registration_response))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let sync_response = SyncResponse { message: "Sync response.".to_string(), success: true };
+    Mock::given(method("POST"))
+        .and(path_regex(format!("/api/v1/metal-instances/{}/~/sync", agent_id)))
+        .and(header("x-api-key", api_key))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&sync_response))
+        .mount(&mock_server)
+        .await;
+
+    let mut agent_service = AgentService::builder(agent_id, api_base_url)
+        .api_key(api_key.to_string())
+        .sync_interval(Duration::from_secs(1))
+        .build()?;
+
+    let service_run_task = tokio::spawn(async move {
+        if let Err(e) = agent_service.run().await {
+            error!("AgentService.run() failed: {:?}", e);
+        }
+        agent_service
+    });
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    let received_requests = mock_server.received_requests().await.unwrap_or_default();
+    let registration_path = "/api/v1/metal-instances/~/register";
+    let registration_requests: Vec<_> =
+        received_requests.iter().filter(|req| req.url.path() == registration_path && req.method == "POST").collect();
+    assert_eq!(registration_requests.len(), 1, "Expected exactly one registration request.");
+    info!("Registration call verified.");
+
+    info!("Waiting for status reports (approx 3 seconds for 2 syncs at 1s interval)...");
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let received_sync_requests = mock_server.received_requests().await.unwrap_or_default();
+    let sync_request_path = format!("/api/v1/metal-instances/{}/~/sync", agent_id);
+    let sync_reports: Vec<_> = received_sync_requests
+        .iter()
+        .filter(|req| req.url.path() == sync_request_path.as_str() && req.method == "POST")
+        .collect();
+
+    assert!(sync_reports.len() >= 1, "Expected at least one sync request. Found {}.", sync_reports.len());
+    info!("Received {} sync reports. Verification successful.", sync_reports.len());
+
+    info!("Requesting AgentService shutdown...");
+
+    let mut agent_service = match service_run_task.await {
+        Ok(s) => s,
+        Err(e) => return Err(anyhow::anyhow!("AgentService run task failed: {}", e)),
+    };
+    agent_service.request_shutdown();
+    info!("Shutdown requested. Waiting a bit to ensure tasks stop...");
+
+    mock_server.reset().await;
+
+    Ok(())
+}

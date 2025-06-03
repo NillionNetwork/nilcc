@@ -9,7 +9,7 @@ fn run_command<const N: usize>(command: &str, args: [&str; N]) -> String {
 }
 
 fn git_hash() -> String {
-    run_command("git", ["rev-parse", "HEAD"])
+    run_command("git", ["rev-parse", "--short", "HEAD"])
 }
 
 fn main() {
