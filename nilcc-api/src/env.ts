@@ -41,6 +41,7 @@ export const EnvVarsSchema = z.object({
   logLevel: z.enum(LOG_LEVELS),
   metricsPort: z.number().int().positive(),
   httpApiPort: z.number().int().positive(),
+  metalInstanceApiKey: z.string(),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -54,6 +55,7 @@ declare global {
       APP_LOG_LEVEL: string;
       APP_METRICS_PORT?: number;
       APP_HTTP_API_PORT: number;
+      APP_METAL_INSTANCE_API_KEY: string;
     }
   }
 }
@@ -79,6 +81,7 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     logLevel: process.env.APP_LOG_LEVEL,
     metricsPort: Number(process.env.APP_METRICS_PORT),
     httpApiPort: Number(process.env.APP_HTTP_API_PORT),
+    metalInstanceApiKey: process.env.APP_METAL_INSTANCE_API_KEY,
   });
 
   return {

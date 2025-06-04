@@ -11,6 +11,7 @@ import {
   FeatureFlag,
   hasFeatureFlag,
 } from "./env";
+import { buildMetalInstanceRouter } from "./metal-instance/metal-instance.router";
 import { createOpenApiRouter } from "./openapi/openapi.router";
 import { buildWorkloadRouter } from "./workload/workload.router";
 
@@ -36,6 +37,7 @@ export async function buildApp(
   }
 
   buildWorkloadRouter({ app, bindings });
+  buildMetalInstanceRouter({ app, bindings });
 
   const { printMetrics, registerMetrics } = prometheus();
   app.use("*", registerMetrics);

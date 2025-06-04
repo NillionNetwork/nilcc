@@ -1,9 +1,9 @@
 import { zValidator } from "@hono/zod-validator";
-import type { Context } from "hono";
+import type { Context, Next } from "hono";
 import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
-import type { Schema, z } from "zod";
-import type { AppEnv } from "#/env";
+import type { Schema } from "zod";
+import type { AppBindings } from "#/env";
 import { DataValidationError } from "./errors";
 
 export function payloadValidator<T extends Schema>(schema: T) {
@@ -42,24 +42,30 @@ export function paramsValidator<T extends Schema>(schema: T) {
   });
 }
 
-export function validateResponse<T extends Schema>(
+export function responseValidator<T extends Schema>(
+  bindings: AppBindings,
   schema: T,
-  data: z.infer<T>,
-  c: Context<AppEnv>,
-): Response {
-  const result = schema.safeParse(data);
+) {
+  return async (c: Context, next: Next) => {
+    await next();
+    if (!bindings.config.enabledFeatures.includes("response-validation")) {
+      return c;
+    }
+    if (c.res.status < 200 || c.res.status >= 300) {
+      return c;
+    }
+    const result = schema.safeParse(await c.res.clone().json());
+    if (result.success) {
+      return c;
+    }
+    const errors = new DataValidationError({
+      issues: [result.error],
+      cause: null,
+    }).humanize();
 
-  if (result.success) {
-    return c.json(result.data);
-  }
-
-  const errors = new DataValidationError({
-    issues: [result.error],
-    cause: null,
-  }).humanize();
-
-  return c.json(
-    { ts: Temporal.Now.instant().toString(), errors },
-    StatusCodes.INTERNAL_SERVER_ERROR,
-  );
+    return c.json(
+      { ts: Temporal.Now.instant().toString(), errors },
+      StatusCodes.INTERNAL_SERVER_ERROR,
+    );
+  };
 }

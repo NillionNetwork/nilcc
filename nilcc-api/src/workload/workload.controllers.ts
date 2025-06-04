@@ -8,7 +8,7 @@ import {
 } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { paramsValidator, validateResponse } from "#/common/zod-utils";
+import { paramsValidator, responseValidator } from "#/common/zod-utils";
 import { workloadMapper } from "#/workload/workload.mapper";
 import {
   CreateWorkloadRequest,
@@ -23,10 +23,9 @@ const idParamSchema = z.object({ id: z.string().uuid() });
 
 export function create(options: ControllerOptions): void {
   const { app, bindings } = options;
-  const path = PathsV1.workload.create;
 
   app.post(
-    path,
+    PathsV1.workload.create,
     describeRoute({
       tags: ["Workload"],
       summary: "Create a new Workload",
@@ -46,24 +45,20 @@ export function create(options: ControllerOptions): void {
     }),
     zValidator("json", CreateWorkloadRequest),
     errorHandler(),
+    responseValidator(bindings, CreateWorkloadResponse),
     async (c) => {
       const payload = c.req.valid("json");
       const workload = await workloadService.create(bindings, payload);
-      return validateResponse(
-        CreateWorkloadResponse,
-        workloadMapper.entityToResponse(workload),
-        c,
-      );
+      return c.json(workloadMapper.entityToResponse(workload));
     },
   );
 }
 
 export function list(options: ControllerOptions): void {
   const { app, bindings } = options;
-  const path = PathsV1.workload.list;
 
   app.get(
-    path,
+    PathsV1.workload.list,
     describeRoute({
       tags: ["Workload"],
       summary: "List Workloads",
@@ -81,23 +76,19 @@ export function list(options: ControllerOptions): void {
       },
     }),
     errorHandler(),
+    responseValidator(bindings, CreateWorkloadResponse.array()),
     async (c) => {
       const workloads = await workloadService.list(bindings);
-      return validateResponse(
-        CreateWorkloadResponse.array(),
-        workloads.map(workloadMapper.entityToResponse),
-        c,
-      );
+      return c.json(workloads.map(workloadMapper.entityToResponse));
     },
   );
 }
 
 export function read(options: ControllerOptions): void {
   const { app, bindings } = options;
-  const path = PathsV1.workload.read;
 
   app.get(
-    path,
+    PathsV1.workload.read,
     describeRoute({
       tags: ["Workload"],
       summary: "Read a Workload",
@@ -116,27 +107,23 @@ export function read(options: ControllerOptions): void {
     }),
     errorHandler(),
     paramsValidator(idParamSchema),
+    responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
       const params = c.req.valid("param");
       const workload = await workloadService.read(bindings, params.id);
       if (!workload) {
         return c.notFound();
       }
-      return validateResponse(
-        CreateWorkloadResponse,
-        workloadMapper.entityToResponse(workload),
-        c,
-      );
+      return c.json(workloadMapper.entityToResponse(workload));
     },
   );
 }
 
 export function update(options: ControllerOptions): void {
   const { app, bindings } = options;
-  const path = PathsV1.workload.update;
 
   app.put(
-    path,
+    PathsV1.workload.update,
     describeRoute({
       tags: ["Workload"],
       summary: "Update a Workload",
@@ -161,10 +148,9 @@ export function update(options: ControllerOptions): void {
 
 export function remove(options: ControllerOptions): void {
   const { app, bindings } = options;
-  const path = PathsV1.workload.remove;
 
   app.delete(
-    path,
+    PathsV1.workload.remove,
     describeRoute({
       tags: ["Workload"],
       summary: "Remove a Workload",

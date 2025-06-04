@@ -2,12 +2,13 @@ import * as vitest from "vitest";
 import type { App } from "#/app";
 import type { AppBindings } from "#/env";
 import { buildFixture, type TestFixture } from "./fixture";
-import type { WorkloadClient } from "./test-client";
+import type { MetalInstanceClient, WorkloadClient } from "./test-client";
 
 export type FixtureContext = {
   app: App;
   bindings: AppBindings;
-  workload: WorkloadClient;
+  workloadClient: WorkloadClient;
+  metalInstanceClient: MetalInstanceClient; // Assuming you have a metal instance client similar to workload client
 };
 
 type TestFixtureExtension = {
@@ -29,9 +30,13 @@ export function createTestFixtureExtension(): TestFixtureExtension {
       if (!fixture) throw new Error("Fixture is not initialized");
       await use(fixture.bindings);
     },
-    workload: async ({}, use) => {
+    workloadClient: async ({}, use) => {
       if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.workload);
+      await use(fixture.workloadClient);
+    },
+    metalInstanceClient: async ({}, use) => {
+      if (!fixture) throw new Error("Fixture is not initialized");
+      await use(fixture.metalInstanceClient);
     },
   });
   // biome-ignore-end lint/correctness/noEmptyPattern: Vitest fixture API requires this parameter structure
@@ -50,9 +55,11 @@ export function createTestFixtureExtension(): TestFixtureExtension {
   const afterAll = (fn: (ctx: FixtureContext) => Promise<void>) =>
     vitest.afterAll(async () => {
       if (!fixture) throw new Error("Fixture is not initialized");
-      const { bindings } = fixture;
+      const { bindings, log } = fixture;
       const { dataSource } = bindings;
 
+      log.debug("Dropping database and destroying data source");
+      await dataSource.dropDatabase();
       await dataSource.destroy();
 
       await fn(fixture);

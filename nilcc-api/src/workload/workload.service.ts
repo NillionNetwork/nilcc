@@ -63,15 +63,15 @@ export class WorkloadService {
         description: payload.description,
         tags: payload.tags,
         dockerCompose: payload.dockerCompose,
-              serviceToExpose: payload.serviceToExpose,
-              servicePortToExpose: payload.servicePortToExpose,
-              memory: payload.memory,
-              cpu: payload.cpu,
-              updatedAt: new Date(),
-            },
-          );
-          return updated.affected ? updated.affected > 0 : false;
-        }
+        serviceToExpose: payload.serviceToExpose,
+        servicePortToExpose: payload.servicePortToExpose,
+        memory: payload.memory,
+        cpu: payload.cpu,
+        updatedAt: new Date(),
+      },
+    );
+    return updated.affected ? updated.affected > 0 : false;
+  }
 
   @mapError((e) => new RemoveEntityError({ cause: e }))
   async remove(bindings: AppBindings, workloadId: string): Promise<boolean> {
