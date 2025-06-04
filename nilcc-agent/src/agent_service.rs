@@ -206,9 +206,9 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
     let cpu = sys.cpus().len() as u32;
 
     let (gpu_model, gpu) = if let Some(gpu_details) = gpu_details {
-        (Some(gpu_details.model.clone()), gpu_details.count)
+        (Some(gpu_details.model.clone()), Some(gpu_details.count))
     } else {
-        (None, 0)
+        (None, None)
     };
 
     let mut ip_address = String::from(""); // fallback if no IP address is found

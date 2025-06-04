@@ -9,7 +9,7 @@ pub struct MetalInstanceDetails {
     pub memory: u64,
     pub disk: u64,
     pub cpu: u32,
-    pub gpu: u32,
+    pub gpu: Option<u32>,
     pub gpu_model: Option<String>,
     pub ip_address: String,
 }
