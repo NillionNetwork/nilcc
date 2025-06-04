@@ -88,6 +88,10 @@ export class CreateEntityError extends AppError {
   tag = "CreateEntityError";
 }
 
+export class CreateOrUpdateEntityError extends AppError {
+  tag = "CreateOrUpdateEntityError";
+}
+
 export class FindEntityError extends AppError {
   tag = "FindEntityError";
 }

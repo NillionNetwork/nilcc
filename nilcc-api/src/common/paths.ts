@@ -3,7 +3,7 @@ import { z } from "zod";
 export const PathSchema = z
   .string()
   .startsWith("/")
-  .regex(/^(\/[a-z0-9_:.-]+)+$/i, {
+  .regex(/^(\/[a-z0-9_~:.-]+)+$/i, {
     message: "Path must follow format: /parent/child/:param/grandchild",
   })
   .brand<"path">();
@@ -18,5 +18,11 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/workloads/:id"),
     update: PathSchema.parse("/api/v1/workloads"),
     remove: PathSchema.parse("/api/v1/workloads/:id"),
+  },
+  metalInstance: {
+    register: PathSchema.parse("/api/v1/metal-instances/~/register"),
+    sync: PathSchema.parse("/api/v1/metal-instances/~/sync"),
+    read: PathSchema.parse("/api/v1/metal-instances/:id"),
+    list: PathSchema.parse("/api/v1/metal-instances"),
   },
 } as const;

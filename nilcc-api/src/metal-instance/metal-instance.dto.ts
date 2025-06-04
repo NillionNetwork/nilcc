@@ -3,16 +3,25 @@ import { Uuid } from "#/common/types";
 
 export const CreateMetalInstanceRequest = z
   .object({
-    hostname: z.string().min(1, "hostname is required"),
-    memory: z.number().int().min(1, "Memory must be a positive integer"),
-    cpu: z.number().int().min(1, "CPU must be a positive integer"),
-    gpu: z.number().int().min(1, "GPU must be a positive integer").optional(),
+    agentVersion: z.string().min(1, "Agent version is required"),
+    hostname: z.string().min(10, "hostname is required"),
+    memory: z.number().int().positive(),
+    cpu: z.number().int().positive(),
+    disk: z.number().int().positive(),
+    gpu: z.number().int().positive().optional(),
     gpuModel: z.string().optional(),
-    ipAddress: z.string().min(1, "IP Address is required"),
+    ipAddress: z.string().ip(),
   })
   .openapi({ ref: "CreateMetalInstanceRequest" });
 export type CreateMetalInstanceRequest = z.infer<
   typeof CreateMetalInstanceRequest
+>;
+
+export const RegisterMetalInstanceRequest = CreateMetalInstanceRequest.extend({
+  id: Uuid,
+}).openapi({ ref: "RegisterMetalInstanceRequest" });
+export type RegisterMetalInstanceRequest = z.infer<
+  typeof RegisterMetalInstanceRequest
 >;
 
 export const CreateMetalInstanceResponse = CreateMetalInstanceRequest.extend({
@@ -39,16 +48,13 @@ export type ListMetalInstancesResponse = z.infer<
 export const UpdateMetalInstanceRequest = z
   .object({
     id: Uuid,
-    hostname: z.string().min(1, "hostname is required").optional(),
-    memory: z
-      .number()
-      .int()
-      .min(1, "Memory must be a positive integer")
-      .optional(),
-    cpu: z.number().int().min(1, "CPU must be a positive integer").optional(),
-    gpu: z.number().int().min(1, "GPU must be a positive integer").optional(),
+    agentVersion: z.string().min(1, "Agent version is required"),
+    hostname: z.string().min(10, "hostname is required").optional(),
+    memory: z.number().int().positive().optional(),
+    cpu: z.number().int().positive().optional(),
+    gpu: z.number().int().positive().optional(),
     gpuModel: z.string().optional(),
-    ipAddress: z.string().min(1, "IP Address is required").optional(),
+    ipAddress: z.string().ip().optional(),
   })
   .openapi({ ref: "UpdateMetalInstanceRequest" });
 export type UpdateMetalInstanceRequest = z.infer<

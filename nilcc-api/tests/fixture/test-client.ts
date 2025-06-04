@@ -1,6 +1,11 @@
 import type { ZodType } from "zod";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
+import type { AppBindings } from "#/env";
+import {
+  GetMetalInstanceResponse,
+  type RegisterMetalInstanceRequest,
+} from "#/metal-instance/metal-instance.dto";
 import {
   type CreateWorkloadRequest,
   CreateWorkloadResponse,
@@ -11,6 +16,7 @@ import {
 
 export type TestClientOptions = {
   app: App;
+  bindings: AppBindings;
 };
 
 class TestClient {
@@ -18,6 +24,10 @@ class TestClient {
 
   get app(): App {
     return this._options.app;
+  }
+
+  get bindings(): AppBindings {
+    return this._options.bindings;
   }
 
   async request<T>(
@@ -30,7 +40,7 @@ class TestClient {
   ): Promise<Response> {
     const { method = "GET", body } = options;
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = this.extraHeaders();
 
     if (body) {
       headers["Content-Type"] = "application/json";
@@ -41,6 +51,11 @@ class TestClient {
       headers,
       ...(body && { body: JSON.stringify(body) }),
     });
+  }
+
+  extraHeaders(): Record<string, string> {
+    // This method can be overridden to add extra headers if needed
+    return {};
   }
 }
 
@@ -64,7 +79,7 @@ class ParseableResponse<T> {
 }
 
 export class WorkloadClient extends TestClient {
-  async createWorkload(
+  async create(
     body: CreateWorkloadRequest,
   ): Promise<ParseableResponse<CreateWorkloadResponse>> {
     const response = await this.request(PathsV1.workload.create, {
@@ -77,7 +92,7 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async getWorkload(params: {
+  async get(params: {
     id: string;
   }): Promise<ParseableResponse<GetWorkloadResponse>> {
     const response = await this.request(
@@ -92,7 +107,7 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async listWorkloads(): Promise<ParseableResponse<ListWorkloadsResponse>> {
+  async list(): Promise<ParseableResponse<ListWorkloadsResponse>> {
     const response = await this.request(PathsV1.workload.list, {
       method: "GET",
     });
@@ -102,17 +117,45 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async updateWorkload(body: UpdateWorkloadRequest): Promise<Response> {
+  async update(body: UpdateWorkloadRequest): Promise<Response> {
     return await this.request(PathsV1.workload.update, {
       method: "PUT",
       body,
     });
   }
 
-  async deleteWorkload(params: { id: string }): Promise<Response> {
+  async delete(params: { id: string }): Promise<Response> {
     return this.request(PathsV1.workload.remove.replace(":id", params.id), {
       method: "DELETE",
       params,
+    });
+  }
+}
+
+export class MetalInstanceClient extends TestClient {
+  override extraHeaders(): Record<string, string> {
+    return {
+      "x-api-key": this.bindings.config.metalInstanceApiKey,
+    };
+  }
+
+  async get(params: { id: string }) {
+    const response = await this.request(
+      PathsV1.metalInstance.read.replace(":id", params.id),
+      {
+        method: "GET",
+      },
+    );
+    return new ParseableResponse<GetMetalInstanceResponse>(
+      response,
+      GetMetalInstanceResponse,
+    );
+  }
+
+  async register(body: RegisterMetalInstanceRequest): Promise<Response> {
+    return await this.request(PathsV1.metalInstance.register, {
+      method: "POST",
+      body,
     });
   }
 }

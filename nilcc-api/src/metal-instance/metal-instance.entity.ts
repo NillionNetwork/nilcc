@@ -8,6 +8,9 @@ export class MetalInstanceEntity {
   @Column({ type: "varchar" })
   hostname: string;
 
+  @Column({ type: "varchar" })
+  agentVersion: string;
+
   @Column({ type: "int" })
   memory: number;
 
@@ -15,9 +18,12 @@ export class MetalInstanceEntity {
   cpu: number;
 
   @Column({ type: "int" })
+  disk: number;
+
+  @Column({ type: "int", nullable: true })
   gpu?: number;
 
-  @Column({ type: "varchar" })
+  @Column({ type: "varchar", nullable: true })
   gpuModel?: string;
 
   @Column({ type: "varchar" })
