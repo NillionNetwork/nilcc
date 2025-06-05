@@ -8,12 +8,15 @@ export const CreateWorkloadRequest = z
     tags: z.array(z.string()).optional(),
     dockerCompose: z.string().min(1, "Docker Compose is required"),
     serviceToExpose: z.string().min(1, "Service to expose is required"),
-    servicePortToExpose: z
+    servicePortToExpose: z.number().int().positive(),
+    memory: z.number().int().positive(),
+    cpu: z.number().int().positive(),
+    disk: z
       .number()
       .int()
-      .min(1, "Service port to expose is required"),
-    memory: z.number().int().min(1, "Memory must be a positive integer"),
-    cpu: z.number().int().min(1, "CPU must be a positive integer"),
+      .min(10, "Disk must be at least 10GB")
+      .max(100, "Disk must be at most 100GB"),
+    gpu: z.number().int().positive().optional(),
   })
   .openapi({ ref: "CreateWorkloadRequest" });
 export type CreateWorkloadRequest = z.infer<typeof CreateWorkloadRequest>;

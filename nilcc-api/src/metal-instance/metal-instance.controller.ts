@@ -41,7 +41,11 @@ export function register(options: ControllerOptions) {
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      await metalInstanceService.createOrUpdate(bindings, payload);
+      await metalInstanceService.createOrUpdate(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
       return c.body(null);
     },
   );

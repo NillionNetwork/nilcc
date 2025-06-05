@@ -1,4 +1,4 @@
-import type { Repository } from "typeorm";
+import type { QueryRunner, Repository } from "typeorm";
 import {
   CreateEntityError,
   FindEntityError,
@@ -8,6 +8,7 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
+import { metalInstanceService } from "#/metal-instance/metal-instance.service";
 import type {
   CreateWorkloadRequest,
   UpdateWorkloadRequest,
@@ -16,7 +17,13 @@ import { WorkloadEntity } from "./workload.entity";
 
 export class WorkloadService {
   @mapError((e) => new GetRepositoryError({ cause: e }))
-  getRepository(bindings: AppBindings): Repository<WorkloadEntity> {
+  getRepository(
+    bindings: AppBindings,
+    tx?: QueryRunner,
+  ): Repository<WorkloadEntity> {
+    if (tx) {
+      return tx.manager.getRepository(WorkloadEntity);
+    }
     return bindings.dataSource.getRepository(WorkloadEntity);
   }
 
@@ -24,11 +31,29 @@ export class WorkloadService {
   async create(
     bindings: AppBindings,
     workload: CreateWorkloadRequest,
+    tx: QueryRunner,
   ): Promise<WorkloadEntity> {
-    const repository = this.getRepository(bindings);
+    const metalInstances = await metalInstanceService.findWithFreeResources(
+      {
+        cpu: workload.cpu,
+        memory: workload.memory,
+        disk: workload.disk,
+        gpu: workload.gpu,
+      },
+      bindings,
+      tx,
+    );
+
+    if (metalInstances.length === 0) {
+      throw new Error("No available instances with sufficient resources.");
+    }
+
+    // Assign the first available metal instance to the workload
+    const repository = this.getRepository(bindings, tx);
     const now = new Date();
     const entity = repository.create({
       ...workload,
+      metalInstance: metalInstances[0],
       createdAt: now,
       updatedAt: now,
     });

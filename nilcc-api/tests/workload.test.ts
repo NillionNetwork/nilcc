@@ -1,5 +1,9 @@
 import { describe } from "vitest";
-import type { CreateWorkloadResponse } from "#/workload/workload.dto";
+import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
+import type {
+  CreateWorkloadRequest,
+  CreateWorkloadResponse,
+} from "#/workload/workload.dto";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("workload CRUD", () => {
@@ -9,21 +13,65 @@ describe("workload CRUD", () => {
   afterAll(async (_ctx) => {});
   let myWorkload: null | CreateWorkloadResponse = null;
 
-  it("should create a workload", async ({ expect, workloadClient }) => {
-    const name = "my-cool-workload";
-    const myWorkloadResponse = await workloadClient.create({
-      name,
-      description: "This is a test workload",
-      tags: ["test", "workload"],
-      dockerCompose:
-        "version: '3'\nservices:\n  app:\n    image: nginx\n    ports:\n      - '80:80'",
-      serviceToExpose: "app",
-      servicePortToExpose: 80,
-      memory: 4,
-      cpu: 2,
-    });
+  const createWorkloadRequest: CreateWorkloadRequest = {
+    name: "my-cool-workload",
+    description: "This is a test workload",
+    tags: ["test", "workload"],
+    dockerCompose:
+      "version: '3'\nservices:\n  app:\n    image: nginx\n    ports:\n      - '80:80'",
+    serviceToExpose: "app",
+    servicePortToExpose: 80,
+    memory: 4,
+    cpu: 2,
+    disk: 40,
+  };
+
+  const myMetalInstance: RegisterMetalInstanceRequest = {
+    id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
+    agentVersion: "v0.1.0",
+    hostname: "my-metal-instance",
+    memory: 128,
+    cpu: 64,
+    disk: 1024,
+    ipAddress: "85.45.42.69",
+  };
+
+  it("should fail to create a workload if there isn't a metal instance", async ({
+    expect,
+    workloadClient,
+  }) => {
+    const myWorkloadResponse = await workloadClient.create(
+      createWorkloadRequest,
+    );
+    expect(myWorkloadResponse.response.status).equal(500);
+  });
+
+  it("should create a workload", async ({
+    expect,
+    workloadClient,
+    metalInstanceClient,
+  }) => {
+    await metalInstanceClient.register(myMetalInstance);
+
+    const myWorkloadResponse = await workloadClient.create(
+      createWorkloadRequest,
+    );
     myWorkload = await myWorkloadResponse.parse_body();
-    expect(myWorkload.name).equals(name);
+    expect(myWorkload.name).equals(createWorkloadRequest.name);
+  });
+
+  it("should fail to create a workload if it doesn't fit in the metal instance", async ({
+    expect,
+    workloadClient,
+  }) => {
+    const overloadedWorkloadRequest = {
+      ...createWorkloadRequest,
+      cpu: 63, // Exceeding the available CPU
+    };
+    const myWorkloadResponse = await workloadClient.create(
+      overloadedWorkloadRequest,
+    );
+    expect(myWorkloadResponse.response.status).equal(500);
   });
 
   it("should get a workload", async ({ expect, workloadClient }) => {
