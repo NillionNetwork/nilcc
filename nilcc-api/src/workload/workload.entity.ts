@@ -18,6 +18,17 @@ export class WorkloadEntity {
   @Column({ type: "text" })
   dockerCompose: string;
 
+  @Column({
+    type: "text",
+    nullable: true,
+    transformer: {
+      to: (value?: Record<string, string>) =>
+        value ? JSON.stringify(value) : null,
+      from: (value?: string) => (value ? JSON.parse(value) : {}),
+    },
+  })
+  envVars?: Record<string, string>;
+
   @Column({ type: "varchar" })
   serviceToExpose: string;
 

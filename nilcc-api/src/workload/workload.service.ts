@@ -92,6 +92,7 @@ export class WorkloadService {
         description: payload.description,
         tags: payload.tags,
         dockerCompose: payload.dockerCompose,
+        envVars: payload.envVars,
         serviceToExpose: payload.serviceToExpose,
         servicePortToExpose: payload.servicePortToExpose,
         memory: payload.memory,
