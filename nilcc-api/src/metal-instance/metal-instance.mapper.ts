@@ -1,10 +1,10 @@
-import type { CreateMetalInstanceResponse } from "#/metal-instance/metal-instance.dto";
+import type { GetMetalInstanceResponse } from "#/metal-instance/metal-instance.dto";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
 export const metalInstanceMapper = {
   entityToResponse(
     metalInstance: MetalInstanceEntity,
-  ): CreateMetalInstanceResponse {
+  ): GetMetalInstanceResponse {
     return {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
