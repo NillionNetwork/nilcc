@@ -5,7 +5,7 @@ use nilcc_agent::{
     agent_service::AgentService,
     build_info,
     config::AgentConfig,
-    iso::{ApplicationMetadata, ContainerMetadata, IsoMaker, IsoMetadata, IsoSpec},
+    iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::{QemuClient, QemuClientError, VmDetails, VmSpec},
 };
@@ -130,6 +130,10 @@ enum IsoCommand {
         #[clap(short, long)]
         output: PathBuf,
 
+        /// An environment variable that will be set when the docker compose is ran.
+        #[clap(short, long = "env")]
+        environment_variables: Vec<EnvironmentVariable>,
+
         /// The path to the docker compose to be ran.
         docker_compose_path: PathBuf,
     },
@@ -144,11 +148,12 @@ struct ActionOutput<T: Serialize> {
 
 async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata>> {
     match command {
-        IsoCommand::Create { container, port, hostname, output, docker_compose_path } => {
+        IsoCommand::Create { container, port, hostname, output, docker_compose_path, environment_variables } => {
             let compose = std::fs::read_to_string(docker_compose_path).context("reading docker compose")?;
             let spec = IsoSpec {
                 docker_compose_yaml: compose,
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
+                environment_variables,
             };
             let details = IsoMaker.create_application_iso(spec, &output).await.context("creating ISO")?;
             Ok(ActionOutput { status: "created".into(), details })
