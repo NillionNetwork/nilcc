@@ -210,13 +210,13 @@ async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<Acti
 }
 
 fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
-    debug!("Loading configuration from: {}", config_path.display());
+    debug!("Loading configuration from: {config_path:?}");
 
     let config_file = fs::File::open(&config_path)
-        .map_err(|e| anyhow::anyhow!("Failed to open config file {}: {}", config_path.display(), e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to open config file {config_path:?}: {e}"))?;
 
     let config: AgentConfig = serde_yaml::from_reader(config_file)
-        .map_err(|e| anyhow::anyhow!("Failed to parse YAML from config file {}: {}", config_path.display(), e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse YAML from config file {config_path:?}: {e}"))?;
 
     Ok(config)
 }

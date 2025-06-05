@@ -20,7 +20,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
     let api_key = "test-api-key-123";
     let agent_id = Uuid::parse_str("f7b27e21-eabb-4acb-8cd7-1d8113fd2237").context("Failed to parse test agent ID")?;
 
-    info!("Mock server started at: {}", api_base_url);
+    info!("Mock server started at: {api_base_url}");
 
     let registration_response = RegistrationResponse {
         agent_id: agent_id.to_string(),
@@ -37,7 +37,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     let sync_response = SyncResponse { message: "Sync response.".to_string(), success: true };
     Mock::given(method("POST"))
-        .and(path_regex(format!("/api/v1/metal-instances/{}/~/sync", agent_id)))
+        .and(path_regex(format!("/api/v1/metal-instances/{agent_id}/~/sync")))
         .and(header("x-api-key", api_key))
         .respond_with(ResponseTemplate::new(200).set_body_json(&sync_response))
         .mount(&mock_server)
@@ -50,7 +50,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     let service_run_task = tokio::spawn(async move {
         if let Err(e) = agent_service.run().await {
-            error!("AgentService.run() failed: {:?}", e);
+            error!("AgentService.run() failed: {e:?}");
         }
         agent_service
     });
@@ -67,7 +67,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let received_sync_requests = mock_server.received_requests().await.unwrap_or_default();
-    let sync_request_path = format!("/api/v1/metal-instances/{}/~/sync", agent_id);
+    let sync_request_path = format!("/api/v1/metal-instances/{agent_id}/~/sync");
     let sync_reports: Vec<_> = received_sync_requests
         .iter()
         .filter(|req| req.url.path() == sync_request_path.as_str() && req.method == "POST")
@@ -80,7 +80,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     let mut agent_service = match service_run_task.await {
         Ok(s) => s,
-        Err(e) => return Err(anyhow::anyhow!("AgentService run task failed: {}", e)),
+        Err(e) => return Err(anyhow::anyhow!("AgentService run task failed: {e}")),
     };
     agent_service.request_shutdown();
     info!("Shutdown requested. Waiting a bit to ensure tasks stop...");

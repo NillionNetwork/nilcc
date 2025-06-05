@@ -190,14 +190,14 @@ impl QemuClient {
         let fwd = spec
             .port_forwarding
             .iter()
-            .map(|(h, g)| format!("hostfwd=tcp::{}-:{}", h, g))
+            .map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}"))
             .collect::<Vec<_>>()
             .join(",");
 
         if fwd.is_empty() {
             args.push("user,id=vmnic".into());
         } else {
-            args.push(format!("user,id=vmnic,{}", fwd));
+            args.push(format!("user,id=vmnic,{fwd}"));
         }
         args.push("-device".into());
         args.push("virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into());
@@ -209,7 +209,7 @@ impl QemuClient {
                 "-device".into(),
                 "pcie-root-port,id=pci.1,bus=pcie.0".into(),
                 "-device".into(),
-                format!("vfio-pci,host={},bus=pci.1", gpu),
+                format!("vfio-pci,host={gpu},bus=pci.1"),
             ]);
         }
 
@@ -259,18 +259,16 @@ impl QemuClient {
         let pre_negotiation_stream: QmpStreamNegotiation<QmpReadStreamHalf, QmpWriteStreamHalf> =
             QmpStreamTokio::open_uds(qmp_sock_path).await.map_err(|io_err| {
                 QemuClientError::Qmp(format!(
-                    "Failed to connect to QMP socket at '{}': {}",
-                    qmp_sock_path.display(),
-                    io_err
+                    "Failed to connect to QMP socket at '{}': {io_err}",
+                    qmp_sock_path.display()
                 ))
             })?;
 
         let negotiated_stream: NegotiatedQmpStream =
             pre_negotiation_stream.negotiate().await.map_err(|io_err: std::io::Error| {
                 QemuClientError::Qmp(format!(
-                    "QMP negotiation failed for socket at '{}': {}",
-                    qmp_sock_path.display(),
-                    io_err
+                    "QMP negotiation failed for socket at '{}': {io_err}",
+                    qmp_sock_path.display()
                 ))
             })?;
 
@@ -289,7 +287,7 @@ impl QemuClient {
         let (qmp, driver) = self.connect_qmp(qmp_sock).await?;
 
         let response = qmp.execute(command).await.map_err(|exec_err: ExecuteError| {
-            QemuClientError::Qmp(format!("QMP command '{}' execution failed:: {}", C::NAME, exec_err))
+            QemuClientError::Qmp(format!("QMP command '{}' execution failed:: {exec_err}", C::NAME))
         })?;
 
         // Explicitly drop the service handle to signal that no more commands will be sent and to allow the driver_task to shut down if it depends on this.

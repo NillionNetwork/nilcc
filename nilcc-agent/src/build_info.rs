@@ -14,16 +14,16 @@ static AGENT_VERSION: Lazy<String> = Lazy::new(|| {
         .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
         .map(|dt: DateTime<Utc>| dt.format("%Y%m%dT%H%M%SZ").to_string());
 
-    metadata_parts.push(format!("git.{}", BUILD_GIT_COMMIT_HASH));
+    metadata_parts.push(format!("git.{BUILD_GIT_COMMIT_HASH}"));
 
     if let Some(datetime_str) = build_datetime_iso_formatted {
-        metadata_parts.push(format!("build.{}", datetime_str));
+        metadata_parts.push(format!("build.{datetime_str}"));
     }
 
     if metadata_parts.is_empty() {
         PKG_VERSION.to_string()
     } else {
-        format!("{}+{}", PKG_VERSION, metadata_parts.join("."))
+        format!("{PKG_VERSION}+{}", metadata_parts.join("."))
     }
 });
 

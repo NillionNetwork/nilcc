@@ -26,5 +26,5 @@ pub fn serialize_error(e: &anyhow::Error) -> String {
     let error = e.to_string();
     let causes: Vec<String> = e.chain().skip(1).map(|cause| cause.to_string()).collect();
     let error_response = ErrorOutput { error, causes };
-    serialize_output(&error_response).unwrap_or_else(|_| format!("{{\"error\": \"{}\"}}", e))
+    serialize_output(&error_response).unwrap_or_else(|_| format!("{{\"error\": \"{e}\"}}"))
 }
