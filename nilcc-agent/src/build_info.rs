@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc};
+use chrono::DateTime;
 use once_cell::sync::Lazy;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -7,10 +7,8 @@ const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
 
 static AGENT_VERSION: Lazy<String> = Lazy::new(|| {
     let timestamp_secs = BUILD_TIMESTAMP.parse::<i64>().expect("BUILD_TIMESTAMP must be a Unix timestamp.");
-    let build_datetime_str = Utc
-        .timestamp_opt(timestamp_secs, 0)
-        .single()
-        .expect("BUILD_TIMESTAMP must correspond to a valid DateTime.")
+    let build_datetime_str = DateTime::from_timestamp(timestamp_secs, 0)
+        .expect("BUILD_TIMESTAMP must correspond to a valid UTC DateTime.")
         .format("%Y%m%dT%H%M%SZ")
         .to_string();
 
