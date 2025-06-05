@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
 @Entity()
 export class WorkloadEntity {
@@ -29,12 +30,21 @@ export class WorkloadEntity {
   @Column({ type: "int" })
   cpu: number;
 
+  @Column({ type: "int" })
+  disk: number;
+
   @Column({
     type: "enum",
     enum: ["pending", "running", "stopped", "error"],
     default: "pending",
   })
   status: "pending" | "running" | "stopped" | "error";
+
+  @ManyToOne(
+    () => MetalInstanceEntity,
+    (metalInstance) => metalInstance.workloads,
+  )
+  metalInstance: MetalInstanceEntity;
 
   @Column({ type: "timestamp" })
   createdAt: Date;

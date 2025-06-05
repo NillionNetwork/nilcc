@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { WorkloadEntity } from "#/workload/workload.entity";
 
 @Entity()
 export class MetalInstanceEntity {
@@ -28,6 +29,12 @@ export class MetalInstanceEntity {
 
   @Column({ type: "varchar" })
   ipAddress: string;
+
+  @OneToMany(
+    () => WorkloadEntity,
+    (workload) => workload.metalInstance,
+  )
+  workloads: WorkloadEntity[];
 
   @Column({ type: "timestamp" })
   createdAt: Date;

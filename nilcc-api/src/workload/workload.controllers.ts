@@ -9,6 +9,7 @@ import {
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { paramsValidator, responseValidator } from "#/common/zod-utils";
+import { transactionMiddleware } from "#/data-source";
 import { workloadMapper } from "#/workload/workload.mapper";
 import {
   CreateWorkloadRequest,
@@ -46,9 +47,14 @@ export function create(options: ControllerOptions): void {
     zValidator("json", CreateWorkloadRequest),
     errorHandler(),
     responseValidator(bindings, CreateWorkloadResponse),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      const workload = await workloadService.create(bindings, payload);
+      const workload = await workloadService.create(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
       return c.json(workloadMapper.entityToResponse(workload));
     },
   );

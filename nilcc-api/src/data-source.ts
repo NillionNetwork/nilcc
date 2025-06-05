@@ -32,8 +32,7 @@ export function transactionMiddleware(dataSource: DataSource) {
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
-      c.set("queryRunner", queryRunner);
-      c.set("manager", queryRunner.manager);
+      c.set("txQueryRunner", queryRunner);
 
       await next();
 
