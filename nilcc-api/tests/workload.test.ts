@@ -19,6 +19,9 @@ describe("workload CRUD", () => {
     tags: ["test", "workload"],
     dockerCompose:
       "version: '3'\nservices:\n  app:\n    image: nginx\n    ports:\n      - '80:80'",
+    envVars: {
+      MY_SECRET: "42",
+    },
     serviceToExpose: "app",
     servicePortToExpose: 80,
     memory: 4,
