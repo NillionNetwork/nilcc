@@ -5,8 +5,8 @@ use crate::{
     http_client::AgentHttpRestClient,
 };
 use anyhow::{Context, Result};
-use std::{sync::Arc, time::Duration};
-use sysinfo::{Disks, Networks, System};
+use std::{net::IpAddr, sync::Arc, time::Duration};
+use sysinfo::{Disks, IpNetwork, NetworkData, Networks, System};
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -90,21 +90,16 @@ impl AgentService {
     async fn perform_registration(&mut self) -> Result<()> {
         info!("Attempting to register agent...");
 
-        let instance_details = gather_metal_instance_details(self.agent_id, self.gpu.clone());
+        let instance_details = gather_metal_instance_details(self.agent_id, self.gpu.clone())?;
         info!("Metal instance details: {instance_details:?}");
 
         let response = self.http_client.register(instance_details).await.map_err(|e| {
-            error!("{}", e);
+            error!("Agent registration failed: {}", e);
             e
         })?;
 
-        if response.success {
-            info!("Agent {} successfully registered with API. Server message: {}", self.agent_id, response.message);
-            Ok(())
-        } else {
-            error!("Agent registration failed: {}", response.message);
-            Err(anyhow::anyhow!("Agent registration failed: {}", response.message))
-        }
+        info!("Agent {} successfully registered with API. Server message: {response:?}", self.agent_id);
+        Ok(())
     }
 
     /// Spawns a Tokio task that periodically reports the agent's status.
@@ -138,15 +133,12 @@ impl AgentService {
                     _ = interval.tick() => {
 
                         let sync_request = SyncRequest {
-                            available: true,
+                            // TODO: Populate the sync request with necessary data.
                         };
 
                         match client.sync(agent_id, sync_request).await {
-                            Ok(response) if response.success => {
-                                info!("Successfully synced agent {agent_id}. Server response: {}", response.message);
-                            }
-                            Ok(response) => { // Success false
-                                warn!("Failed to sync agent {agent_id}. Server response: {}", response.message);
+                            Ok(response) => {
+                                info!("Successfully synced agent {agent_id}. Server response: {response:?}");
                             }
                             Err(e) => {
                                 //TODO: Consider more robust error handling: e.g., retries with backoff.
@@ -180,19 +172,71 @@ impl Drop for AgentService {
     }
 }
 
+// Finds a suitable IPv4 address (prefers public, or private if public not found) from the system's network interfaces.
+fn find_ipv4_address(networks: Networks) -> Result<String> {
+    let mut sorted_interfaces: Vec<(&String, &NetworkData)> = networks.iter().collect();
+    sorted_interfaces.sort_unstable_by_key(|(name, _)| *name);
+
+    let mut private_ipv4: String = String::new(); // Fallback for private IPv4 if no public address is found
+
+    for (interface_name, interface) in sorted_interfaces {
+        debug!("Inspecting network interface: '{interface_name}' (MAC: {})", interface.mac_address());
+
+        let mut sorted_ip_networks: Vec<&IpNetwork> = interface.ip_networks().iter().collect();
+        sorted_ip_networks.sort_unstable_by_key(|ip_net| ip_net.addr);
+
+        for ip_network in sorted_ip_networks {
+            if let IpAddr::V4(ipv4_addr) = ip_network.addr {
+                if ipv4_addr.is_loopback() || ipv4_addr.is_unspecified() {
+                    debug!(
+                        "  Skipping loopback or unspecified IPv4 address: {} on interface '{}'.",
+                        ipv4_addr, interface_name
+                    );
+                    continue;
+                }
+
+                // Check if the IPv4 address is globally routable (public)
+                if ipv4_addr.is_global() {
+                    let public_ip = ipv4_addr.to_string();
+                    debug!("  Found public (globally routable) IPv4: {public_ip} on interface '{interface_name}'.",);
+                    return Ok(public_ip);
+                }
+
+                // If not public, check if it's private
+                if ipv4_addr.is_private() {
+                    let private_ip = ipv4_addr.to_string();
+                    debug!(
+                        "  Found suitable private IPv4: {private_ip} on interface '{interface_name}'. Storing as fallback.",
+                    );
+                    private_ipv4 = private_ip;
+                } else {
+                    debug!(
+                        "  IPv4 {} is not global and not private (e.g., link-local, other special). Skipping for fallback consideration.",
+                        ipv4_addr
+                    );
+                }
+            }
+        }
+    }
+
+    if !private_ipv4.is_empty() {
+        warn!("No public IPv4 address found. Returning last suitable private IPv4: {}", private_ipv4);
+    } else {
+        return Err(anyhow::anyhow!("No suitable IPv4 address found."));
+    }
+
+    Ok(private_ipv4)
+}
+
 // Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>) -> MetalInstanceDetails {
+fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>) -> Result<MetalInstanceDetails> {
     info!("Gathering metal instance details...");
 
     let mut sys = System::new_all();
     sys.refresh_all();
 
-    let hostname = System::host_name().unwrap_or_else(|| {
-        error!("Failed to get hostname from sysinfo, using fallback.");
-        "".to_string()
-    });
+    let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
     let memory = sys.total_memory() / (1024 * 1024 * 1024);
-
     let disks = Disks::new_with_refreshed_list();
     let mut root_disk_bytes = 0;
     for disk in disks.list() {
@@ -201,38 +245,17 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
         }
     }
     let disk = root_disk_bytes / (1024 * 1024 * 1024);
-
     let cpu = sys.cpus().len() as u32;
-
     let (gpu_model, gpu) = if let Some(gpu_details) = gpu_details {
         (Some(gpu_details.model.clone()), Some(gpu_details.count))
     } else {
         (None, None)
     };
 
-    let mut ip_address = String::from(""); // fallback if no IP address is found
+    let ip_address =
+        find_ipv4_address(Networks::new_with_refreshed_list()).context("Failed to find a suitable IPv4 address")?;
 
-    for (interface_name_str, interface) in Networks::new_with_refreshed_list().iter() {
-        debug!("Evaluating network interface: {interface_name_str}: {interface:?} ");
-
-        for ip_net in interface.ip_networks() {
-            let ip = ip_net.addr;
-            debug!("Checking IP: {ip} on interface {interface_name_str}");
-            if ip.is_loopback() {
-                continue;
-            }
-
-            if let std::net::IpAddr::V4(ipv4) = ip {
-                if ipv4.is_private() && !ipv4.is_link_local() && !ipv4.is_unspecified() {
-                    // log found suitable IPv4 address and take last one
-                    ip_address = ipv4.to_string();
-                    info!("Found suitable IPv4: {ip_address} on interface {interface_name_str}");
-                }
-            }
-        }
-    }
-
-    MetalInstanceDetails {
+    let details = MetalInstanceDetails {
         id: agent_id,
         agent_version: get_agent_version().to_string(),
         hostname,
@@ -242,5 +265,7 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
         gpu,
         gpu_model,
         ip_address,
-    }
+    };
+
+    Ok(details)
 }
