@@ -22,11 +22,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     info!("Mock server started at: {api_base_url}");
 
-    let registration_response = RegistrationResponse {
-        agent_id: agent_id.to_string(),
-        message: "Agent registered successfully.".to_string(),
-        success: true,
-    };
+    let registration_response = RegistrationResponse { created_at: chrono::Utc::now(), updated_at: chrono::Utc::now() };
     Mock::given(method("POST"))
         .and(path("/api/v1/metal-instances/~/register"))
         .and(header("x-api-key", api_key))
@@ -35,7 +31,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         .mount(&mock_server)
         .await;
 
-    let sync_response = SyncResponse { message: "Sync response.".to_string(), success: true };
+    let sync_response = SyncResponse {};
     Mock::given(method("POST"))
         .and(path_regex(format!("/api/v1/metal-instances/{agent_id}/~/sync")))
         .and(header("x-api-key", api_key))

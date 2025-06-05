@@ -187,12 +187,8 @@ impl QemuClient {
 
         // --- Network and Port forwarding ---
         args.push("-netdev".into());
-        let fwd = spec
-            .port_forwarding
-            .iter()
-            .map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}"))
-            .collect::<Vec<_>>()
-            .join(",");
+        let fwd =
+            spec.port_forwarding.iter().map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}")).collect::<Vec<_>>().join(",");
 
         if fwd.is_empty() {
             args.push("user,id=vmnic".into());

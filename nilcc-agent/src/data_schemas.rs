@@ -1,7 +1,9 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct MetalInstanceDetails {
     pub id: Uuid,
     pub agent_version: String,
@@ -15,20 +17,16 @@ pub struct MetalInstanceDetails {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct RegistrationResponse {
-    pub agent_id: String,
-    pub message: String,
-    pub success: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SyncRequest {
-    /// If an agent is available to perform tasks
-    pub available: bool,
-}
+#[serde(rename_all = "camelCase")]
+pub struct SyncRequest {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SyncResponse {
-    pub success: bool,
-    pub message: String,
-}
+#[serde(rename_all = "camelCase")]
+pub struct SyncResponse {}
