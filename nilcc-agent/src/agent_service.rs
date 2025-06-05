@@ -48,7 +48,6 @@ impl AgentServiceBuilder {
     /// Consumes the builder and constructs the AgentService instance.
     pub fn build(self) -> Result<AgentService> {
         let sync_interval = self.sync_interval.unwrap_or(DEFAULT_AGENT_SYNC_INTERVAL);
-
         let http_client = Arc::new(AgentHttpRestClient::new(self.nilcc_api_base_url.clone(), self.api_key)?);
 
         info!("Agent ID: {}", self.agent_id);
@@ -92,7 +91,7 @@ impl AgentService {
         info!("Attempting to register agent...");
 
         let instance_details = gather_metal_instance_details(self.agent_id, self.gpu.clone());
-        info!("Metal instance details: {:?}", instance_details);
+        info!("Metal instance details: {instance_details:?}");
 
         let response = self.http_client.register(instance_details).await.map_err(|e| {
             error!("{}", e);
@@ -122,12 +121,12 @@ impl AgentService {
         let (shutdown_tx, mut shutdown_rx) = watch::channel(());
         self.sync_executor = Some(shutdown_tx);
 
-        info!("Spawning periodic sync executor for agent_id: {}", agent_id);
+        info!("Spawning periodic sync executor for agent_id: {agent_id}");
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(sync_interval);
 
-            info!("Sync task started. Will report every {:?}.", sync_interval);
+            info!("Sync task started. Will report every {sync_interval:?}.");
 
             loop {
                 tokio::select! {
@@ -144,14 +143,14 @@ impl AgentService {
 
                         match client.sync(agent_id, sync_request).await {
                             Ok(response) if response.success => {
-                                info!("Successfully synced agent {}. Server response: {}", agent_id, response.message);
+                                info!("Successfully synced agent {agent_id}. Server response: {}", response.message);
                             }
                             Ok(response) => { // Success false
-                                warn!("Failed to sync agent {}. Server response: {}", agent_id, response.message);
+                                warn!("Failed to sync agent {agent_id}. Server response: {}", response.message);
                             }
                             Err(e) => {
                                 //TODO: Consider more robust error handling: e.g., retries with backoff.
-                                error!("Failed to sync {:#}", e);
+                                error!("Failed to sync {e:#}");
                             }
                         }
                     }
@@ -214,11 +213,11 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
     let mut ip_address = String::from(""); // fallback if no IP address is found
 
     for (interface_name_str, interface) in Networks::new_with_refreshed_list().iter() {
-        debug!("Evaluating network interface: {}: {:?} ", interface_name_str, interface);
+        debug!("Evaluating network interface: {interface_name_str}: {interface:?} ");
 
         for ip_net in interface.ip_networks() {
             let ip = ip_net.addr;
-            debug!("Checking IP: {} on interface {}", ip, interface_name_str);
+            debug!("Checking IP: {ip} on interface {interface_name_str}");
             if ip.is_loopback() {
                 continue;
             }
@@ -227,7 +226,7 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
                 if ipv4.is_private() && !ipv4.is_link_local() && !ipv4.is_unspecified() {
                     // log found suitable IPv4 address and take last one
                     ip_address = ipv4.to_string();
-                    info!("Found suitable IPv4: {} on interface {}", ip_address, interface_name_str);
+                    info!("Found suitable IPv4: {ip_address} on interface {interface_name_str}");
                 }
             }
         }
