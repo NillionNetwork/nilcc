@@ -7,5 +7,6 @@ export function apiKey(apiKey: string) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     await next();
+    return;
   };
 }

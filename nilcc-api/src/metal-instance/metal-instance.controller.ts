@@ -7,8 +7,10 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { paramsValidator, responseValidator } from "#/common/zod-utils";
+import { transactionMiddleware } from "#/data-source";
 import {
-  CreateMetalInstanceResponse,
+  GetMetalInstanceResponse,
+  ListMetalInstancesResponse,
   RegisterMetalInstanceRequest,
 } from "#/metal-instance/metal-instance.dto";
 import { metalInstanceMapper } from "#/metal-instance/metal-instance.mapper";
@@ -36,6 +38,7 @@ export function register(options: ControllerOptions) {
     apiKey(bindings.config.metalInstanceApiKey),
     zValidator("json", RegisterMetalInstanceRequest),
     errorHandler(),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
       await metalInstanceService.createOrUpdate(bindings, payload);
@@ -80,7 +83,7 @@ export function read(options: ControllerOptions) {
           description: "Workload found",
           content: {
             "application/json": {
-              schema: resolver(CreateMetalInstanceResponse),
+              schema: resolver(GetMetalInstanceResponse),
             },
           },
         },
@@ -89,7 +92,7 @@ export function read(options: ControllerOptions) {
     }),
     paramsValidator(idParamSchema),
     errorHandler(),
-    responseValidator(bindings, CreateMetalInstanceResponse),
+    responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
       const id = c.req.param("id");
       const instance = await metalInstanceService.read(bindings, id);
@@ -114,7 +117,7 @@ export function list(options: ControllerOptions) {
           description: "List of Metal Instances",
           content: {
             "application/json": {
-              schema: resolver(CreateMetalInstanceResponse.array()),
+              schema: resolver(ListMetalInstancesResponse),
             },
           },
         },
@@ -122,7 +125,7 @@ export function list(options: ControllerOptions) {
       },
     }),
     errorHandler(),
-    responseValidator(bindings, CreateMetalInstanceResponse.array()),
+    responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await metalInstanceService.list(bindings);
       return c.json(instances);
