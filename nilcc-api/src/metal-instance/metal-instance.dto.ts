@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Uuid } from "#/common/types";
+import { GetWorkloadResponse } from "#/workload/workload.dto";
 
 export const RegisterMetalInstanceRequest = z
   .object({
@@ -31,4 +32,18 @@ export const ListMetalInstancesResponse = z
   .openapi({ ref: "ListMetalInstancesResponse" });
 export type ListMetalInstancesResponse = z.infer<
   typeof ListMetalInstancesResponse
+>;
+
+export const SyncMetalInstanceRequest = z
+  .object({
+    id: Uuid,
+  })
+  .openapi({ ref: "SyncMetalInstanceRequest" });
+export type SyncMetalInstanceRequest = z.infer<typeof SyncMetalInstanceRequest>;
+
+export const SyncMetalInstanceResponse = GetMetalInstanceResponse.extend({
+  workloads: GetWorkloadResponse.array(),
+}).openapi({ ref: "SyncMetalInstanceResponse" });
+export type SyncMetalInstanceResponse = z.infer<
+  typeof SyncMetalInstanceResponse
 >;

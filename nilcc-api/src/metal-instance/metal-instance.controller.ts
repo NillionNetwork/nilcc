@@ -11,6 +11,8 @@ import {
   GetMetalInstanceResponse,
   ListMetalInstancesResponse,
   RegisterMetalInstanceRequest,
+  SyncMetalInstanceRequest,
+  SyncMetalInstanceResponse,
 } from "#/metal-instance/metal-instance.dto";
 import { metalInstanceMapper } from "#/metal-instance/metal-instance.mapper";
 import { metalInstanceService } from "#/metal-instance/metal-instance.service";
@@ -64,9 +66,20 @@ export function sync(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
+    zValidator("json", SyncMetalInstanceRequest),
+    responseValidator(bindings, SyncMetalInstanceResponse),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
-      // Placeholder for creating a metal instance
-      return c.json({ message: "Metal instance created" });
+      const payload = c.req.valid("json");
+      const result = await metalInstanceService.sync(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
+      if (!result) {
+        return c.notFound();
+      }
+      return c.json(metalInstanceMapper.syncEntityToResponse(result));
     },
   );
 }

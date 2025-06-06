@@ -5,6 +5,8 @@ import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
   type RegisterMetalInstanceRequest,
+  type SyncMetalInstanceRequest,
+  SyncMetalInstanceResponse,
 } from "#/metal-instance/metal-instance.dto";
 import {
   type CreateWorkloadRequest,
@@ -133,6 +135,17 @@ export class WorkloadClient extends TestClient {
 }
 
 export class MetalInstanceClient extends TestClient {
+  async sync(body: SyncMetalInstanceRequest) {
+    const response = await this.request(PathsV1.metalInstance.sync, {
+      method: "POST",
+      body,
+    });
+    return new ParseableResponse<SyncMetalInstanceResponse>(
+      response,
+      SyncMetalInstanceResponse,
+    );
+  }
+
   override extraHeaders(): Record<string, string> {
     return {
       "x-api-key": this.bindings.config.metalInstanceApiKey,
