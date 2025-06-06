@@ -1,4 +1,5 @@
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { z } from "zod";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
 @Entity()
@@ -23,7 +24,10 @@ export class WorkloadEntity {
     nullable: true,
     transformer: {
       to: (value?: Record<string, string>) =>
-        value ? JSON.stringify(value) : null,
+        value
+          ? z.record(z.string(), z.string()).parse(value) &&
+            JSON.stringify(value)
+          : null,
       from: (value?: string) => (value ? JSON.parse(value) : {}),
     },
   })
