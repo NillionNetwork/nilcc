@@ -35,8 +35,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         .mount(&mock_server)
         .await;
 
-    let mut agent_service = AgentService::builder(agent_id, api_base_url)
-        .api_key(api_key.to_string())
+    let mut agent_service = AgentService::builder(agent_id, api_base_url, api_key.to_string())
         .sync_interval(Duration::from_secs(1))
         .build()?;
 
