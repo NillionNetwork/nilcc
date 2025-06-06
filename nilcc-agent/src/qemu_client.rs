@@ -1,3 +1,4 @@
+use crate::gpu;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
     qmp::{query_cpus_fast, quit, system_powerdown, system_reset, QmpCommand},
@@ -110,14 +111,18 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
+fn get_vm_disk_path(workdir: &Path) -> PathBuf {
+    workdir.join("disk.qcow2")
+}
+
 impl QemuClient {
     pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P, store: P) -> Self {
         Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into(), store: store.into() }
     }
 
-    /// Build complete QEMU command-line
-    async fn build_command_line(&self, workdir: &Path, spec: &VmSpec) -> Result<(PathBuf, Vec<String>)> {
-        let disk = workdir.join("disk.qcow2");
+    /// Build complete QEMU command-line args for starting a VM.
+    async fn build_vm_start_cli_args(&self, workdir: &Path, spec: &VmSpec) -> Result<Vec<String>> {
+        let disk = get_vm_disk_path(workdir);
         let qmp_sock = workdir.join("qmp.sock");
 
         let mut args: Vec<String> = Vec::new();
@@ -200,7 +205,23 @@ impl QemuClient {
 
         // --- GPU passthrough ---
         if spec.gpu_enabled {
-            let gpu = Self::find_gpu().await?;
+            let gpu_group = gpu::find_gpus()
+                .await
+                .map_err(|e| QemuClientError::Gpu(e.to_string()))?
+                .ok_or_else(|| QemuClientError::Gpu("No GPU found".to_string()))?;
+
+            // TODO: implement handling of multiple GPUs
+            if gpu_group.addresses.len() > 1 {
+                return Err(QemuClientError::Gpu(
+                    "Multiple GPUs found, currently only one GPU per metal instance is supported".to_string(),
+                ));
+            }
+
+            let gpu = gpu_group
+                .addresses
+                .first()
+                .ok_or_else(|| QemuClientError::Gpu("No supported GPU found".to_string()))?;
+
             args.extend([
                 "-device".into(),
                 "pcie-root-port,id=pci.1,bus=pcie.0".into(),
@@ -209,29 +230,7 @@ impl QemuClient {
             ]);
         }
 
-        Ok((disk, args))
-    }
-
-    async fn find_gpu() -> Result<String> {
-        // Resolve first NVIDIA PCI BDF
-        let result =
-            Command::new("bash").arg("-c").arg("lspci -d 10de: | awk '/NVIDIA/{print $1}' | head -n1").output().await;
-        let output = match result {
-            Ok(output) => output,
-            Err(e) => return Err(QemuClientError::Gpu(format!("failed to invoke command: {e}"))),
-        };
-        if !output.status.success() {
-            return Err(QemuClientError::Gpu(format!(
-                "executing command failed with status code: {}",
-                output.status.code().unwrap_or_default()
-            )));
-        }
-        let bdf = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if bdf.is_empty() {
-            Err(QemuClientError::Gpu("no GPU found".into()))
-        } else {
-            Ok(bdf)
-        }
+        Ok(args)
     }
 
     async fn load_details(&self, name: &str) -> Result<VmDetails> {
@@ -303,7 +302,7 @@ impl QemuClient {
         }
         fs::create_dir_all(&workdir).await?;
 
-        let (disk, _) = self.build_command_line(&workdir, &spec).await?;
+        let disk = get_vm_disk_path(&workdir);
         let args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
         let output = Self::invoke_cli_command(&self.qemu_img_bin, &args).await?;
         if !output.status.success() {
@@ -324,7 +323,7 @@ impl QemuClient {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let (_, args) = self.build_command_line(&details.workdir, &details.spec).await?;
+        let args = self.build_vm_start_cli_args(&details.workdir, &details.spec).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
         let output = Self::invoke_cli_command(&self.qemu_bin, &args).await?;
@@ -429,8 +428,7 @@ mod tests {
             display_gtk: false,
             enable_cvm: false,
         };
-        let (disk, args) = client.build_command_line(&workdir, &spec).await.expect("failed to build command line");
-        assert_eq!(disk, workdir.join("disk.qcow2"));
+        let args = client.build_vm_start_cli_args(&workdir, &spec).await.expect("failed to build command line");
         assert!(args.contains(&"2048".to_owned()));
         assert!(args.contains(&"2".to_owned()));
         assert!(args.iter().any(|a| a.contains("qmp.sock")));

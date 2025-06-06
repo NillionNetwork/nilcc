@@ -1,4 +1,4 @@
-use crate::data_schemas::{EmptyResponse, MetalInstanceDetails, SyncRequest};
+use crate::data_schemas::{EmptyResponse, MetalInstance, SyncRequest};
 use anyhow::Context;
 use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder, Response as ReqwestResponse};
 use tracing::debug;
@@ -44,7 +44,7 @@ impl AgentHttpRestClient {
     }
 
     /// Registers an agent
-    pub async fn register(&self, payload: MetalInstanceDetails) -> anyhow::Result<EmptyResponse> {
+    pub async fn register(&self, payload: MetalInstance) -> anyhow::Result<EmptyResponse> {
         let endpoint_suffix = "/api/v1/metal-instances/~/register";
         let full_url = format!("{}{endpoint_suffix}", self.api_base_url,);
         debug!("Sending agent registration request to {full_url}: {payload:?}");
