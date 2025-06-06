@@ -1,8 +1,21 @@
+import type { ContentfulStatusCode } from "hono/dist/types/utils/http-status";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 function isError(error: unknown): error is Error {
   return error instanceof Error;
+}
+
+function handleError<T extends AppError>(
+  error: unknown,
+  map: (error: Error) => T,
+) {
+  // If the error is an Error we can map it to a specific AppError
+  if (isError(error)) {
+    throw map(error);
+  }
+  // If the error is not an Error we create an error with the message using the error and hope it to be printable
+  throw map(new Error(`Unexpected error: ${error}`));
 }
 
 export function mapError<T extends AppError>(map: (error: Error) => T) {
@@ -18,26 +31,22 @@ export function mapError<T extends AppError>(map: (error: Error) => T) {
 
         if (result instanceof Promise) {
           return result.catch((error) => {
-            throw map(error);
+            handleError(error, map);
           });
         }
         return result;
       } catch (error) {
-        if (isError(error)) {
-          throw map(error);
-        }
-
-        throw map(new Error(`Unexpected error: ${error}`));
+        handleError(error, map);
       }
     };
     return descriptor;
   };
 }
 
-abstract class AppError {
+abstract class AppError extends Error {
   abstract readonly tag: string;
-  cause?: unknown;
-  constructor({ cause }: { cause?: unknown }) {
+  constructor(cause?: unknown) {
+    super();
     this.cause = cause;
   }
 
@@ -46,7 +55,7 @@ abstract class AppError {
       return [this.tag, ...this.cause.humanize()];
     }
     if (isError(this.cause)) {
-      return [this.tag, `Cause: ${this.cause}`];
+      return [this.tag, `Cause: ${this.cause.message}`];
     }
     return [this.tag, `Cause: ${this.cause}`];
   }
@@ -60,7 +69,7 @@ export class DataValidationError extends AppError {
     cause,
     issues,
   }: { cause?: unknown; issues: (string | ZodError)[] }) {
-    super({ cause });
+    super(cause);
     this.issues = issues;
   }
 
@@ -102,4 +111,27 @@ export class UpdateEntityError extends AppError {
 
 export class RemoveEntityError extends AppError {
   tag = "RemoveEntityError";
+}
+
+export class InstancesNotAvailable extends AppError {
+  tag = "InstancesNotAvailable";
+}
+
+export class HttpError extends AppError {
+  tag = "HttpError";
+  statusCode: ContentfulStatusCode;
+
+  constructor({
+    message,
+    statusCode,
+    cause,
+  }: { message: string; statusCode: ContentfulStatusCode; cause?: unknown }) {
+    super(cause);
+    this.statusCode = statusCode;
+    this.message = message;
+  }
+
+  override humanize(): string[] {
+    return [this.message];
+  }
 }
