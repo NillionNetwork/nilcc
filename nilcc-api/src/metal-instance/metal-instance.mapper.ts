@@ -1,5 +1,9 @@
-import type { GetMetalInstanceResponse } from "#/metal-instance/metal-instance.dto";
+import type {
+  GetMetalInstanceResponse,
+  SyncMetalInstanceResponse,
+} from "#/metal-instance/metal-instance.dto";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
+import { workloadMapper } from "#/workload/workload.mapper";
 
 export const metalInstanceMapper = {
   entityToResponse(
@@ -17,6 +21,19 @@ export const metalInstanceMapper = {
       gpuModel: metalInstance.gpuModel ?? undefined,
       createdAt: metalInstance.createdAt.toISOString(),
       updatedAt: metalInstance.updatedAt.toISOString(),
+    };
+  },
+
+  syncEntityToResponse(
+    metalInstance: MetalInstanceEntity,
+  ): SyncMetalInstanceResponse {
+    const metalInstanceResponse = this.entityToResponse(metalInstance);
+    const workloads = metalInstance.workloads
+      ? metalInstance.workloads.map((w) => workloadMapper.entityToResponse(w))
+      : [];
+    return {
+      ...metalInstanceResponse,
+      workloads,
     };
   },
 };

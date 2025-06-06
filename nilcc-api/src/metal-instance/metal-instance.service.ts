@@ -1,13 +1,18 @@
 import type { QueryRunner, Repository } from "typeorm";
 import {
+  CreateEntityError,
   CreateOrUpdateEntityError,
   FindEntityError,
   GetRepositoryError,
   mapError,
   RemoveEntityError,
+  UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type { RegisterMetalInstanceRequest } from "./metal-instance.dto";
+import type {
+  RegisterMetalInstanceRequest,
+  SyncMetalInstanceRequest,
+} from "./metal-instance.dto";
 import { MetalInstanceEntity } from "./metal-instance.entity";
 
 export class MetalInstanceService {
@@ -101,6 +106,7 @@ export class MetalInstanceService {
     return result;
   }
 
+  @mapError((e) => new UpdateEntityError({ cause: e }))
   async update(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -120,6 +126,7 @@ export class MetalInstanceService {
     await repository.save(currentMetalInstance);
   }
 
+  @mapError((e) => new CreateEntityError({ cause: e }))
   async create(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -141,6 +148,18 @@ export class MetalInstanceService {
       updatedAt: now,
     });
     await repository.save(newMetalInstance);
+  }
+
+  async sync(
+    bindings: AppBindings,
+    payload: SyncMetalInstanceRequest,
+    tx: QueryRunner,
+  ) {
+    const repository = this.getRepository(bindings, tx);
+    return await repository.findOne({
+      where: { id: payload.id },
+      relations: ["workloads"],
+    });
   }
 }
 
