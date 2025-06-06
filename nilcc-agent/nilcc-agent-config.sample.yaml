@@ -1,6 +1,8 @@
 agent_id: "f7b27e21-eabb-4acb-8cd7-1d8113fd2237"
 vm_store: /tmp
+
 nilcc_api_endpoint: "http://127.0.0.1:50051"
+nilcc_api_key: test
 
 gpu:
   model: "NVIDIA H100"

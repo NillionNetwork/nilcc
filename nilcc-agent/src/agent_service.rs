@@ -16,21 +16,15 @@ const DEFAULT_AGENT_SYNC_INTERVAL: Duration = Duration::from_secs(10);
 pub struct AgentServiceBuilder {
     agent_id: Uuid,
     nilcc_api_base_url: String,
-    api_key: Option<String>,
+    nilcc_api_key: String,
     gpu: Option<GpuDetails>,
     sync_interval: Option<Duration>,
 }
 
 impl AgentServiceBuilder {
     /// Creates a new builder.
-    fn new(agent_id: Uuid, nilcc_api_base_url: String) -> Self {
-        Self { agent_id, nilcc_api_base_url, api_key: None, sync_interval: None, gpu: None }
-    }
-
-    /// Sets the optional API key for authenticating requests to the nilCC API.
-    pub fn api_key(mut self, key: String) -> Self {
-        self.api_key = Some(key);
-        self
+    fn new(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String) -> Self {
+        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval: None, gpu: None }
     }
 
     /// Sets the interval for the periodic synchronization (status reporting) task, defaults to DEFAULT_AGENT_SYNC_INTERVAL (e.g. 10 seconds).
@@ -48,7 +42,7 @@ impl AgentServiceBuilder {
     /// Consumes the builder and constructs the AgentService instance.
     pub fn build(self) -> Result<AgentService> {
         let sync_interval = self.sync_interval.unwrap_or(DEFAULT_AGENT_SYNC_INTERVAL);
-        let http_client = Arc::new(AgentHttpRestClient::new(self.nilcc_api_base_url.clone(), self.api_key)?);
+        let http_client = Arc::new(AgentHttpRestClient::new(self.nilcc_api_base_url.clone(), self.nilcc_api_key)?);
 
         info!("Agent ID: {}", self.agent_id);
         info!("nilCC API: {}", self.nilcc_api_base_url);
@@ -67,8 +61,8 @@ pub struct AgentService {
 
 impl AgentService {
     /// Returns a new builder for `AgentService`.
-    pub fn builder(agent_id: Uuid, nilcc_api_base_url: String) -> AgentServiceBuilder {
-        AgentServiceBuilder::new(agent_id, nilcc_api_base_url)
+    pub fn builder(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String) -> AgentServiceBuilder {
+        AgentServiceBuilder::new(agent_id, nilcc_api_base_url, nilcc_api_key)
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.

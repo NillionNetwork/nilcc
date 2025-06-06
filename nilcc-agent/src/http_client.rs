@@ -7,12 +7,12 @@ use uuid::Uuid;
 pub struct AgentHttpRestClient {
     http_client: Client,
     api_base_url: String,
-    api_key: Option<String>,
+    api_key: String,
 }
 
 impl AgentHttpRestClient {
     /// Creates a new instance with the specified API base URL.
-    pub fn new(api_base_url: String, api_key: Option<String>) -> anyhow::Result<Self> {
+    pub fn new(api_base_url: String, api_key: String) -> anyhow::Result<Self> {
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -23,11 +23,7 @@ impl AgentHttpRestClient {
 
     fn prepare_request(&self, method: Method, endpoint_suffix: &str) -> ReqwestRequestBuilder {
         let url = format!("{}{endpoint_suffix}", self.api_base_url);
-        let mut request_builder = self.http_client.request(method, &url);
-        if let Some(key) = &self.api_key {
-            request_builder = request_builder.header("x-api-key", key);
-        }
-        request_builder
+        self.http_client.request(method, &url).header("x-api-key", &self.api_key)
     }
 
     async fn handle_response<T: serde::de::DeserializeOwned>(

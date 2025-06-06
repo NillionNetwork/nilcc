@@ -228,12 +228,12 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let api_endpoint = config
         .nilcc_api_endpoint
         .ok_or_else(|| anyhow::anyhow!("nilCC API endpoint is required when running in daemon mode"))?;
-    let api_key = config.nilcc_api_key.clone();
 
-    let mut agent_builder = AgentService::builder(agent_id, api_endpoint.clone());
-    if let Some(key) = api_key {
-        agent_builder = agent_builder.api_key(key);
-    }
+    let api_key =
+        config.nilcc_api_key.ok_or_else(|| anyhow::anyhow!("nilCC API key is required when running in daemon mode"))?;
+
+    let mut agent_builder = AgentService::builder(agent_id, api_endpoint.clone(), api_key);
+
     if let Some(gpu) = config.gpu {
         agent_builder = agent_builder.gpu(gpu);
     }
