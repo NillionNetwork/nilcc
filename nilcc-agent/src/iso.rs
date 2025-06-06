@@ -3,6 +3,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fmt,
+    fmt::Write,
     fs::{self, File},
     io::{self, BufWriter},
     iter, mem,
@@ -18,6 +19,35 @@ static RESERVED_PORTS: &[u16] = &[80, 443];
 
 // The list of container names that are reserved.
 static RESERVED_CONTAINERS: &[&str] = &["nilcc-attester", "nilcc-proxy"];
+
+/// The list of reserved environment variable names.
+static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &["NILCC_VERSION", "NILCC_VM_TYPE"];
+
+/// An environment variable.
+#[derive(Clone, Debug)]
+pub struct EnvironmentVariable {
+    /// The environment variable name.
+    pub name: String,
+
+    /// The environment variable value.
+    pub value: String,
+}
+
+impl FromStr for EnvironmentVariable {
+    type Err = ParseEnvironmentVariableError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (name, value) = s.split_once('=').ok_or(ParseEnvironmentVariableError)?;
+        let name = name.trim().to_string();
+        let value = value.to_string();
+        Ok(Self { name, value })
+    }
+}
+
+/// An error returned when parsing an environment variable.
+#[derive(Debug, thiserror::Error)]
+#[error("expected environment variable in <name>=<value> syntax")]
+pub struct ParseEnvironmentVariableError;
 
 /// Information about the API container that will be the entrypoint to the VM image.
 #[derive(Debug, Serialize)]
@@ -47,6 +77,9 @@ pub struct IsoSpec {
 
     /// The application's metadata.
     pub metadata: ApplicationMetadata,
+
+    /// The environment variables to be passed to the running containers.
+    pub environment_variables: Vec<EnvironmentVariable>,
 }
 
 /// Allows creating ISOs.
@@ -59,25 +92,34 @@ impl IsoMaker {
         spec: IsoSpec,
         iso_path: &Path,
     ) -> Result<IsoMetadata, ApplicationIsoError> {
-        let IsoSpec { docker_compose_yaml, metadata } = spec;
+        use ApplicationIsoError::*;
+        let IsoSpec { docker_compose_yaml, metadata, environment_variables } = spec;
         info!("Parsing docker compose YAML");
-        let compose: Compose =
-            serde_yaml::from_str(&docker_compose_yaml).map_err(ApplicationIsoError::YamlDeserialize)?;
+        let compose: Compose = serde_yaml::from_str(&docker_compose_yaml).map_err(YamlDeserialize)?;
 
         info!("Sanitizing docker compose");
         let compose = ComposeSanitizer { api: &metadata.api }.sanitize(compose)?;
 
-        let tempdir = tempfile::TempDir::with_prefix("nilcc-agent").map_err(ApplicationIsoError::Tempdir)?;
+        // Make sure no reserved environment variable names are used.
+        if let Some(var) =
+            environment_variables.iter().find(|e| RESERVED_ENVIRONMENT_VARIABLES.contains(&e.name.as_str()))
+        {
+            return Err(ReservedEnvironmentVariable(var.name.clone()));
+        }
+
+        let tempdir = tempfile::TempDir::with_prefix("nilcc-agent").map_err(Tempdir)?;
         let input_path = tempdir.path().join("contents");
-        create_dir_all(&input_path).await.map_err(ApplicationIsoError::FilesWrite)?;
+        create_dir_all(&input_path).await.map_err(FilesWrite)?;
 
         info!("Writing files into temporary directory: {}", input_path.display());
         let metadata = serde_json::to_string(&metadata)?;
-        let compose_file =
-            File::create(input_path.join("docker-compose.yaml")).map_err(ApplicationIsoError::FilesWrite)?;
+        let compose_file = File::create(input_path.join("docker-compose.yaml")).map_err(FilesWrite)?;
         let compose_file = BufWriter::new(compose_file);
-        serde_yaml::to_writer(compose_file, &compose).map_err(ApplicationIsoError::YamlSerialize)?;
-        fs::write(input_path.join("metadata.json"), &metadata).map_err(ApplicationIsoError::FilesWrite)?;
+        serde_yaml::to_writer(compose_file, &compose).map_err(YamlSerialize)?;
+        fs::write(input_path.join("metadata.json"), &metadata).map_err(FilesWrite)?;
+
+        let variables = Self::serialize_environment_variables(&environment_variables);
+        fs::write(input_path.join(".env"), &variables).map_err(FilesWrite)?;
 
         info!("Invoking mkisofs to generate ISO in {}", iso_path.display());
         let mut child = Command::new("mkisofs")
@@ -89,15 +131,23 @@ impl IsoMaker {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(ApplicationIsoError::SpawnMkisofs)?;
-        let status = child.wait().await.map_err(ApplicationIsoError::RunningMkisofs)?;
+            .map_err(SpawnMkisofs)?;
+        let status = child.wait().await.map_err(RunningMkisofs)?;
         if !status.success() {
-            return Err(ApplicationIsoError::MkisofsExit(status));
+            return Err(MkisofsExit(status));
         }
         info!("ISO file generated at {}", iso_path.display());
 
         let metadata = IsoMetadata { docker_compose_hash: Sha256::digest(&docker_compose_yaml).into() };
         Ok(metadata)
+    }
+
+    fn serialize_environment_variables(variables: &[EnvironmentVariable]) -> String {
+        let mut output = String::new();
+        for EnvironmentVariable { name, value } in variables {
+            writeln!(output, "{name}={value}").expect("cannot happen");
+        }
+        output
     }
 }
 
@@ -261,7 +311,7 @@ pub enum ApplicationIsoError {
     FilesWrite(io::Error),
 
     #[error("invalid docker compose: {0}")]
-    Compose(#[from] ComposeValidationError),
+    ComposeValidation(#[from] ComposeValidationError),
 
     #[error("spawning mkisofs: {0}")]
     SpawnMkisofs(io::Error),
@@ -271,6 +321,9 @@ pub enum ApplicationIsoError {
 
     #[error("mkisofs exited with error: {0}")]
     MkisofsExit(ExitStatus),
+
+    #[error("environment variable '{0}' is reserved")]
+    ReservedEnvironmentVariable(String),
 }
 
 /// An error during the docker compose file validation.
