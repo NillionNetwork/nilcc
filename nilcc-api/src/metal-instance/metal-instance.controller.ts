@@ -2,7 +2,6 @@ import { describeRoute } from "hono-openapi";
 import { resolver, validator as zValidator } from "hono-openapi/zod";
 import z from "zod";
 import { apiKey } from "#/common/auth";
-import { errorHandler } from "#/common/handler";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -37,7 +36,6 @@ export function register(options: ControllerOptions) {
     }),
     apiKey(bindings.config.metalInstanceApiKey),
     zValidator("json", RegisterMetalInstanceRequest),
-    errorHandler(),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
@@ -66,7 +64,6 @@ export function sync(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    errorHandler(),
     async (c) => {
       // Placeholder for creating a metal instance
       return c.json({ message: "Metal instance created" });
@@ -95,7 +92,6 @@ export function read(options: ControllerOptions) {
       },
     }),
     paramsValidator(idParamSchema),
-    errorHandler(),
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
       const id = c.req.param("id");
@@ -128,7 +124,6 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    errorHandler(),
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await metalInstanceService.list(bindings);

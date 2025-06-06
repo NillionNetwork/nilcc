@@ -3,6 +3,7 @@ import {
   CreateEntityError,
   FindEntityError,
   GetRepositoryError,
+  InstancesNotAvailable,
   mapError,
   RemoveEntityError,
   UpdateEntityError,
@@ -16,7 +17,7 @@ import type {
 import { WorkloadEntity } from "./workload.entity";
 
 export class WorkloadService {
-  @mapError((e) => new GetRepositoryError({ cause: e }))
+  @mapError((e) => new GetRepositoryError(e))
   getRepository(
     bindings: AppBindings,
     tx?: QueryRunner,
@@ -27,7 +28,7 @@ export class WorkloadService {
     return bindings.dataSource.getRepository(WorkloadEntity);
   }
 
-  @mapError((e) => new CreateEntityError({ cause: e }))
+  @mapError((e) => new CreateEntityError(e))
   async create(
     bindings: AppBindings,
     workload: CreateWorkloadRequest,
@@ -45,28 +46,31 @@ export class WorkloadService {
     );
 
     if (metalInstances.length === 0) {
-      throw new Error("No available instances with sufficient resources.");
+      throw new InstancesNotAvailable();
     }
+
+    const metalInstance =
+      metalInstances[Math.floor(Math.random() * metalInstances.length)];
 
     // Assign the first available metal instance to the workload
     const repository = this.getRepository(bindings, tx);
     const now = new Date();
     const entity = repository.create({
       ...workload,
-      metalInstance: metalInstances[0],
+      metalInstance,
       createdAt: now,
       updatedAt: now,
     });
     return await repository.save(entity);
   }
 
-  @mapError((e) => new FindEntityError({ cause: e }))
+  @mapError((e) => new FindEntityError(e))
   async list(bindings: AppBindings): Promise<WorkloadEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError({ cause: e }))
+  @mapError((e) => new FindEntityError(e))
   async read(
     bindings: AppBindings,
     workloadId: string,
@@ -75,7 +79,7 @@ export class WorkloadService {
     return await repository.findOneBy({ id: workloadId });
   }
 
-  @mapError((e) => new UpdateEntityError({ cause: e }))
+  @mapError((e) => new UpdateEntityError(e))
   async update(
     bindings: AppBindings,
     payload: UpdateWorkloadRequest,
@@ -98,7 +102,7 @@ export class WorkloadService {
     return updated.affected ? updated.affected > 0 : false;
   }
 
-  @mapError((e) => new RemoveEntityError({ cause: e }))
+  @mapError((e) => new RemoveEntityError(e))
   async remove(bindings: AppBindings, workloadId: string): Promise<boolean> {
     const repository = this.getRepository(bindings);
     const result = await repository.delete({ id: workloadId });

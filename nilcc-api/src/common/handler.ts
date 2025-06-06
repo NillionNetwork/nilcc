@@ -1,4 +1,4 @@
-import type { Context, Next } from "hono";
+import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
@@ -8,6 +8,7 @@ import {
   DataValidationError,
   FindEntityError,
   GetRepositoryError,
+  HttpError,
   RemoveEntityError,
   UpdateEntityError,
 } from "#/common/errors";
@@ -26,39 +27,37 @@ export const ApiErrorResponse = z
   .openapi({ ref: "ApiErrorResponse" });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
 
-export function errorHandler() {
-  return async (c: Context, next: Next) => {
-    const toResponse = (
-      errors: string[],
-      statusCode: ContentfulStatusCode,
-    ): Response => {
-      c.env.log.debug(errors);
-      const payload: ApiErrorResponse = {
-        ts: Temporal.Now.instant().toString(),
-        errors,
-      };
-      return c.json(payload, statusCode);
+export function errorHandler(e: unknown, c: Context) {
+  const toResponse = (
+    errors: string[],
+    statusCode: ContentfulStatusCode,
+  ): Response => {
+    c.env.log.debug(errors);
+    const payload: ApiErrorResponse = {
+      ts: Temporal.Now.instant().toString(),
+      errors,
     };
-
-    try {
-      return await next();
-    } catch (e) {
-      if (e instanceof DataValidationError) {
-        return toResponse(e.humanize(), StatusCodes.BAD_REQUEST);
-      }
-
-      if (
-        e instanceof GetRepositoryError ||
-        e instanceof CreateEntityError ||
-        e instanceof FindEntityError ||
-        e instanceof UpdateEntityError ||
-        e instanceof RemoveEntityError
-      ) {
-        return toResponse(e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
-      }
-
-      // Default error
-      return toResponse(["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
-    }
+    return c.json(payload, statusCode);
   };
+
+  if (e instanceof DataValidationError) {
+    return toResponse(e.humanize(), StatusCodes.BAD_REQUEST);
+  }
+
+  if (e instanceof HttpError) {
+    return toResponse(e.humanize(), e.statusCode);
+  }
+
+  if (
+    e instanceof GetRepositoryError ||
+    e instanceof CreateEntityError ||
+    e instanceof FindEntityError ||
+    e instanceof UpdateEntityError ||
+    e instanceof RemoveEntityError
+  ) {
+    return toResponse(e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
+  }
+
+  // Default error
+  return toResponse(["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
 }

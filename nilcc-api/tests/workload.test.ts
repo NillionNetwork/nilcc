@@ -43,7 +43,7 @@ describe("workload CRUD", () => {
     const myWorkloadResponse = await workloadClient.create(
       createWorkloadRequest,
     );
-    expect(myWorkloadResponse.response.status).equal(500);
+    expect(myWorkloadResponse.response.status).equal(503);
   });
 
   it("should create a workload", async ({
@@ -71,7 +71,7 @@ describe("workload CRUD", () => {
     const myWorkloadResponse = await workloadClient.create(
       overloadedWorkloadRequest,
     );
-    expect(myWorkloadResponse.response.status).equal(500);
+    expect(myWorkloadResponse.response.status).equal(503);
   });
 
   it("should get a workload", async ({ expect, workloadClient }) => {

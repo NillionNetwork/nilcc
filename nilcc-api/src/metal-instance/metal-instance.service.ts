@@ -11,7 +11,7 @@ import type { RegisterMetalInstanceRequest } from "./metal-instance.dto";
 import { MetalInstanceEntity } from "./metal-instance.entity";
 
 export class MetalInstanceService {
-  @mapError((e) => new GetRepositoryError({ cause: e }))
+  @mapError((e) => new GetRepositoryError(e))
   getRepository(
     bindings: AppBindings,
     tx?: QueryRunner,
@@ -22,13 +22,13 @@ export class MetalInstanceService {
     return bindings.dataSource.getRepository(MetalInstanceEntity);
   }
 
-  @mapError((e) => new FindEntityError({ cause: e }))
+  @mapError((e) => new FindEntityError(e))
   async list(bindings: AppBindings): Promise<MetalInstanceEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError({ cause: e }))
+  @mapError((e) => new FindEntityError(e))
   async read(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -38,7 +38,7 @@ export class MetalInstanceService {
     return await repository.findOneBy({ id: metalInstanceId });
   }
 
-  @mapError((e) => new RemoveEntityError({ cause: e }))
+  @mapError((e) => new RemoveEntityError(e))
   async remove(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -48,7 +48,7 @@ export class MetalInstanceService {
     return result.affected ? result.affected > 0 : false;
   }
 
-  @mapError((e) => new CreateOrUpdateEntityError({ cause: e }))
+  @mapError((e) => new CreateOrUpdateEntityError(e))
   async createOrUpdate(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -114,7 +114,6 @@ export class MetalInstanceService {
     currentMetalInstance.memory = metalInstance.memory;
     currentMetalInstance.disk = metalInstance.disk;
     currentMetalInstance.gpu = metalInstance.gpu;
-    currentMetalInstance.disk = metalInstance.disk;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
     currentMetalInstance.ipAddress = metalInstance.ipAddress;
     currentMetalInstance.updatedAt = new Date();

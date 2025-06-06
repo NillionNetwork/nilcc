@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { timeout } from "hono/timeout";
 import { Temporal } from "temporal-polyfill";
+import { errorHandler } from "#/common/handler";
 import {
   type AppBindings,
   type AppEnv,
@@ -45,6 +46,8 @@ export async function buildApp(
 
   const limit = Temporal.Duration.from({ minutes: 1 }).total("milliseconds");
   app.use("*", timeout(limit));
+
+  app.onError(errorHandler);
 
   return { app, metrics: metricsApp };
 }

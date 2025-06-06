@@ -1,7 +1,12 @@
 import { describeRoute } from "hono-openapi";
 import { resolver, validator as zValidator } from "hono-openapi/zod";
+import { StatusCodes } from "http-status-codes";
 import z from "zod";
-import { errorHandler } from "#/common/handler";
+import {
+  CreateEntityError,
+  HttpError,
+  InstancesNotAvailable,
+} from "#/common/errors";
 import {
   OpenApiSpecCommonErrorResponses,
   OpenApiSpecEmptySuccessResponses,
@@ -45,17 +50,29 @@ export function create(options: ControllerOptions): void {
       },
     }),
     zValidator("json", CreateWorkloadRequest),
-    errorHandler(),
     responseValidator(bindings, CreateWorkloadResponse),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      const workload = await workloadService.create(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      return c.json(workloadMapper.entityToResponse(workload));
+      try {
+        const workload = await workloadService.create(
+          bindings,
+          payload,
+          c.get("txQueryRunner"),
+        );
+        return c.json(workloadMapper.entityToResponse(workload));
+      } catch (e: unknown) {
+        if (
+          e instanceof CreateEntityError &&
+          e.cause instanceof InstancesNotAvailable
+        ) {
+          throw new HttpError({
+            message: "No available instances to create workload",
+            statusCode: StatusCodes.SERVICE_UNAVAILABLE,
+          });
+        }
+        throw e;
+      }
     },
   );
 }
@@ -81,7 +98,6 @@ export function list(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    errorHandler(),
     responseValidator(bindings, CreateWorkloadResponse.array()),
     async (c) => {
       const workloads = await workloadService.list(bindings);
@@ -111,7 +127,6 @@ export function read(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    errorHandler(),
     paramsValidator(idParamSchema),
     responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
@@ -139,7 +154,6 @@ export function update(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    errorHandler(),
     zValidator("json", UpdateWorkloadRequest),
     async (c) => {
       const payload = c.req.valid("json");
@@ -166,7 +180,6 @@ export function remove(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    errorHandler(),
     paramsValidator(idParamSchema),
     async (c) => {
       const workloadId = c.req.valid("param").id;
