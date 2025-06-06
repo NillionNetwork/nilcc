@@ -5,10 +5,10 @@ use crate::{
     http_client::AgentHttpRestClient,
 };
 use anyhow::{Context, Result};
-use std::{net::IpAddr, sync::Arc, time::Duration};
-use sysinfo::{Disks, IpNetwork, NetworkData, Networks, System};
+use std::{sync::Arc, time::Duration};
+use sysinfo::{Disks, System};
 use tokio::sync::watch;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 const DEFAULT_AGENT_SYNC_INTERVAL: Duration = Duration::from_secs(10);
@@ -172,62 +172,6 @@ impl Drop for AgentService {
     }
 }
 
-// Finds a suitable IPv4 address (prefers public, or private if public not found) from the system's network interfaces.
-fn find_ipv4_address(networks: Networks) -> Result<String> {
-    let mut sorted_interfaces: Vec<(&String, &NetworkData)> = networks.iter().collect();
-    sorted_interfaces.sort_unstable_by_key(|(name, _)| *name);
-
-    let mut private_ipv4: String = String::new(); // Fallback for private IPv4 if no public address is found
-
-    for (interface_name, interface) in sorted_interfaces {
-        debug!("Inspecting network interface: '{interface_name}' (MAC: {})", interface.mac_address());
-
-        let mut sorted_ip_networks: Vec<&IpNetwork> = interface.ip_networks().iter().collect();
-        sorted_ip_networks.sort_unstable_by_key(|ip_net| ip_net.addr);
-
-        for ip_network in sorted_ip_networks {
-            if let IpAddr::V4(ipv4_addr) = ip_network.addr {
-                if ipv4_addr.is_loopback() || ipv4_addr.is_unspecified() {
-                    debug!(
-                        "  Skipping loopback or unspecified IPv4 address: {} on interface '{}'.",
-                        ipv4_addr, interface_name
-                    );
-                    continue;
-                }
-
-                // Check if the IPv4 address is globally routable (public)
-                if ipv4_addr.is_global() {
-                    let public_ip = ipv4_addr.to_string();
-                    debug!("  Found public (globally routable) IPv4: {public_ip} on interface '{interface_name}'.",);
-                    return Ok(public_ip);
-                }
-
-                // If not public, check if it's private
-                if ipv4_addr.is_private() {
-                    let private_ip = ipv4_addr.to_string();
-                    debug!(
-                        "  Found suitable private IPv4: {private_ip} on interface '{interface_name}'. Storing as fallback.",
-                    );
-                    private_ipv4 = private_ip;
-                } else {
-                    debug!(
-                        "  IPv4 {} is not global and not private (e.g., link-local, other special). Skipping for fallback consideration.",
-                        ipv4_addr
-                    );
-                }
-            }
-        }
-    }
-
-    if !private_ipv4.is_empty() {
-        warn!("No public IPv4 address found. Returning last suitable private IPv4: {}", private_ipv4);
-    } else {
-        return Err(anyhow::anyhow!("No suitable IPv4 address found."));
-    }
-
-    Ok(private_ipv4)
-}
-
 // Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
 fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>) -> Result<MetalInstanceDetails> {
     info!("Gathering metal instance details...");
@@ -252,9 +196,6 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
         (None, None)
     };
 
-    let ip_address =
-        find_ipv4_address(Networks::new_with_refreshed_list()).context("Failed to find a suitable IPv4 address")?;
-
     let details = MetalInstanceDetails {
         id: agent_id,
         agent_version: get_agent_version().to_string(),
@@ -264,7 +205,6 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
         cpu,
         gpu,
         gpu_model,
-        ip_address,
     };
 
     Ok(details)
