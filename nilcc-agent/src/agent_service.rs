@@ -87,9 +87,8 @@ impl AgentService {
         let instance_details = gather_metal_instance_details(self.agent_id, self.gpu.clone())?;
         info!("Metal instance details: {instance_details:?}");
 
-        let response = self.http_client.register(instance_details).await.map_err(|e| {
-            error!("Agent registration failed: {}", e);
-            e
+        let response = self.http_client.register(instance_details).await.inspect_err(|e| {
+            error!("Agent registration failed: {e:#}");
         })?;
 
         info!("Agent {} successfully registered with API. Server message: {response:?}", self.agent_id);
