@@ -1,5 +1,3 @@
-#![feature(ip)]
-
 pub mod agent_service;
 pub mod build_info;
 pub mod config;

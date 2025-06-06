@@ -12,7 +12,6 @@ pub struct MetalInstanceDetails {
     pub cpu: u32,
     pub gpu: Option<u32>,
     pub gpu_model: Option<String>,
-    pub ip_address: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
