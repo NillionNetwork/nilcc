@@ -1,7 +1,7 @@
 use crate::{
     build_info::get_agent_version,
-    config::GpuDetails,
-    data_schemas::{MetalInstanceDetails, SyncRequest},
+    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest},
+    gpu,
     http_client::AgentHttpRestClient,
 };
 use anyhow::{Context, Result};
@@ -17,25 +17,18 @@ pub struct AgentServiceBuilder {
     agent_id: Uuid,
     nilcc_api_base_url: String,
     nilcc_api_key: String,
-    gpu: Option<GpuDetails>,
     sync_interval: Option<Duration>,
 }
 
 impl AgentServiceBuilder {
     /// Creates a new builder.
     fn new(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String) -> Self {
-        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval: None, gpu: None }
+        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval: None }
     }
 
     /// Sets the interval for the periodic synchronization (status reporting) task, defaults to DEFAULT_AGENT_SYNC_INTERVAL (e.g. 10 seconds).
     pub fn sync_interval(mut self, interval: Duration) -> Self {
         self.sync_interval = Some(interval);
-        self
-    }
-
-    /// Sets the GPU details of the agents machine.
-    pub fn gpu(mut self, gpu: GpuDetails) -> Self {
-        self.gpu = Some(gpu);
         self
     }
 
@@ -47,7 +40,7 @@ impl AgentServiceBuilder {
         info!("Agent ID: {}", self.agent_id);
         info!("nilCC API: {}", self.nilcc_api_base_url);
 
-        Ok(AgentService { http_client, agent_id: self.agent_id, sync_interval, gpu: self.gpu, sync_executor: None })
+        Ok(AgentService { http_client, agent_id: self.agent_id, sync_interval, sync_executor: None })
     }
 }
 
@@ -55,7 +48,6 @@ pub struct AgentService {
     http_client: Arc<AgentHttpRestClient>,
     agent_id: Uuid,
     sync_interval: Duration,
-    gpu: Option<GpuDetails>,
     sync_executor: Option<watch::Sender<()>>,
 }
 
@@ -84,10 +76,11 @@ impl AgentService {
     async fn perform_registration(&mut self) -> Result<()> {
         info!("Attempting to register agent...");
 
-        let instance_details = gather_metal_instance_details(self.agent_id, self.gpu.clone())?;
-        info!("Metal instance details: {instance_details:?}");
+        let details = gather_metal_instance_details().await?;
+        let instance = MetalInstance { id: self.agent_id, details };
+        info!("Metal instance: {instance:?}");
 
-        let response = self.http_client.register(instance_details).await.inspect_err(|e| {
+        let response = self.http_client.register(instance).await.inspect_err(|e| {
             error!("Agent registration failed: {e:#}");
         })?;
 
@@ -166,7 +159,7 @@ impl Drop for AgentService {
 }
 
 // Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>) -> Result<MetalInstanceDetails> {
+pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
     info!("Gathering metal instance details...");
 
     let mut sys = System::new_all();
@@ -183,20 +176,18 @@ fn gather_metal_instance_details(agent_id: Uuid, gpu_details: Option<GpuDetails>
     }
     let disk = root_disk_bytes / (1024 * 1024 * 1024);
     let cpu = sys.cpus().len() as u32;
-    let (gpu_model, gpu) = if let Some(gpu_details) = gpu_details {
-        (Some(gpu_details.model.clone()), Some(gpu_details.count))
-    } else {
-        (None, None)
-    };
+    let gpu_group = gpu::find_gpus().await?;
+
+    let (gpu_model, gpu_count) =
+        gpu_group.map(|group| (Some(group.model.clone()), Some(group.addresses.len() as u32))).unwrap_or_default();
 
     let details = MetalInstanceDetails {
-        id: agent_id,
         agent_version: get_agent_version().to_string(),
         hostname,
         memory,
         disk,
         cpu,
-        gpu,
+        gpu: gpu_count,
         gpu_model,
     };
 

@@ -41,6 +41,9 @@ enum Command {
         #[clap(long, short, default_value = "nilcc-agent-config.yaml")]
         config: PathBuf,
     },
+
+    /// Show metal instance information
+    Info,
 }
 
 #[derive(Subcommand)]
@@ -239,8 +242,8 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let mut agent_builder = AgentService::builder(agent_id, api_endpoint.clone(), api_key);
 
-    if let Some(gpu) = config.gpu {
-        agent_builder = agent_builder.gpu(gpu);
+    if let Some(sync_interval) = config.sync_interval {
+        agent_builder = agent_builder.sync_interval(sync_interval);
     }
 
     let mut agent_service = agent_builder.build().context("Building AgentService")?;
@@ -263,6 +266,10 @@ async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
             let agent_config = load_config(config).context("Loading agent configuration")?;
             run_daemon(agent_config).await?;
             Ok(Box::new(()))
+        }
+        Command::Info => {
+            let instance_details = nilcc_agent::agent_service::gather_metal_instance_details().await?;
+            Ok(Box::new(instance_details))
         }
     }
 }

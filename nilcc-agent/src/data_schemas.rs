@@ -4,7 +4,6 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MetalInstanceDetails {
-    pub id: Uuid,
     pub agent_version: String,
     pub hostname: String,
     pub memory: u64,
@@ -12,6 +11,15 @@ pub struct MetalInstanceDetails {
     pub cpu: u32,
     pub gpu: Option<u32>,
     pub gpu_model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MetalInstance {
+    pub id: Uuid,
+
+    #[serde(flatten)]
+    pub details: MetalInstanceDetails,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

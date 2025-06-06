@@ -1,6 +1,6 @@
 use clap::Args;
-use serde::{Deserialize, Serialize};
-use std::{env, path::PathBuf};
+use serde::Deserialize;
+use std::{env, path::PathBuf, time::Duration};
 use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
 use uuid::Uuid;
 
@@ -70,14 +70,8 @@ pub struct AgentConfig {
     #[clap(long = "nilcc-api-key", short = 'k', env = "NILCC_API_KEY")]
     pub nilcc_api_key: Option<String>,
 
-    /// GPU details
-    #[clap(skip)]
-    #[serde(default)]
-    pub gpu: Option<GpuDetails>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct GpuDetails {
-    pub model: String,
-    pub count: u32,
+    /// Interval for periodic synchronization task, defaults to 10 seconds
+    #[clap(long = "sync-interval", short = 's', default_value = "10sec", value_parser = humantime::parse_duration)]
+    #[serde(with = "humantime_serde::option")]
+    pub sync_interval: Option<Duration>,
 }
