@@ -7,6 +7,7 @@ pub mod http_client;
 pub mod iso;
 pub mod output;
 pub mod qemu_client;
+pub mod repositories;
 
 #[cfg(test)]
 mod tests;
