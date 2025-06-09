@@ -33,10 +33,12 @@ describe("workload CRUD", () => {
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     hostname: "my-metal-instance",
-    memory: 128,
-    cpu: 64,
-    disk: 1024,
-    ipAddress: "85.45.42.69",
+    totalMemory: 128,
+    osReservedMemory: 8,
+    totalCpu: 64,
+    osReservedCpu: 4,
+    totalDisk: 1024,
+    osReservedDisk: 100,
   };
 
   it("should fail to create a workload if there isn't a metal instance", async ({

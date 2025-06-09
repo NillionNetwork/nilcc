@@ -9,6 +9,7 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
+import { workloadService } from "#/workload/workload.service";
 import type {
   RegisterMetalInstanceRequest,
   SyncMetalInstanceRequest,
@@ -27,13 +28,13 @@ export class MetalInstanceService {
     return bindings.dataSource.getRepository(MetalInstanceEntity);
   }
 
-  @mapError((e) => new FindEntityError(e))
+  @mapError((e) => new FindEntityError(MetalInstanceEntity, e))
   async list(bindings: AppBindings): Promise<MetalInstanceEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError(e))
+  @mapError((e) => new FindEntityError(MetalInstanceEntity, e))
   async read(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -43,7 +44,7 @@ export class MetalInstanceService {
     return await repository.findOneBy({ id: metalInstanceId });
   }
 
-  @mapError((e) => new RemoveEntityError(e))
+  @mapError((e) => new RemoveEntityError(MetalInstanceEntity, e))
   async remove(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -53,7 +54,7 @@ export class MetalInstanceService {
     return result.affected ? result.affected > 0 : false;
   }
 
-  @mapError((e) => new CreateOrUpdateEntityError(e))
+  @mapError((e) => new CreateOrUpdateEntityError(MetalInstanceEntity, e))
   async createOrUpdate(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -82,15 +83,15 @@ export class MetalInstanceService {
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
       .having(
-        "metalInstance.cpu - COALESCE(SUM(workload.cpu), 0) > :requiredCpus",
+        "metalInstance.totalCpu - metalInstance.osReservedCpu - COALESCE(SUM(workload.cpu), 0) > :requiredCpus",
         { requiredCpus: param.cpu },
       )
       .andHaving(
-        "metalInstance.memory - COALESCE(SUM(workload.memory), 0) > :requiredMemory",
+        "metalInstance.totalMemory - metalInstance.osReservedMemory - COALESCE(SUM(workload.memory), 0) > :requiredMemory",
         { requiredMemory: param.memory },
       )
       .andHaving(
-        "metalInstance.disk - COALESCE(SUM(workload.disk), 0) > :requiredDisk",
+        "metalInstance.totalDisk - metalInstance.osReservedDisk - COALESCE(SUM(workload.disk), 0) > :requiredDisk",
         { requiredDisk: param.disk },
       );
 
@@ -106,7 +107,7 @@ export class MetalInstanceService {
     return result;
   }
 
-  @mapError((e) => new UpdateEntityError({ cause: e }))
+  @mapError((e) => new UpdateEntityError(MetalInstanceEntity, e))
   async update(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -116,17 +117,23 @@ export class MetalInstanceService {
     const repository = this.getRepository(bindings, tx);
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
     currentMetalInstance.hostname = metalInstance.hostname;
-    currentMetalInstance.cpu = metalInstance.cpu;
-    currentMetalInstance.memory = metalInstance.memory;
-    currentMetalInstance.disk = metalInstance.disk;
+
+    currentMetalInstance.totalCpu = metalInstance.totalCpu;
+    currentMetalInstance.osReservedCpu = metalInstance.osReservedCpu;
+
+    currentMetalInstance.totalMemory = metalInstance.totalMemory;
+    currentMetalInstance.osReservedMemory = metalInstance.osReservedMemory;
+
+    currentMetalInstance.totalDisk = metalInstance.totalDisk;
+    currentMetalInstance.osReservedDisk = metalInstance.osReservedDisk;
+
     currentMetalInstance.gpu = metalInstance.gpu;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
-    currentMetalInstance.ipAddress = metalInstance.ipAddress;
     currentMetalInstance.updatedAt = new Date();
     await repository.save(currentMetalInstance);
   }
 
-  @mapError((e) => new CreateEntityError({ cause: e }))
+  @mapError((e) => new CreateEntityError(MetalInstanceEntity, e))
   async create(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -138,12 +145,14 @@ export class MetalInstanceService {
       id: metalInstance.id,
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
-      cpu: metalInstance.cpu,
-      memory: metalInstance.memory,
-      disk: metalInstance.disk,
+      totalCpu: metalInstance.totalCpu,
+      osReservedCpu: metalInstance.osReservedCpu,
+      totalMemory: metalInstance.totalMemory,
+      osReservedMemory: metalInstance.osReservedMemory,
+      totalDisk: metalInstance.totalDisk,
+      osReservedDisk: metalInstance.osReservedDisk,
       gpu: metalInstance.gpu,
       gpuModel: metalInstance.gpuModel,
-      ipAddress: metalInstance.ipAddress,
       createdAt: now,
       updatedAt: now,
     });
@@ -156,10 +165,33 @@ export class MetalInstanceService {
     tx: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
-    return await repository.findOne({
+    const instance = await repository.findOne({
       where: { id: payload.id },
       relations: ["workloads"],
     });
+    if (!instance) {
+      return null;
+    }
+    const workloadRepository = workloadService.getRepository(bindings, tx);
+    await Promise.all(
+      payload.workloads.map(async (w) => {
+        const workload = instance.workloads?.find((wl) => wl.id === w.id);
+        if (!workload) {
+          bindings.log.warn(
+            `Trying to sync metal instance: Workload with id ${w.id} not found in instance ${payload.id}`,
+          );
+          return;
+        }
+        workload.status = w.status;
+        await workloadRepository.save(workload);
+      }),
+    );
+    const instanceUpdated = await repository.findOne({
+      where: { id: payload.id },
+      relations: ["workloads"],
+    });
+
+    return instanceUpdated;
   }
 }
 

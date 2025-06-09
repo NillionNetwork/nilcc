@@ -8,7 +8,8 @@
     "start": "tsx src/main.ts",
     "test": "vitest --run tests/",
     "migrate": "tsx bin/migrate.ts",
-    "fmt": "biome format ."
+    "fmt": "biome format .",
+    "compile": "tsc"
   },
   "engines": {
     "node": ">=24"

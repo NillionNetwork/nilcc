@@ -93,23 +93,40 @@ export class GetRepositoryError extends AppError {
   tag = "GetRepositoryError";
 }
 
-export class CreateEntityError extends AppError {
+abstract class EntityError<T extends object> extends AppError {
+  entity: T;
+
+  constructor(entity: T, cause?: unknown) {
+    super(cause);
+    this.entity = entity;
+  }
+
+  override humanize(): string[] {
+    const baseMessage = super.humanize();
+    delete baseMessage[0];
+    return [`${this.tag}<${this.entity.constructor.name}>`, ...baseMessage];
+  }
+}
+
+export class CreateEntityError<T extends object> extends EntityError<T> {
   tag = "CreateEntityError";
 }
 
-export class CreateOrUpdateEntityError extends AppError {
+export class CreateOrUpdateEntityError<
+  T extends object,
+> extends EntityError<T> {
   tag = "CreateOrUpdateEntityError";
 }
 
-export class FindEntityError extends AppError {
+export class FindEntityError<T extends object> extends EntityError<T> {
   tag = "FindEntityError";
 }
 
-export class UpdateEntityError extends AppError {
+export class UpdateEntityError<T extends object> extends EntityError<T> {
   tag = "UpdateEntityError";
 }
 
-export class RemoveEntityError extends AppError {
+export class RemoveEntityError<T extends object> extends EntityError<T> {
   tag = "RemoveEntityError";
 }
 

@@ -29,10 +29,11 @@ export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
 
 export function errorHandler(e: unknown, c: Context) {
   const toResponse = (
+    e: Error | null,
     errors: string[],
     statusCode: ContentfulStatusCode,
   ): Response => {
-    c.env.log.debug(errors);
+    e && c.env.log.debug(e);
     const payload: ApiErrorResponse = {
       ts: Temporal.Now.instant().toString(),
       errors,
@@ -41,11 +42,11 @@ export function errorHandler(e: unknown, c: Context) {
   };
 
   if (e instanceof DataValidationError) {
-    return toResponse(e.humanize(), StatusCodes.BAD_REQUEST);
+    return toResponse(e, e.humanize(), StatusCodes.BAD_REQUEST);
   }
 
   if (e instanceof HttpError) {
-    return toResponse(e.humanize(), e.statusCode);
+    return toResponse(e, e.humanize(), e.statusCode);
   }
 
   if (
@@ -55,9 +56,12 @@ export function errorHandler(e: unknown, c: Context) {
     e instanceof UpdateEntityError ||
     e instanceof RemoveEntityError
   ) {
-    return toResponse(e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
+    return toResponse(e, e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
   }
 
+  if (e instanceof Error) {
+    return toResponse(e, [e.message], StatusCodes.INTERNAL_SERVER_ERROR);
+  }
   // Default error
-  return toResponse(["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
+  return toResponse(null, ["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
 }
