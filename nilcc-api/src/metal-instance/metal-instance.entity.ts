@@ -13,22 +13,28 @@ export class MetalInstanceEntity {
   agentVersion: string;
 
   @Column({ type: "int" })
-  memory: number;
+  totalMemory: number;
 
   @Column({ type: "int" })
-  cpu: number;
+  osReservedMemory: number;
 
   @Column({ type: "int" })
-  disk: number;
+  totalCpu: number;
+
+  @Column({ type: "int" })
+  osReservedCpu: number;
+
+  @Column({ type: "int" })
+  totalDisk: number;
+
+  @Column({ type: "int" })
+  osReservedDisk: number;
 
   @Column({ type: "int", nullable: true })
   gpu?: number;
 
   @Column({ type: "varchar", nullable: true })
   gpuModel?: string;
-
-  @Column({ type: "varchar" })
-  ipAddress: string;
 
   @OneToMany(
     () => WorkloadEntity,

@@ -28,7 +28,7 @@ export class WorkloadService {
     return bindings.dataSource.getRepository(WorkloadEntity);
   }
 
-  @mapError((e) => new CreateEntityError(e))
+  @mapError((e) => new CreateEntityError(WorkloadEntity, e))
   async create(
     bindings: AppBindings,
     workload: CreateWorkloadRequest,
@@ -64,13 +64,13 @@ export class WorkloadService {
     return await repository.save(entity);
   }
 
-  @mapError((e) => new FindEntityError(e))
+  @mapError((e) => new FindEntityError(WorkloadEntity, e))
   async list(bindings: AppBindings): Promise<WorkloadEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError(e))
+  @mapError((e) => new FindEntityError(WorkloadEntity, e))
   async read(
     bindings: AppBindings,
     workloadId: string,
@@ -79,12 +79,13 @@ export class WorkloadService {
     return await repository.findOneBy({ id: workloadId });
   }
 
-  @mapError((e) => new UpdateEntityError(e))
+  @mapError((e) => new UpdateEntityError(WorkloadEntity, e))
   async update(
     bindings: AppBindings,
     payload: UpdateWorkloadRequest,
+    tx?: QueryRunner,
   ): Promise<boolean> {
-    const repository = this.getRepository(bindings);
+    const repository = this.getRepository(bindings, tx);
     const updated = await repository.update(
       { id: payload.id },
       {
@@ -103,7 +104,7 @@ export class WorkloadService {
     return updated.affected ? updated.affected > 0 : false;
   }
 
-  @mapError((e) => new RemoveEntityError(e))
+  @mapError((e) => new RemoveEntityError(WorkloadEntity, e))
   async remove(bindings: AppBindings, workloadId: string): Promise<boolean> {
     const repository = this.getRepository(bindings);
     const result = await repository.delete({ id: workloadId });

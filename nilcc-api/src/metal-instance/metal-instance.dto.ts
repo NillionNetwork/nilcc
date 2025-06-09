@@ -7,12 +7,14 @@ export const RegisterMetalInstanceRequest = z
     id: Uuid,
     agentVersion: z.string().min(1, "Agent version is required"),
     hostname: z.string().min(10, "hostname is required"),
-    memory: z.number().int().positive(),
-    cpu: z.number().int().positive(),
-    disk: z.number().int().positive(),
+    totalMemory: z.number().int().positive(),
+    osReservedMemory: z.number().int().positive(),
+    totalCpu: z.number().int().positive(),
+    osReservedCpu: z.number().int().positive(),
+    totalDisk: z.number().int().positive(),
+    osReservedDisk: z.number().int().positive(),
     gpu: z.number().int().positive().optional(),
     gpuModel: z.string().optional(),
-    ipAddress: z.string().ip(),
   })
   .openapi({ ref: "RegisterMetalInstanceRequest" });
 export type RegisterMetalInstanceRequest = z.infer<
@@ -34,9 +36,17 @@ export type ListMetalInstancesResponse = z.infer<
   typeof ListMetalInstancesResponse
 >;
 
+export const SyncWorkload = z
+  .object({
+    id: Uuid,
+    status: z.enum(["pending", "running", "stopped", "error"]),
+  })
+  .array();
+
 export const SyncMetalInstanceRequest = z
   .object({
     id: Uuid,
+    workloads: SyncWorkload,
   })
   .openapi({ ref: "SyncMetalInstanceRequest" });
 export type SyncMetalInstanceRequest = z.infer<typeof SyncMetalInstanceRequest>;

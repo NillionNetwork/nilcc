@@ -13,10 +13,12 @@ describe("Metal Instance", () => {
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     hostname: "my-metal-instance",
-    memory: 128,
-    cpu: 64,
-    disk: 1024,
-    ipAddress: "85.45.42.69",
+    totalMemory: 128,
+    osReservedMemory: 8,
+    totalCpu: 64,
+    osReservedCpu: 4,
+    totalDisk: 1024,
+    osReservedDisk: 100,
   };
 
   const createWorkloadRequest: CreateWorkloadRequest = {
@@ -60,7 +62,11 @@ describe("Metal Instance", () => {
     expect,
     metalInstanceClient,
   }) => {
-    const updatedMetalInstance = { ...myMetalInstance, memory: 256, cpu: 128 };
+    const updatedMetalInstance = {
+      ...myMetalInstance,
+      totalMemory: 256,
+      totalCpu: 128,
+    };
     const response = await metalInstanceClient.register(updatedMetalInstance);
     expect(response.status).equals(200);
     const getResponse = await metalInstanceClient.get({
@@ -71,17 +77,39 @@ describe("Metal Instance", () => {
     const cleanBody = { ...body, updatedAt: undefined, createdAt: undefined };
     expect(cleanBody).toEqual(updatedMetalInstance);
   });
+
   it("should sync the metal instance", async ({
     expect,
     metalInstanceClient,
     workloadClient,
   }) => {
-    await workloadClient.create(createWorkloadRequest);
+    const createWokloadResponse = await workloadClient.create(
+      createWorkloadRequest,
+    );
+    const createWokload = await createWokloadResponse.parse_body();
     const syncResponse = await metalInstanceClient.sync({
       id: myMetalInstance.id,
+      workloads: [],
     });
     expect(syncResponse.response.status).equals(200);
     const body = await syncResponse.parse_body();
     expect(body.workloads.length).toEqual(1);
+
+    const sync2Response = await metalInstanceClient.sync({
+      id: myMetalInstance.id,
+      workloads: [
+        {
+          id: createWokload.id,
+          status: "running",
+        },
+      ],
+    });
+    expect(sync2Response.response.status).equals(200);
+    const workloadAfterSync = await workloadClient.get({
+      id: createWokload.id,
+    });
+    expect(workloadAfterSync.response.status).equals(200);
+    const workloadAfterSyncBody = await workloadAfterSync.parse_body();
+    expect(workloadAfterSyncBody.status).toEqual("running");
   });
 });
