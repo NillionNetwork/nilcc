@@ -62,14 +62,14 @@ $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \
   -append "${KERNEL_ARGS}" \
   -drive file=$VM_IMAGE,if=none,id=disk0,format=qcow2 \
   -device virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=disk0,bootindex=1 \
+  -device scsi-hd,drive=disk0 \
   -drive file=$VM_IMAGE_HASH_DEV,if=none,id=root-disk,format=raw \
   -device virtio-scsi-pci,id=scsi1,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=root-disk,bootindex=2 \
+  -device scsi-hd,drive=root-disk \
   -drive file=$STATE_DISK,if=none,id=state-disk,format=raw \
   -device virtio-scsi-pci,id=scsi2,disable-legacy=on,iommu_platform=true \
-  -device scsi-hd,drive=state-disk,bootindex=3 \
-  -drive file=$ISO_FILE,id=docker-compose-cdrom,if=none,readonly=true \
+  -device scsi-hd,drive=state-disk \
+  -drive file=$ISO_FILE,if=none,id=docker-compose-cdrom,readonly=true \
   -device virtio-scsi-pci,id=scsi3 \
   -device scsi-cd,bus=scsi3.0,drive=docker-compose-cdrom \
   -fw_cfg name=opt/ovmf/X-PciMmio64Mb,string=151072

@@ -7,7 +7,7 @@ use nilcc_agent::{
     config::AgentConfig,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
-    qemu_client::{QemuClient, QemuClientError, VmDetails, VmSpec},
+    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmDetails, VmSpec},
 };
 use serde::Serialize;
 use std::{fs, ops::Deref, path::PathBuf};
@@ -77,16 +77,28 @@ enum VmCommand {
         #[clap(long = "portfwd")]
         port_forward: Vec<String>,
 
-        /// Optional Path to BIOS file
-        #[clap(long = "bios-path")]
+        /// Optional path to a BIOS file
+        #[clap(long)]
         bios_path: Option<PathBuf>,
 
+        /// Optional path to a kernel file
+        #[clap(long)]
+        kernel_path: Option<PathBuf>,
+
+        /// Optional path to a initrd file
+        #[clap(long)]
+        initrd_path: Option<PathBuf>,
+
+        /// Optional kernel parameters
+        #[clap(long)]
+        kernel_args: Option<String>,
+
         /// Show GTK ;display for VM, defaults to headless VM
-        #[clap(long = "display-gtk")]
+        #[clap(long)]
         display_gtk: bool,
 
         /// Enable CVM
-        #[clap(long = "enable-cvm")]
+        #[clap(long)]
         enable_cvm: bool,
     },
 
@@ -176,6 +188,9 @@ async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<Acti
             gpu,
             port_forward,
             bios_path,
+            kernel_path,
+            initrd_path,
+            kernel_args,
             display_gtk,
             enable_cvm,
         } => {
@@ -184,11 +199,14 @@ async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<Acti
             let spec = VmSpec {
                 cpu,
                 ram_mib,
-                disk_gib,
+                hard_disks: vec![HardDiskSpec::Create { gib: disk_gib, format: HardDiskFormat::Qcow2 }],
                 cdrom_iso_path,
                 gpu_enabled: gpu,
                 port_forwarding: pf,
                 bios_path,
+                kernel_path,
+                initrd_path,
+                kernel_args,
                 display_gtk,
                 enable_cvm,
             };

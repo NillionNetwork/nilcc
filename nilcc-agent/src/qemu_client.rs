@@ -6,6 +6,7 @@ use qapi::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt, io,
     ops::Deref,
     path::{Path, PathBuf},
     process::ExitStatus,
@@ -26,6 +27,36 @@ type NegotiatedQmpStream = QapiStream<QmpReadStreamHalf, QmpWriteStreamHalf>;
 type QmpCommandService = QapiService<QmpWriteStreamHalf>;
 type QmpDriverTaskHandle = JoinHandle<()>;
 
+/// The spec for a hard disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HardDiskSpec {
+    /// Create a new hard disk with the given size.
+    Create { gib: u32, format: HardDiskFormat },
+
+    /// Attach an existing hard disk.
+    Existing { path: PathBuf, format: HardDiskFormat },
+}
+
+/// A hard disk format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HardDiskFormat {
+    /// A hard disk in raw format.
+    Raw,
+
+    /// A hard disk in qcow2 format.
+    Qcow2,
+}
+
+impl fmt::Display for HardDiskFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let format = match self {
+            Self::Raw => "raw",
+            Self::Qcow2 => "qcow2",
+        };
+        write!(f, "{format}")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VmSpec {
     /// Number of vCPUs to allocate to the VM.
@@ -34,8 +65,8 @@ pub struct VmSpec {
     /// Amount of RAM to allocate to the VM (in MiB).
     pub ram_mib: u32,
 
-    /// Size of the disk image to create (in GiB).
-    pub disk_gib: u32,
+    /// The disks to attach.
+    pub hard_disks: Vec<HardDiskSpec>,
 
     /// Optional ISO path to attach as CD-ROM.
     #[serde(default)]
@@ -49,9 +80,21 @@ pub struct VmSpec {
     #[serde(default)]
     pub port_forwarding: Vec<(u16, u16)>,
 
-    /// Optional Bios path to use for the VM.
+    /// Optional BIOS path to use for the VM.
     #[serde(default)]
     pub bios_path: Option<PathBuf>,
+
+    /// Optional kernel path to use for the VM.
+    #[serde(default)]
+    pub initrd_path: Option<PathBuf>,
+
+    /// Optional kernel path to use for the VM.
+    #[serde(default)]
+    pub kernel_path: Option<PathBuf>,
+
+    /// The kernel parameters.
+    #[serde(default)]
+    pub kernel_args: Option<String>,
 
     /// If true, show VM display using GTK.
     #[serde(default)]
@@ -74,7 +117,7 @@ pub struct VmDetails {
 #[derive(Error, Debug)]
 pub enum QemuClientError {
     #[error("IO Error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 
     #[error("QMP Error: {0}")]
     Qmp(String),
@@ -111,10 +154,6 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
-fn get_vm_disk_path(workdir: &Path) -> PathBuf {
-    workdir.join("disk.qcow2")
-}
-
 impl QemuClient {
     pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P, store: P) -> Self {
         Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into(), store: store.into() }
@@ -122,9 +161,7 @@ impl QemuClient {
 
     /// Build complete QEMU command-line args for starting a VM.
     async fn build_vm_start_cli_args(&self, workdir: &Path, spec: &VmSpec) -> Result<Vec<String>> {
-        let disk = get_vm_disk_path(workdir);
         let qmp_sock = workdir.join("qmp.sock");
-
         let mut args: Vec<String> = Vec::new();
 
         // --- CVM support ---
@@ -133,54 +170,8 @@ impl QemuClient {
                 "-machine".into(),
                 "confidential-guest-support=sev0,vmport=off".into(),
                 "-object".into(),
-                "sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1".into(),
+                "sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on".into(),
             ]);
-        }
-
-        // --- Base machine + CPU / RAM ---
-        args.extend([
-            "-enable-kvm".into(),
-            "-no-reboot".into(),
-            "-cpu".into(),
-            "EPYC-v4".into(),
-            "-smp".into(),
-            spec.cpu.to_string(),
-            "-m".into(),
-            spec.ram_mib.to_string(),
-            "-machine".into(),
-            "q35,accel=kvm".into(),
-        ]);
-
-        // --- Main system drive ---
-        args.extend([
-            "-drive".into(),
-            format!("file={},if=none,id=disk0,format=qcow2", disk.display()),
-            "-device".into(),
-            "virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true".into(),
-            "-device".into(),
-            "scsi-hd,drive=disk0".into(),
-        ]);
-
-        // --- Network backend ---
-        args.extend(["-device".into(), "pcie-root-port,id=pci.1,bus=pcie.0".into()]);
-
-        args.extend([
-            "-fw_cfg".into(),
-            "name=opt/ovmf/X-PciMmio64Mb,string=151072".into(),
-            "-qmp".into(),
-            format!("unix:{},server,nowait", qmp_sock.display()),
-            "-daemonize".into(),
-        ]);
-
-        // --- CD-ROM ---
-        if let Some(iso) = &spec.cdrom_iso_path {
-            args.push("-drive".into());
-            args.push(format!("file={},media=cdrom,readonly=on", iso.display()));
-        }
-
-        // --- BIOS ---
-        if let Some(bios) = &spec.bios_path {
-            args.extend(["-bios".into(), bios.display().to_string()]);
         }
 
         // --- Display ---
@@ -190,18 +181,108 @@ impl QemuClient {
             args.extend(["-display".into(), "none".into()]);
         }
 
-        // --- Network and Port forwarding ---
-        args.push("-netdev".into());
-        let fwd =
-            spec.port_forwarding.iter().map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}")).collect::<Vec<_>>().join(",");
+        // --- Base machine + CPU / RAM ---
+        args.extend([
+            "-enable-kvm".into(),
+            "-no-reboot".into(),
+            "-daemonize".into(),
+            "-cpu".into(),
+            "EPYC-v4".into(),
+            "-smp".into(),
+            spec.cpu.to_string(),
+            "-m".into(),
+            spec.ram_mib.to_string(),
+            "-machine".into(),
+            "q35,accel=kvm".into(),
+            "-fw_cfg".into(),
+            "name=opt/ovmf/X-PciMmio64Mb,string=151072".into(),
+            "-qmp".into(),
+            format!("unix:{},server,nowait", qmp_sock.display()),
+        ]);
 
-        if fwd.is_empty() {
-            args.push("user,id=vmnic".into());
-        } else {
-            args.push(format!("user,id=vmnic,{fwd}"));
+        // --- BIOS ---
+        if let Some(bios) = &spec.bios_path {
+            args.extend(["-bios".into(), bios.display().to_string()]);
         }
-        args.push("-device".into());
-        args.push("virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into());
+
+        // --- initrd ---
+        if let Some(initrd) = &spec.initrd_path {
+            args.extend(["-initrd".into(), initrd.display().to_string()]);
+        }
+
+        // --- Kernel ---
+        if let Some(kernel) = &spec.kernel_path {
+            args.extend(["-kernel".into(), kernel.display().to_string()]);
+        }
+
+        // --- kernel command line --
+        if let Some(cmdline) = &spec.kernel_args {
+            args.extend(["-append".into(), cmdline.clone()]);
+        }
+
+        // --- Main system drive ---
+        let mut scsi_device_count = 0;
+        for disk in &spec.hard_disks {
+            let (path, format) = match disk {
+                HardDiskSpec::Create { gib, format } => {
+                    let format = format.to_string();
+                    let disk_path = workdir.join(format!("disk-{scsi_device_count}.{format}"));
+                    let args = ["create", "-f", &format, &disk_path.to_string_lossy(), &format!("{gib}G")];
+                    let output = Self::invoke_cli_command(&self.qemu_img_bin, &args).await?;
+                    if !output.status.success() {
+                        return Err(QemuClientError::Io(io::Error::other(format!(
+                            "qemu-img failed: {}",
+                            output.stderr
+                        ))));
+                    }
+                    (disk_path, format)
+                }
+                HardDiskSpec::Existing { path, format } => (path.clone(), format.to_string()),
+            };
+            let path_display = path.display();
+            let disk_id = format!("disk{scsi_device_count}");
+            let scsi_id = format!("scsi{scsi_device_count}");
+            args.extend([
+                "-drive".into(),
+                format!("file={path_display},if=none,id={disk_id},format={format}"),
+                "-device".into(),
+                format!("virtio-scsi-pci,id={scsi_id},disable-legacy=on,iommu_platform=true"),
+                "-device".into(),
+                format!("scsi-hd,drive={disk_id}"),
+            ]);
+            scsi_device_count += 1;
+        }
+
+        // --- CD-ROM ---
+        if let Some(iso) = &spec.cdrom_iso_path {
+            let path_display = iso.display();
+            let disk_id = format!("disk{scsi_device_count}");
+            let scsi_id = format!("scsi{scsi_device_count}");
+            args.extend([
+                "-drive".into(),
+                format!("file={path_display},if=none,id={disk_id},readonly=true"),
+                "-device".into(),
+                format!("virtio-scsi-pci,id={scsi_id}"),
+                "-device".into(),
+                format!("scsi-cd,bus={scsi_id}.0,drive={disk_id}"),
+            ]);
+        }
+
+        // --- Network and Port forwarding ---
+        if !spec.port_forwarding.is_empty() {
+            let fwd = spec
+                .port_forwarding
+                .iter()
+                .map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            args.extend([
+                "-device".into(),
+                "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into(),
+                "-netdev".into(),
+                format!("user,id=vmnic,{fwd}"),
+            ]);
+        }
 
         // --- GPU passthrough ---
         if spec.gpu_enabled {
@@ -260,7 +341,7 @@ impl QemuClient {
             })?;
 
         let negotiated_stream: NegotiatedQmpStream =
-            pre_negotiation_stream.negotiate().await.map_err(|io_err: std::io::Error| {
+            pre_negotiation_stream.negotiate().await.map_err(|io_err: io::Error| {
                 QemuClientError::Qmp(format!(
                     "QMP negotiation failed for socket at '{}': {io_err}",
                     qmp_sock_path.display()
@@ -302,13 +383,6 @@ impl QemuClient {
         }
         fs::create_dir_all(&workdir).await?;
 
-        let disk = get_vm_disk_path(&workdir);
-        let args = ["create", "-f", "qcow2", disk.to_str().unwrap(), &format!("{}G", spec.disk_gib)];
-        let output = Self::invoke_cli_command(&self.qemu_img_bin, &args).await?;
-        if !output.status.success() {
-            return Err(QemuClientError::Io(std::io::Error::other(format!("qemu-img failed: {}", output.stderr))));
-        }
-
         let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
         fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
 
@@ -323,12 +397,13 @@ impl QemuClient {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let args = self.build_vm_start_cli_args(&details.workdir, &details.spec).await?;
+        let workdir = self.store.join(name);
+        let args = self.build_vm_start_cli_args(&workdir, &details.spec).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
         let output = Self::invoke_cli_command(&self.qemu_bin, &args).await?;
         if !output.status.success() {
-            return Err(QemuClientError::Io(std::io::Error::other(format!("qemu failed: {}", output.stderr))));
+            return Err(QemuClientError::Io(io::Error::other(format!("qemu failed: {}", output.stderr))));
         }
 
         while !fs::try_exists(&details.qmp_sock).await? {
@@ -416,22 +491,111 @@ mod tests {
     #[traced_test]
     async fn build_cmd_contains_resources() {
         let workdir = Path::new("/tmp").join("dummy");
+        fs::create_dir_all(&workdir).await.expect("failed to create workdir");
         let client = make_client(&workdir);
         let spec = VmSpec {
             cpu: 2,
             ram_mib: 2048,
-            disk_gib: 20,
-            cdrom_iso_path: None,
+            hard_disks: vec![
+                HardDiskSpec::Create { gib: 1, format: HardDiskFormat::Qcow2 },
+                HardDiskSpec::Create { gib: 2, format: HardDiskFormat::Raw },
+                HardDiskSpec::Existing { path: "/tmp/existing.qcow2".into(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec::Existing { path: "/tmp/existing.raw".into(), format: HardDiskFormat::Raw },
+            ],
+            cdrom_iso_path: Some("/tmp/cd.iso".into()),
             gpu_enabled: false,
-            port_forwarding: vec![],
-            bios_path: None,
+            port_forwarding: vec![(8080, 80)],
+            bios_path: Some("/tmp/bios".into()),
+            initrd_path: Some("/tmp/initrd".into()),
+            kernel_path: Some("/tmp/kernel".into()),
+            kernel_args: Some("root=/dev/foo1".into()),
             display_gtk: false,
-            enable_cvm: false,
+            enable_cvm: true,
         };
         let args = client.build_vm_start_cli_args(&workdir, &spec).await.expect("failed to build command line");
-        assert!(args.contains(&"2048".to_owned()));
-        assert!(args.contains(&"2".to_owned()));
-        assert!(args.iter().any(|a| a.contains("qmp.sock")));
+        let expected = [
+            // SNP
+            "-machine",
+            "confidential-guest-support=sev0,vmport=off",
+            "-object",
+            "sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on",
+            // Display
+            "-display",
+            "none",
+            // Basic configs
+            "-enable-kvm",
+            "-no-reboot",
+            "-daemonize",
+            // CPU
+            "-cpu",
+            "EPYC-v4",
+            "-smp",
+            "2",
+            "-m",
+            "2048",
+            "-machine",
+            "q35,accel=kvm",
+            // Firmware
+            "-fw_cfg",
+            "name=opt/ovmf/X-PciMmio64Mb,string=151072",
+            // QMP socket
+            "-qmp",
+            "unix:/tmp/dummy/qmp.sock,server,nowait",
+            // BIOS
+            "-bios",
+            "/tmp/bios",
+            // initrd
+            "-initrd",
+            "/tmp/initrd",
+            // kernel
+            "-kernel",
+            "/tmp/kernel",
+            // kernel cmdline
+            "-append",
+            "root=/dev/foo1",
+            // Drive 1 (generated .qcow2)
+            "-drive",
+            "file=/tmp/dummy/disk-0.qcow2,if=none,id=disk0,format=qcow2",
+            "-device",
+            "virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true",
+            "-device",
+            "scsi-hd,drive=disk0",
+            // Drive 2 (generated .raw)
+            "-drive",
+            "file=/tmp/dummy/disk-1.raw,if=none,id=disk1,format=raw",
+            "-device",
+            "virtio-scsi-pci,id=scsi1,disable-legacy=on,iommu_platform=true",
+            "-device",
+            "scsi-hd,drive=disk1",
+            // Drive 3 (existing .qcow2)
+            "-drive",
+            "file=/tmp/existing.qcow2,if=none,id=disk2,format=qcow2",
+            "-device",
+            "virtio-scsi-pci,id=scsi2,disable-legacy=on,iommu_platform=true",
+            "-device",
+            "scsi-hd,drive=disk2",
+            // Drive 4 (existing .raw)
+            "-drive",
+            "file=/tmp/existing.raw,if=none,id=disk3,format=raw",
+            "-device",
+            "virtio-scsi-pci,id=scsi3,disable-legacy=on,iommu_platform=true",
+            "-device",
+            "scsi-hd,drive=disk3",
+            // cdrom
+            "-drive",
+            "file=/tmp/cd.iso,if=none,id=disk4,readonly=true",
+            "-device",
+            "virtio-scsi-pci,id=scsi4",
+            "-device",
+            "scsi-cd,bus=scsi4.0,drive=disk4",
+            // Network
+            "-device".into(),
+            "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into(),
+            // Port forward
+            "-netdev",
+            "user,id=vmnic,hostfwd=tcp::8080-:80",
+        ];
+        assert_eq!(args, expected);
     }
 
     #[test_with::no_env(GITHUB_ACTIONS)]
@@ -455,11 +619,14 @@ mod tests {
         let spec = VmSpec {
             cpu: 1,
             ram_mib: 512,
-            disk_gib: 1,
+            hard_disks: vec![HardDiskSpec::Create { gib: 1, format: HardDiskFormat::Qcow2 }],
             cdrom_iso_path: None,
             gpu_enabled: false,
             port_forwarding: vec![],
             bios_path: None,
+            initrd_path: None,
+            kernel_path: None,
+            kernel_args: None,
             display_gtk: false,
             enable_cvm: false,
         };
