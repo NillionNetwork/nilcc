@@ -36,14 +36,14 @@ impl AgentService {
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
+    #[tracing::instrument("service.run", skip_all, fields(agent_id = self.agent_id.to_string()))]
     pub async fn run(mut self) -> Result<AgentServiceHandle> {
         info!("Starting run sequence");
 
-        let agent_id = self.agent_id;
         self.perform_registration().await.context("Initial agent registration failed")?;
-        let handle = self.spawn_sync_executor();
 
-        info!("AgentService for {agent_id} is now operational. Registration complete and status reporter started");
+        let handle = self.spawn_sync_executor();
+        info!("AgentService is now operational. Registration complete and status reporter started");
 
         Ok(handle)
     }
@@ -60,7 +60,7 @@ impl AgentService {
             error!("Agent registration failed: {e:#}");
         })?;
 
-        info!("Agent {} successfully registered with API", self.agent_id);
+        info!("Successfully registered with API");
         Ok(())
     }
 
@@ -68,7 +68,7 @@ impl AgentService {
     fn spawn_sync_executor(self) -> AgentServiceHandle {
         let (shutdown_tx, shutdown_rx) = watch::channel(());
 
-        info!("Spawning periodic sync executor for agent_id: {}", self.agent_id);
+        info!("Spawning periodic sync executor");
 
         tokio::spawn(async move { self.run_loop(shutdown_rx).await });
         AgentServiceHandle(shutdown_tx)
@@ -94,7 +94,7 @@ impl AgentService {
 
                     match self.api_client.sync(self.agent_id, sync_request).await {
                         Ok(response) => {
-                            info!("Successfully synced agent {}. Server response: {response:?}", self.agent_id);
+                            info!("Successfully synced. Server response: {response:?}");
                         }
                         Err(e) => {
                             //TODO: Consider more robust error handling: e.g., retries with backoff.
