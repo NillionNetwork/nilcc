@@ -2,7 +2,7 @@ use crate::{
     build_info::get_agent_version,
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest},
     gpu,
-    http_client::AgentHttpRestClient,
+    http_client::{NilccApiClient, RestNilccApiClient},
 };
 use anyhow::{Context, Result};
 use std::{sync::Arc, time::Duration};
@@ -29,13 +29,13 @@ impl AgentServiceBuilder {
         let Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval } = self;
         info!("Running against API endpoint {nilcc_api_base_url} using agent ID {agent_id}");
 
-        let http_client = Arc::new(AgentHttpRestClient::new(nilcc_api_base_url, nilcc_api_key)?);
+        let http_client = Arc::new(RestNilccApiClient::new(nilcc_api_base_url, nilcc_api_key)?);
         Ok(AgentService { http_client, agent_id, sync_interval, sync_executor: None })
     }
 }
 
 pub struct AgentService {
-    http_client: Arc<AgentHttpRestClient>,
+    http_client: Arc<RestNilccApiClient>,
     agent_id: Uuid,
     sync_interval: Duration,
     sync_executor: Option<watch::Sender<()>>,
@@ -75,11 +75,11 @@ impl AgentService {
         let instance = MetalInstance { id: self.agent_id, details };
         info!("Metal instance: {instance:?}");
 
-        let response = self.http_client.register(instance).await.inspect_err(|e| {
+        self.http_client.register(instance).await.inspect_err(|e| {
             error!("Agent registration failed: {e:#}");
         })?;
 
-        info!("Agent {} successfully registered with API. Server message: {response:?}", self.agent_id);
+        info!("Agent {} successfully registered with API", self.agent_id);
         Ok(())
     }
 

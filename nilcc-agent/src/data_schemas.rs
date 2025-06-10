@@ -27,9 +27,6 @@ pub struct MetalInstance {
 #[serde(rename_all = "camelCase")]
 pub struct SyncRequest {}
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EmptyResponse {}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Workload {

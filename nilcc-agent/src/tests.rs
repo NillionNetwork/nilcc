@@ -1,4 +1,4 @@
-use crate::{agent_service::AgentService, data_schemas::EmptyResponse};
+use crate::agent_service::AgentService;
 use anyhow::Context;
 use std::time::Duration;
 use tracing::{error, info};
@@ -19,11 +19,10 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     info!("Mock server started at: {api_base_url}");
 
-    let empty_response = EmptyResponse {};
     Mock::given(method("POST"))
         .and(path("/api/v1/metal-instances/~/register"))
         .and(header("x-api-key", api_key))
-        .respond_with(ResponseTemplate::new(201).set_body_json(&empty_response))
+        .respond_with(ResponseTemplate::new(201).set_body_json(&()))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -31,7 +30,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
     Mock::given(method("POST"))
         .and(path_regex(format!("/api/v1/metal-instances/{agent_id}/~/sync")))
         .and(header("x-api-key", api_key))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&empty_response))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&()))
         .mount(&mock_server)
         .await;
 
