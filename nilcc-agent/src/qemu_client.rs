@@ -21,6 +21,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::debug;
+use uuid::Uuid;
 
 type QmpReadStreamHalf = QmpStreamTokio<ReadHalf<UnixStream>>;
 type QmpWriteStreamHalf = QmpStreamTokio<WriteHalf<UnixStream>>;
@@ -148,19 +149,19 @@ pub type Result<T> = std::result::Result<T, QemuClientError>;
 #[async_trait]
 pub trait VmClient {
     /// Create a VM with the given spec.
-    async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails>;
+    async fn create_vm(&self, id: Uuid, spec: VmSpec) -> Result<VmDetails>;
 
     /// Start a VM that was previously created.
-    async fn start_vm(&self, name: &str) -> Result<VmDetails>;
+    async fn start_vm(&self, id: Uuid) -> Result<VmDetails>;
 
     /// Restart a VM.
-    async fn restart_vm(&self, name: &str) -> Result<VmDetails>;
+    async fn restart_vm(&self, id: Uuid) -> Result<VmDetails>;
 
     /// Stop a VM.
-    async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails>;
+    async fn stop_vm(&self, id: Uuid, force: bool) -> Result<VmDetails>;
 
     /// Delete VM directory after best effort kill
-    async fn delete_vm(&self, name: &str) -> Result<VmDetails>;
+    async fn delete_vm(&self, id: Uuid) -> Result<VmDetails>;
 }
 
 pub struct QemuClient {
@@ -334,8 +335,8 @@ impl QemuClient {
         Ok(args)
     }
 
-    async fn load_details(&self, name: &str) -> Result<VmDetails> {
-        let json = self.store.join(name).join("vm.json");
+    async fn load_details(&self, id: Uuid) -> Result<VmDetails> {
+        let json = self.store.join(id.to_string()).join("vm.json");
         if !fs::try_exists(&json).await? {
             return Err(QemuClientError::VmNotFound);
         }
@@ -394,8 +395,8 @@ impl QemuClient {
     }
 
     /// Verify running VM matches spec.
-    pub async fn check_vm_spec(&self, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
+    pub async fn check_vm_spec(&self, id: Uuid) -> Result<VmDetails> {
+        let details = self.load_details(id).await?;
 
         // TODO: add more checks here, like checking disk size, RAM, etc.
         let cpus = self.execute_qmp_command(&details.qmp_sock, query_cpus_fast {}).await?;
@@ -411,8 +412,8 @@ impl QemuClient {
     }
 
     /// Get VM status
-    pub async fn vm_status(&self, name: &str) -> Result<(VmDetails, bool)> {
-        let details = self.load_details(name).await?;
+    pub async fn vm_status(&self, id: Uuid) -> Result<(VmDetails, bool)> {
+        let details = self.load_details(id).await?;
         let running = self.is_running(&details.qmp_sock).await;
         Ok((details, running))
     }
@@ -429,8 +430,8 @@ impl QemuClient {
 #[async_trait]
 impl VmClient for QemuClient {
     /// Create and start a brand-new VM. Fails if the VM directory already exists.
-    async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails> {
-        let workdir = self.store.join(name);
+    async fn create_vm(&self, id: Uuid, spec: VmSpec) -> Result<VmDetails> {
+        let workdir = self.store.join(id.to_string());
         let meta_json = workdir.join("vm.json");
 
         if fs::try_exists(&meta_json).await? {
@@ -438,20 +439,20 @@ impl VmClient for QemuClient {
         }
         fs::create_dir_all(&workdir).await?;
 
-        let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
+        let details = VmDetails { name: id.to_string(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
         fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
         Ok(details)
     }
 
     /// Start an existing (stopped) VM.
-    async fn start_vm(&self, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
+    async fn start_vm(&self, id: Uuid) -> Result<VmDetails> {
+        let details = self.load_details(id).await?;
 
         if self.is_running(&details.qmp_sock).await {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let workdir = self.store.join(name);
+        let workdir = self.store.join(id.to_string());
         let args = self.build_vm_start_cli_args(&workdir, &details.spec).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
@@ -467,15 +468,15 @@ impl VmClient for QemuClient {
     }
 
     /// Restart the VM
-    async fn restart_vm(&self, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
+    async fn restart_vm(&self, id: Uuid) -> Result<VmDetails> {
+        let details = self.load_details(id).await?;
         self.execute_qmp_command(&details.qmp_sock, system_reset {}).await?;
         Ok(details)
     }
 
     /// Gracefully stop the VM, waiting for it to shut down
-    async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
+    async fn stop_vm(&self, id: Uuid, force: bool) -> Result<VmDetails> {
+        let details = self.load_details(id).await?;
 
         if force {
             self.execute_qmp_command(&details.qmp_sock, quit {}).await?;
@@ -487,8 +488,8 @@ impl VmClient for QemuClient {
     }
 
     /// Delete VM directory after best effort kill
-    async fn delete_vm(&self, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
+    async fn delete_vm(&self, id: Uuid) -> Result<VmDetails> {
+        let details = self.load_details(id).await?;
 
         // Kill vm if it's running
         let _ = Command::new("pkill").args(["-f", &details.qmp_sock.to_string_lossy()]).output().await;
@@ -633,7 +634,7 @@ mod tests {
             }
         }
 
-        let vm_name = "test_vm";
+        let vm_id = Uuid::new_v4();
 
         let _ = fs::remove_dir_all(&store).await;
         fs::create_dir_all(&store).await.unwrap();
@@ -653,17 +654,17 @@ mod tests {
             enable_cvm: false,
         };
 
-        let details = client.create_vm(vm_name, spec).await.unwrap();
+        let details = client.create_vm(vm_id, spec).await.unwrap();
         assert!(!client.is_running(&details.qmp_sock).await);
 
-        client.start_vm(vm_name).await.unwrap();
+        client.start_vm(vm_id).await.unwrap();
         assert!(client.is_running(&details.qmp_sock).await);
 
-        client.check_vm_spec(vm_name).await.unwrap();
-        client.stop_vm(vm_name, false).await.unwrap();
-        client.delete_vm(vm_name).await.unwrap();
+        client.check_vm_spec(vm_id).await.unwrap();
+        client.stop_vm(vm_id, false).await.unwrap();
+        client.delete_vm(vm_id).await.unwrap();
 
-        assert!(!store.join(vm_name).exists());
+        assert!(!store.join(vm_id.to_string()).exists());
         let _ = fs::remove_dir_all(&store).await;
     }
 }

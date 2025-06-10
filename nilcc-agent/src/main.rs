@@ -12,6 +12,7 @@ use serde::Serialize;
 use std::{env, fs, ops::Deref, path::PathBuf};
 use tracing::debug;
 use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
+use uuid::Uuid;
 
 const DEFAULT_QEMU_SYSTEM: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
@@ -79,8 +80,8 @@ struct VmCommandArgs {
 enum VmCommand {
     /// Create and start a fresh VM
     Create {
-        /// Unique name of the VM
-        name: String,
+        /// VM identifier.
+        id: Uuid,
 
         /// vCPUs
         #[clap(long)]
@@ -132,26 +133,26 @@ enum VmCommand {
     },
 
     /// Start already created VM
-    Start { name: String },
+    Start { id: Uuid },
 
     /// Gracefully stop running VM or force stop if `force` is true
     Stop {
-        name: String,
+        id: Uuid,
         #[arg(short, long, help = "Force stop the VM (power-off)")]
         force: bool,
     },
 
     /// Gracefully restart VM
-    Restart { name: String },
+    Restart { id: Uuid },
 
     /// Delete VM and all its files
-    Delete { name: String },
+    Delete { id: Uuid },
 
     /// Check if VM spec matches the current state
-    Check { name: String },
+    Check { id: Uuid },
 
     /// Get VM status: running, stopped
-    Status { name: String },
+    Status { id: Uuid },
 }
 
 #[derive(Subcommand)]
@@ -227,7 +228,7 @@ async fn run_vm_command(args: VmCommandArgs) -> Result<ActionOutput<VmDetails>, 
     let client = QemuClient::new(args.qemu_system_bin, args.qemu_img_bin, args.vm_store);
     match args.command {
         VmCommand::Create {
-            name,
+            id,
             cpu,
             ram_mib,
             disk_gib,
@@ -258,24 +259,24 @@ async fn run_vm_command(args: VmCommandArgs) -> Result<ActionOutput<VmDetails>, 
                 enable_cvm,
             };
 
-            client.create_vm(&name, spec).await.map(|details| ActionOutput { status: "created".into(), details })
+            client.create_vm(id, spec).await.map(|details| ActionOutput { status: "created".into(), details })
         }
-        VmCommand::Start { name } => {
-            client.start_vm(&name).await.map(|details| ActionOutput { status: "started".into(), details })
+        VmCommand::Start { id } => {
+            client.start_vm(id).await.map(|details| ActionOutput { status: "started".into(), details })
         }
-        VmCommand::Stop { name, force } => {
-            client.stop_vm(&name, force).await.map(|details| ActionOutput { status: "stopped".into(), details })
+        VmCommand::Stop { id, force } => {
+            client.stop_vm(id, force).await.map(|details| ActionOutput { status: "stopped".into(), details })
         }
-        VmCommand::Restart { name } => {
-            client.restart_vm(&name).await.map(|details| ActionOutput { status: "restarted".into(), details })
+        VmCommand::Restart { id } => {
+            client.restart_vm(id).await.map(|details| ActionOutput { status: "restarted".into(), details })
         }
-        VmCommand::Delete { name } => {
-            client.delete_vm(&name).await.map(|details| ActionOutput { status: "deleted".into(), details })
+        VmCommand::Delete { id } => {
+            client.delete_vm(id).await.map(|details| ActionOutput { status: "deleted".into(), details })
         }
-        VmCommand::Check { name } => {
-            client.check_vm_spec(&name).await.map(|details| ActionOutput { status: "matching".into(), details })
+        VmCommand::Check { id } => {
+            client.check_vm_spec(id).await.map(|details| ActionOutput { status: "matching".into(), details })
         }
-        VmCommand::Status { name } => client.vm_status(&name).await.map(|(details, running)| ActionOutput {
+        VmCommand::Status { id } => client.vm_status(id).await.map(|(details, running)| ActionOutput {
             status: if running { "running".into() } else { "stopped".into() },
             details,
         }),
