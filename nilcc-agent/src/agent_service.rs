@@ -11,36 +11,26 @@ use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-const DEFAULT_AGENT_SYNC_INTERVAL: Duration = Duration::from_secs(10);
-
 pub struct AgentServiceBuilder {
     agent_id: Uuid,
     nilcc_api_base_url: String,
     nilcc_api_key: String,
-    sync_interval: Option<Duration>,
+    sync_interval: Duration,
 }
 
 impl AgentServiceBuilder {
     /// Creates a new builder.
-    fn new(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String) -> Self {
-        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval: None }
-    }
-
-    /// Sets the interval for the periodic synchronization (status reporting) task, defaults to DEFAULT_AGENT_SYNC_INTERVAL (e.g. 10 seconds).
-    pub fn sync_interval(mut self, interval: Duration) -> Self {
-        self.sync_interval = Some(interval);
-        self
+    fn new(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String, sync_interval: Duration) -> Self {
+        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval }
     }
 
     /// Consumes the builder and constructs the AgentService instance.
     pub fn build(self) -> Result<AgentService> {
-        let sync_interval = self.sync_interval.unwrap_or(DEFAULT_AGENT_SYNC_INTERVAL);
-        let http_client = Arc::new(AgentHttpRestClient::new(self.nilcc_api_base_url.clone(), self.nilcc_api_key)?);
+        let Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval } = self;
+        info!("Running against API endpoint {nilcc_api_base_url} using agent ID {agent_id}");
 
-        info!("Agent ID: {}", self.agent_id);
-        info!("nilCC API: {}", self.nilcc_api_base_url);
-
-        Ok(AgentService { http_client, agent_id: self.agent_id, sync_interval, sync_executor: None })
+        let http_client = Arc::new(AgentHttpRestClient::new(nilcc_api_base_url, nilcc_api_key)?);
+        Ok(AgentService { http_client, agent_id, sync_interval, sync_executor: None })
     }
 }
 
@@ -53,8 +43,13 @@ pub struct AgentService {
 
 impl AgentService {
     /// Returns a new builder for `AgentService`.
-    pub fn builder(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String) -> AgentServiceBuilder {
-        AgentServiceBuilder::new(agent_id, nilcc_api_base_url, nilcc_api_key)
+    pub fn builder(
+        agent_id: Uuid,
+        nilcc_api_base_url: String,
+        nilcc_api_key: String,
+        sync_interval: Duration,
+    ) -> AgentServiceBuilder {
+        AgentServiceBuilder::new(agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval)
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
