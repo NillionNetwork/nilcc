@@ -35,8 +35,8 @@ describe("workload CRUD", () => {
     hostname: "my-metal-instance",
     totalMemory: 128,
     osReservedMemory: 8,
-    totalCpu: 64,
-    osReservedCpu: 4,
+    totalCpus: 64,
+    osReservedCpus: 4,
     totalDisk: 1024,
     osReservedDisk: 100,
   };
