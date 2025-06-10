@@ -10,3 +10,6 @@ api:
   key: test
   sync_interval: 10s
 
+db:
+  url: sqlite:///tmp/db.sqlite
+

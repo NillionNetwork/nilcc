@@ -4,13 +4,20 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait WorkloadRepository {
+pub trait WorkloadRepository: Send + Sync {
     /// Create a workload.
-    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
+    async fn upsert(&self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
 
     /// Find the details for a workload.
-    async fn find(&self, name: Uuid) -> Result<Workload, WorkloadRepositoryError>;
+    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
+
+    /// List all workflows.
+    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError>;
+
+    /// Delete a workload.
+    async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -34,7 +41,7 @@ impl SqliteWorkloadRepository {
 
 #[async_trait]
 impl WorkloadRepository for SqliteWorkloadRepository {
-    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
+    async fn upsert(&self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
         let query = r"
 INSERT INTO workloads (
     id,
@@ -48,7 +55,16 @@ INSERT INTO workloads (
     disk_gb,
     created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (id) DO UPDATE SET
+    docker_compose = $2,
+    environment_variables = $3,
+    public_container_name = $4,
+    public_container_port = $5,
+    memory_mb = $6,
+    cpus = $7,
+    gpus = $8,
+    disk_gb = $9
 ";
         let Workload {
             id,
@@ -85,6 +101,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             .await?
             .ok_or(WorkloadRepositoryError::WorkloadNotFound)?;
         Ok(workload.into())
+    }
+
+    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError> {
+        let query = "SELECT * FROM workloads";
+        let workloads: Vec<model::Workload> = sqlx::query_as(query).fetch_all(&self.pool).await?;
+        Ok(workloads.into_iter().map(Into::into).collect())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError> {
+        let query = "DELETE FROM workloads WHERE id = ?";
+        sqlx::query(query).bind(id).execute(&self.pool).await?;
+        Ok(())
     }
 }
 
@@ -142,16 +170,51 @@ mod tests {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),
             env_vars: HashMap::from([("FOO".into(), "value".into())]),
-            service_to_expose: "contaner-1".into(),
+            service_to_expose: "container-1".into(),
             service_port_to_expose: 80,
             memory: 1024,
             cpu: 1.try_into().unwrap(),
             disk: 10.try_into().unwrap(),
             gpu: 1,
         };
-        repo.create(workload.clone()).await.expect("failed to insert");
+        repo.upsert(workload.clone()).await.expect("failed to insert");
 
         let found = repo.find(workload.id).await.expect("failed to find");
         assert_eq!(found, workload);
+
+        let found = repo.list().await.expect("failed to find");
+        assert_eq!(found, &[workload]);
+    }
+
+    #[tokio::test]
+    async fn update() {
+        let repo = make_repo().await;
+        let original = Workload {
+            id: Uuid::new_v4(),
+            docker_compose: "hi".into(),
+            env_vars: HashMap::from([("FOO".into(), "value".into())]),
+            service_to_expose: "container-1".into(),
+            service_port_to_expose: 80,
+            memory: 1024,
+            cpu: 1.try_into().unwrap(),
+            disk: 10.try_into().unwrap(),
+            gpu: 1,
+        };
+        let updated = Workload {
+            id: original.id,
+            docker_compose: "bye".into(),
+            env_vars: HashMap::default(),
+            service_to_expose: "container-2".into(),
+            service_port_to_expose: 443,
+            memory: 2048,
+            cpu: 2.try_into().unwrap(),
+            disk: 20.try_into().unwrap(),
+            gpu: 2,
+        };
+        repo.upsert(original).await.expect("failed to insert");
+        repo.upsert(updated.clone()).await.expect("failed to insert");
+
+        let found = repo.find(updated.id).await.expect("failed to find");
+        assert_eq!(found, updated);
     }
 }

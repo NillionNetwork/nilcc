@@ -1,6 +1,7 @@
 use crate::{
     agent_service::{AgentService, AgentServiceArgs},
     http_client::RestNilccApiClient,
+    repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
 };
 use anyhow::Context;
 use std::time::Duration;
@@ -38,7 +39,9 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         .await;
 
     let api_client = Box::new(RestNilccApiClient::new(api_base_url, api_key.to_string())?);
-    let args = AgentServiceArgs { agent_id, api_client, sync_interval: Duration::from_secs(1) };
+    let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
+    let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+    let args = AgentServiceArgs { agent_id, api_client, workload_repository, sync_interval: Duration::from_secs(1) };
     let agent_service = AgentService::new(args);
 
     let _handle = agent_service.run().await.expect("failed to run service");

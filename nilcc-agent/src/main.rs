@@ -8,6 +8,7 @@ use nilcc_agent::{
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmClient, VmDetails, VmSpec},
+    repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
 };
 use serde::Serialize;
 use std::{env, fs, ops::Deref, path::PathBuf};
@@ -301,7 +302,10 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     fs::create_dir_all(&config.vm_store).context("Failed to create VM store directory")?;
 
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
-    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, sync_interval };
+    let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
+    let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+
+    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, workload_repository, sync_interval };
     let agent_service = AgentService::new(args);
 
     let _handle = agent_service.run().await.context("AgentService failed to start and register")?;

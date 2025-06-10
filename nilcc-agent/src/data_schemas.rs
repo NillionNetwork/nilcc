@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, num::NonZeroU16};
+use std::{collections::HashMap, fmt, num::NonZeroU16};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -27,7 +27,13 @@ pub struct MetalInstance {
 #[serde(rename_all = "camelCase")]
 pub struct SyncRequest {}
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncResponse {
+    pub workloads: Vec<Workload>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Workload {
     pub(crate) id: Uuid,
@@ -39,4 +45,21 @@ pub struct Workload {
     pub(crate) cpu: NonZeroU16,
     pub(crate) disk: NonZeroU16,
     pub(crate) gpu: u16,
+}
+
+impl fmt::Debug for Workload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Workload")
+            .field("id", &self.id)
+            .field("docker_compose", &self.docker_compose)
+            // Hide this one since it can have sensitive data
+            .field("env_vars", &"{ ... }")
+            .field("service_to_expose", &self.service_to_expose)
+            .field("service_port_to_expose", &self.service_port_to_expose)
+            .field("memory", &self.memory)
+            .field("cpu", &self.cpu)
+            .field("disk", &self.disk)
+            .field("gpu", &self.gpu)
+            .finish()
+    }
 }
