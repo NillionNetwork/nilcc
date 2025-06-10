@@ -6,7 +6,7 @@ use nilcc_agent::{
     config::{AgentConfig, ApiConfig},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
-    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmDetails, VmSpec},
+    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmClient, VmDetails, VmSpec},
 };
 use serde::Serialize;
 use std::{env, fs, ops::Deref, path::PathBuf};
@@ -296,10 +296,12 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     let ApiConfig { endpoint, key, sync_interval } = config.api;
-    let agent_builder = AgentService::builder(config.agent_id, endpoint, key, sync_interval);
+    fs::create_dir_all(&config.vm_store).context("Failed to create VM store directory")?;
 
-    let mut agent_service = agent_builder.build().context("Building AgentService")?;
-    agent_service.run().await.context("AgentService failed to start and register")?;
+    let mut agent_service = AgentService::builder(config.agent_id, endpoint, key, sync_interval)
+        .build()
+        .context("Building agent service")?;
+
     debug!("AgentService is running.");
 
     tokio::signal::ctrl_c().await?;

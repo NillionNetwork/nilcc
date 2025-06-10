@@ -1,4 +1,5 @@
 use crate::gpu;
+use async_trait::async_trait;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
     qmp::{query_cpus_fast, quit, system_powerdown, system_reset, QmpCommand},
@@ -142,6 +143,25 @@ pub enum QemuClientError {
 }
 
 pub type Result<T> = std::result::Result<T, QemuClientError>;
+
+/// A client to
+#[async_trait]
+pub trait VmClient {
+    /// Create a VM with the given spec.
+    async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails>;
+
+    /// Start a VM that was previously created.
+    async fn start_vm(&self, name: &str) -> Result<VmDetails>;
+
+    /// Restart a VM.
+    async fn restart_vm(&self, name: &str) -> Result<VmDetails>;
+
+    /// Stop a VM.
+    async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails>;
+
+    /// Delete VM directory after best effort kill
+    async fn delete_vm(&self, name: &str) -> Result<VmDetails>;
+}
 
 pub struct QemuClient {
     qemu_bin: PathBuf,
@@ -352,7 +372,7 @@ impl QemuClient {
         Ok(negotiated_stream.spawn_tokio())
     }
 
-    pub async fn execute_qmp_command<C>(&self, qmp_sock: &Path, command: C) -> Result<<C as QapiCommandTrait>::Ok>
+    async fn execute_qmp_command<C>(&self, qmp_sock: &Path, command: C) -> Result<<C as QapiCommandTrait>::Ok>
     where
         C: QapiCommandTrait + QmpCommand,
     {
@@ -373,8 +393,43 @@ impl QemuClient {
         Ok(response)
     }
 
+    /// Verify running VM matches spec.
+    pub async fn check_vm_spec(&self, name: &str) -> Result<VmDetails> {
+        let details = self.load_details(name).await?;
+
+        // TODO: add more checks here, like checking disk size, RAM, etc.
+        let cpus = self.execute_qmp_command(&details.qmp_sock, query_cpus_fast {}).await?;
+
+        if cpus.len() as u8 != details.spec.cpu {
+            return Err(QemuClientError::Qmp(format!(
+                "CPU mismatch: running={}, expected={}",
+                cpus.len(),
+                details.spec.cpu
+            )));
+        }
+        Ok(details)
+    }
+
+    /// Get VM status
+    pub async fn vm_status(&self, name: &str) -> Result<(VmDetails, bool)> {
+        let details = self.load_details(name).await?;
+        let running = self.is_running(&details.qmp_sock).await;
+        Ok((details, running))
+    }
+
+    async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
+        debug!("Executing: {} {}", command.display(), args.join(" "));
+
+        let output = Command::new(command).args(args).output().await?;
+
+        Ok(CommandOutput { status: output.status, stderr: String::from_utf8_lossy(&output.stderr).trim().to_string() })
+    }
+}
+
+#[async_trait]
+impl VmClient for QemuClient {
     /// Create and start a brand-new VM. Fails if the VM directory already exists.
-    pub async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails> {
+    async fn create_vm(&self, name: &str, spec: VmSpec) -> Result<VmDetails> {
         let workdir = self.store.join(name);
         let meta_json = workdir.join("vm.json");
 
@@ -385,12 +440,11 @@ impl QemuClient {
 
         let details = VmDetails { name: name.into(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
         fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
-
-        self.start_vm(name).await
+        Ok(details)
     }
 
     /// Start an existing (stopped) VM.
-    pub async fn start_vm(&self, name: &str) -> Result<VmDetails> {
+    async fn start_vm(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
 
         if self.is_running(&details.qmp_sock).await {
@@ -412,32 +466,15 @@ impl QemuClient {
         Ok(details)
     }
 
-    /// Verify running VM matches spec.
-    pub async fn check_vm_spec(&self, name: &str) -> Result<VmDetails> {
-        let details = self.load_details(name).await?;
-
-        // TODO: add more checks here, like checking disk size, RAM, etc.
-        let cpus = self.execute_qmp_command(&details.qmp_sock, query_cpus_fast {}).await?;
-
-        if cpus.len() as u8 != details.spec.cpu {
-            return Err(QemuClientError::Qmp(format!(
-                "CPU mismatch: running={}, expected={}",
-                cpus.len(),
-                details.spec.cpu
-            )));
-        }
-        Ok(details)
-    }
-
     /// Restart the VM
-    pub async fn restart_vm(&self, name: &str) -> Result<VmDetails> {
+    async fn restart_vm(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
         self.execute_qmp_command(&details.qmp_sock, system_reset {}).await?;
         Ok(details)
     }
 
     /// Gracefully stop the VM, waiting for it to shut down
-    pub async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails> {
+    async fn stop_vm(&self, name: &str, force: bool) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
 
         if force {
@@ -450,7 +487,7 @@ impl QemuClient {
     }
 
     /// Delete VM directory after best effort kill
-    pub async fn delete_vm(&self, name: &str) -> Result<VmDetails> {
+    async fn delete_vm(&self, name: &str) -> Result<VmDetails> {
         let details = self.load_details(name).await?;
 
         // Kill vm if it's running
@@ -458,21 +495,6 @@ impl QemuClient {
 
         fs::remove_dir_all(&details.workdir).await?;
         Ok(details)
-    }
-
-    /// Get VM status
-    pub async fn vm_status(&self, name: &str) -> Result<(VmDetails, bool)> {
-        let details = self.load_details(name).await?;
-        let running = self.is_running(&details.qmp_sock).await;
-        Ok((details, running))
-    }
-
-    async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
-        debug!("Executing: {} {}", command.display(), args.join(" "));
-
-        let output = Command::new(command).args(args).output().await?;
-
-        Ok(CommandOutput { status: output.status, stderr: String::from_utf8_lossy(&output.stderr).trim().to_string() })
     }
 }
 
@@ -632,6 +654,9 @@ mod tests {
         };
 
         let details = client.create_vm(vm_name, spec).await.unwrap();
+        assert!(!client.is_running(&details.qmp_sock).await);
+
+        client.start_vm(vm_name).await.unwrap();
         assert!(client.is_running(&details.qmp_sock).await);
 
         client.check_vm_spec(vm_name).await.unwrap();
