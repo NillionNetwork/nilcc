@@ -1,4 +1,7 @@
-use crate::agent_service::AgentService;
+use crate::{
+    agent_service::{AgentService, AgentServiceArgs},
+    http_client::RestNilccApiClient,
+};
 use anyhow::Context;
 use std::time::Duration;
 use tracing::{error, info};
@@ -34,8 +37,9 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         .mount(&mock_server)
         .await;
 
-    let mut agent_service =
-        AgentService::builder(agent_id, api_base_url, api_key.to_string(), Duration::from_secs(1)).build()?;
+    let api_client = Box::new(RestNilccApiClient::new(api_base_url, api_key.to_string())?);
+    let args = AgentServiceArgs { agent_id, api_client, sync_interval: Duration::from_secs(1) };
+    let mut agent_service = AgentService::new(args);
 
     let service_run_task = tokio::spawn(async move {
         if let Err(e) = agent_service.run().await {

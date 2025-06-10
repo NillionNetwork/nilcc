@@ -2,7 +2,7 @@ use crate::{
     build_info::get_agent_version,
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest},
     gpu,
-    http_client::{NilccApiClient, RestNilccApiClient},
+    http_client::NilccApiClient,
 };
 use anyhow::{Context, Result};
 use std::{sync::Arc, time::Duration};
@@ -11,45 +11,30 @@ use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-pub struct AgentServiceBuilder {
-    agent_id: Uuid,
-    nilcc_api_base_url: String,
-    nilcc_api_key: String,
-    sync_interval: Duration,
-}
+/// Arguments to the agent service.
+pub struct AgentServiceArgs {
+    /// The identifier for this agent.
+    pub agent_id: Uuid,
 
-impl AgentServiceBuilder {
-    /// Creates a new builder.
-    fn new(agent_id: Uuid, nilcc_api_base_url: String, nilcc_api_key: String, sync_interval: Duration) -> Self {
-        Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval }
-    }
+    /// The nilcc-api client.
+    pub api_client: Box<dyn NilccApiClient>,
 
-    /// Consumes the builder and constructs the AgentService instance.
-    pub fn build(self) -> Result<AgentService> {
-        let Self { agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval } = self;
-        info!("Running against API endpoint {nilcc_api_base_url} using agent ID {agent_id}");
-
-        let http_client = Arc::new(RestNilccApiClient::new(nilcc_api_base_url, nilcc_api_key)?);
-        Ok(AgentService { http_client, agent_id, sync_interval, sync_executor: None })
-    }
+    /// The interval to use for sync requests.
+    pub sync_interval: Duration,
 }
 
 pub struct AgentService {
-    http_client: Arc<RestNilccApiClient>,
     agent_id: Uuid,
+    api_client: Arc<dyn NilccApiClient>,
     sync_interval: Duration,
     sync_executor: Option<watch::Sender<()>>,
 }
 
 impl AgentService {
-    /// Returns a new builder for `AgentService`.
-    pub fn builder(
-        agent_id: Uuid,
-        nilcc_api_base_url: String,
-        nilcc_api_key: String,
-        sync_interval: Duration,
-    ) -> AgentServiceBuilder {
-        AgentServiceBuilder::new(agent_id, nilcc_api_base_url, nilcc_api_key, sync_interval)
+    pub fn new(args: AgentServiceArgs) -> Self {
+        let AgentServiceArgs { agent_id, api_client, sync_interval } = args;
+        let api_client = api_client.into();
+        Self { agent_id, api_client, sync_interval, sync_executor: None }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
@@ -75,7 +60,7 @@ impl AgentService {
         let instance = MetalInstance { id: self.agent_id, details };
         info!("Metal instance: {instance:?}");
 
-        self.http_client.register(instance).await.inspect_err(|e| {
+        self.api_client.register(instance).await.inspect_err(|e| {
             error!("Agent registration failed: {e:#}");
         })?;
 
@@ -90,7 +75,7 @@ impl AgentService {
             return;
         }
 
-        let client = Arc::clone(&self.http_client);
+        let client = Arc::clone(&self.api_client);
         let agent_id = self.agent_id;
         let sync_interval = self.sync_interval;
 

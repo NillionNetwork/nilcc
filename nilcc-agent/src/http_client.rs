@@ -6,7 +6,7 @@ use tracing::debug;
 use uuid::Uuid;
 
 #[async_trait]
-pub trait NilccApiClient {
+pub trait NilccApiClient: Send + Sync {
     /// Register an agent.
     async fn register(&self, payload: MetalInstance) -> anyhow::Result<()>;
 

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use nilcc_agent::{
-    agent_service::AgentService,
+    agent_service::{AgentService, AgentServiceArgs},
     build_info,
     config::{AgentConfig, ApiConfig},
+    http_client::RestNilccApiClient,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmClient, VmDetails, VmSpec},
@@ -299,10 +300,9 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let ApiConfig { endpoint, key, sync_interval } = config.api;
     fs::create_dir_all(&config.vm_store).context("Failed to create VM store directory")?;
 
-    let mut agent_service = AgentService::builder(config.agent_id, endpoint, key, sync_interval)
-        .build()
-        .context("Building agent service")?;
-
+    let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
+    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, sync_interval };
+    let mut agent_service = AgentService::new(args);
     debug!("AgentService is running.");
 
     tokio::signal::ctrl_c().await?;
