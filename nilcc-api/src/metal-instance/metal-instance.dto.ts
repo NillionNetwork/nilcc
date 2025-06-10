@@ -9,11 +9,11 @@ export const RegisterMetalInstanceRequest = z
     hostname: z.string().min(10, "hostname is required"),
     totalMemory: z.number().int().positive(),
     osReservedMemory: z.number().int().positive(),
-    totalCpu: z.number().int().positive(),
-    osReservedCpu: z.number().int().positive(),
+    totalCpus: z.number().int().positive(),
+    osReservedCpus: z.number().int().positive(),
     totalDisk: z.number().int().positive(),
     osReservedDisk: z.number().int().positive(),
-    gpu: z.number().int().positive().optional(),
+    gpus: z.number().int().positive().optional(),
     gpuModel: z.string().optional(),
   })
   .openapi({ ref: "RegisterMetalInstanceRequest" });

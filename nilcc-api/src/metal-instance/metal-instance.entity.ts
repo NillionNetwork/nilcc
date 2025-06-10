@@ -19,10 +19,10 @@ export class MetalInstanceEntity {
   osReservedMemory: number;
 
   @Column({ type: "int" })
-  totalCpu: number;
+  totalCpus: number;
 
   @Column({ type: "int" })
-  osReservedCpu: number;
+  osReservedCpus: number;
 
   @Column({ type: "int" })
   totalDisk: number;
@@ -31,7 +31,7 @@ export class MetalInstanceEntity {
   osReservedDisk: number;
 
   @Column({ type: "int", nullable: true })
-  gpu?: number;
+  gpus?: number;
 
   @Column({ type: "varchar", nullable: true })
   gpuModel?: string;

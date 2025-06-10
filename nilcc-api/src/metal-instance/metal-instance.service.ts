@@ -1,4 +1,4 @@
-import type { QueryRunner, Repository } from "typeorm";
+import { In, type QueryRunner, type Repository } from "typeorm";
 import {
   CreateEntityError,
   CreateOrUpdateEntityError,
@@ -83,7 +83,7 @@ export class MetalInstanceService {
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
       .having(
-        "metalInstance.totalCpu - metalInstance.osReservedCpu - COALESCE(SUM(workload.cpu), 0) > :requiredCpus",
+        "metalInstance.totalCpus - metalInstance.osReservedCpus - COALESCE(SUM(workload.cpu), 0) > :requiredCpus",
         { requiredCpus: param.cpu },
       )
       .andHaving(
@@ -118,8 +118,8 @@ export class MetalInstanceService {
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
     currentMetalInstance.hostname = metalInstance.hostname;
 
-    currentMetalInstance.totalCpu = metalInstance.totalCpu;
-    currentMetalInstance.osReservedCpu = metalInstance.osReservedCpu;
+    currentMetalInstance.totalCpus = metalInstance.totalCpus;
+    currentMetalInstance.osReservedCpus = metalInstance.osReservedCpus;
 
     currentMetalInstance.totalMemory = metalInstance.totalMemory;
     currentMetalInstance.osReservedMemory = metalInstance.osReservedMemory;
@@ -127,7 +127,7 @@ export class MetalInstanceService {
     currentMetalInstance.totalDisk = metalInstance.totalDisk;
     currentMetalInstance.osReservedDisk = metalInstance.osReservedDisk;
 
-    currentMetalInstance.gpu = metalInstance.gpu;
+    currentMetalInstance.gpus = metalInstance.gpus;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
     currentMetalInstance.updatedAt = new Date();
     await repository.save(currentMetalInstance);
@@ -145,13 +145,13 @@ export class MetalInstanceService {
       id: metalInstance.id,
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
-      totalCpu: metalInstance.totalCpu,
-      osReservedCpu: metalInstance.osReservedCpu,
+      totalCpus: metalInstance.totalCpus,
+      osReservedCpus: metalInstance.osReservedCpus,
       totalMemory: metalInstance.totalMemory,
       osReservedMemory: metalInstance.osReservedMemory,
       totalDisk: metalInstance.totalDisk,
       osReservedDisk: metalInstance.osReservedDisk,
-      gpu: metalInstance.gpu,
+      gpus: metalInstance.gpus,
       gpuModel: metalInstance.gpuModel,
       createdAt: now,
       updatedAt: now,
@@ -172,20 +172,25 @@ export class MetalInstanceService {
     if (!instance) {
       return null;
     }
+
     const workloadRepository = workloadService.getRepository(bindings, tx);
-    await Promise.all(
-      payload.workloads.map(async (w) => {
-        const workload = instance.workloads?.find((wl) => wl.id === w.id);
-        if (!workload) {
-          bindings.log.warn(
-            `Trying to sync metal instance: Workload with id ${w.id} not found in instance ${payload.id}`,
-          );
-          return;
-        }
-        workload.status = w.status;
-        await workloadRepository.save(workload);
-      }),
-    );
+
+    const workloadsInInstance = payload.workloads.filter((w) => {
+      const workloadEntity = instance.workloads?.find((wl) => wl.id === w.id);
+      return workloadEntity && workloadEntity.status !== w.status;
+    });
+
+    for (const status of ["pending", "running", "stopped", "error"] as const) {
+      const workloadsIdWithStatus = workloadsInInstance
+        .filter((workload) => workload.status === status)
+        .map((w) => w.id);
+
+      await workloadRepository.update(
+        { id: In(workloadsIdWithStatus) },
+        { status },
+      );
+    }
+
     const instanceUpdated = await repository.findOne({
       where: { id: payload.id },
       relations: ["workloads"],

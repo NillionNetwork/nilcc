@@ -15,8 +15,8 @@ describe("Metal Instance", () => {
     hostname: "my-metal-instance",
     totalMemory: 128,
     osReservedMemory: 8,
-    totalCpu: 64,
-    osReservedCpu: 4,
+    totalCpus: 64,
+    osReservedCpus: 4,
     totalDisk: 1024,
     osReservedDisk: 100,
   };
@@ -65,7 +65,7 @@ describe("Metal Instance", () => {
     const updatedMetalInstance = {
       ...myMetalInstance,
       totalMemory: 256,
-      totalCpu: 128,
+      totalCpus: 128,
     };
     const response = await metalInstanceClient.register(updatedMetalInstance);
     expect(response.status).equals(200);
