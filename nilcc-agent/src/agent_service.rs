@@ -5,7 +5,7 @@ use crate::{
     http_client::NilccApiClient,
 };
 use anyhow::{Context, Result};
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
@@ -25,31 +25,27 @@ pub struct AgentServiceArgs {
 
 pub struct AgentService {
     agent_id: Uuid,
-    api_client: Arc<dyn NilccApiClient>,
+    api_client: Box<dyn NilccApiClient>,
     sync_interval: Duration,
-    sync_executor: Option<watch::Sender<()>>,
 }
 
 impl AgentService {
     pub fn new(args: AgentServiceArgs) -> Self {
         let AgentServiceArgs { agent_id, api_client, sync_interval } = args;
-        let api_client = api_client.into();
-        Self { agent_id, api_client, sync_interval, sync_executor: None }
+        Self { agent_id, api_client, sync_interval }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<AgentServiceHandle> {
         info!("Starting run sequence");
 
+        let agent_id = self.agent_id;
         self.perform_registration().await.context("Initial agent registration failed")?;
-        self.spawn_sync_executor();
+        let handle = self.spawn_sync_executor();
 
-        info!(
-            "AgentService for {} is now operational. Registration complete and status reporter started.",
-            self.agent_id
-        );
+        info!("AgentService for {agent_id} is now operational. Registration complete and status reporter started");
 
-        Ok(())
+        Ok(handle)
     }
 
     /// Gathers system information and registers the agent with the API server.
@@ -69,72 +65,57 @@ impl AgentService {
     }
 
     /// Spawns a Tokio task that periodically reports the agent's status.
-    fn spawn_sync_executor(&mut self) {
-        if self.sync_executor.is_some() {
-            warn!("Sync executor task already spawned for agent_id: {}. Skipping.", self.agent_id);
-            return;
-        }
+    fn spawn_sync_executor(self) -> AgentServiceHandle {
+        let (shutdown_tx, shutdown_rx) = watch::channel(());
 
-        let client = Arc::clone(&self.api_client);
-        let agent_id = self.agent_id;
-        let sync_interval = self.sync_interval;
+        info!("Spawning periodic sync executor for agent_id: {}", self.agent_id);
 
-        let (shutdown_tx, mut shutdown_rx) = watch::channel(());
-        self.sync_executor = Some(shutdown_tx);
+        tokio::spawn(async move { self.run_loop(shutdown_rx).await });
+        AgentServiceHandle(shutdown_tx)
+    }
 
-        info!("Spawning periodic sync executor for agent_id: {agent_id}");
+    async fn run_loop(self, mut shutdown_rx: watch::Receiver<()>) {
+        let mut interval = tokio::time::interval(self.sync_interval);
 
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(sync_interval);
+        info!("Sync task started. Will report every {:?}", self.sync_interval);
 
-            info!("Sync task started. Will report every {sync_interval:?}.");
+        loop {
+            tokio::select! {
+                biased; // prefer shutdown signal if available simultaneously
+                _ = shutdown_rx.changed() => {
+                    info!("Received shutdown signal. Exiting task.");
+                    break;
+                }
+                _ = interval.tick() => {
 
-            loop {
-                tokio::select! {
-                    biased; // prefer shutdown signal if available simultaneously
-                    _ = shutdown_rx.changed() => {
-                        info!("Received shutdown signal. Exiting task.");
-                        break;
-                    }
-                    _ = interval.tick() => {
+                    let sync_request = SyncRequest {
+                        // TODO: Populate the sync request with necessary data.
+                    };
 
-                        let sync_request = SyncRequest {
-                            // TODO: Populate the sync request with necessary data.
-                        };
-
-                        match client.sync(agent_id, sync_request).await {
-                            Ok(response) => {
-                                info!("Successfully synced agent {agent_id}. Server response: {response:?}");
-                            }
-                            Err(e) => {
-                                //TODO: Consider more robust error handling: e.g., retries with backoff.
-                                error!("Failed to sync {e:#}");
-                            }
+                    match self.api_client.sync(self.agent_id, sync_request).await {
+                        Ok(response) => {
+                            info!("Successfully synced agent {}. Server response: {response:?}", self.agent_id);
+                        }
+                        Err(e) => {
+                            //TODO: Consider more robust error handling: e.g., retries with backoff.
+                            error!("Failed to sync {e:#}");
                         }
                     }
                 }
             }
-            info!("Sync executor task for agent has finished.");
-        });
-    }
-
-    /// Requests the shutdown of the periodic sync executor task.
-    pub fn request_shutdown(&mut self) {
-        if let Some(tx) = self.sync_executor.take() {
-            info!("Sending shutdown signal");
-            if tx.send(()).is_err() {
-                warn!("Task might have already exited.");
-            }
-        } else {
-            warn!("Shutdown already requested or sync task not started");
         }
+        info!("Sync executor task for agent has finished.");
     }
 }
 
-impl Drop for AgentService {
+#[must_use]
+pub struct AgentServiceHandle(watch::Sender<()>);
+
+impl Drop for AgentServiceHandle {
     fn drop(&mut self) {
-        info!("AgentService for agent_id {} is being dropped. Requesting shutdown of sync executor.", self.agent_id);
-        self.request_shutdown();
+        if self.0.send(()).is_err() {
+            warn!("Task might have already exited");
+        }
     }
 }
 

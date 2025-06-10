@@ -302,13 +302,11 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let args = AgentServiceArgs { agent_id: config.agent_id, api_client, sync_interval };
-    let mut agent_service = AgentService::new(args);
+    let agent_service = AgentService::new(args);
+    let _handle = agent_service.run().await.context("AgentService failed to start and register")?;
     debug!("AgentService is running.");
 
     tokio::signal::ctrl_c().await?;
-    debug!("Ctrl+C received. Initiating graceful shutdown of AgentService.");
-    agent_service.request_shutdown();
-
     Ok(())
 }
 

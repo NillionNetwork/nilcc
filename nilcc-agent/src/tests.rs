@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::info;
 use tracing_test::traced_test;
 use uuid::Uuid;
 use wiremock::{
@@ -39,14 +39,9 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     let api_client = Box::new(RestNilccApiClient::new(api_base_url, api_key.to_string())?);
     let args = AgentServiceArgs { agent_id, api_client, sync_interval: Duration::from_secs(1) };
-    let mut agent_service = AgentService::new(args);
+    let agent_service = AgentService::new(args);
 
-    let service_run_task = tokio::spawn(async move {
-        if let Err(e) = agent_service.run().await {
-            error!("AgentService.run() failed: {e:?}");
-        }
-        agent_service
-    });
+    let _handle = agent_service.run().await.expect("failed to run service");
     tokio::time::sleep(Duration::from_millis(1500)).await;
 
     let received_requests = mock_server.received_requests().await.unwrap_or_default();
@@ -70,13 +65,6 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
     info!("Received {} sync reports. Verification successful.", sync_reports.len());
 
     info!("Requesting AgentService shutdown...");
-
-    let mut agent_service = match service_run_task.await {
-        Ok(s) => s,
-        Err(e) => return Err(anyhow::anyhow!("AgentService run task failed: {e}")),
-    };
-    agent_service.request_shutdown();
-    info!("Shutdown requested. Waiting a bit to ensure tasks stop...");
 
     mock_server.reset().await;
 
