@@ -2,6 +2,8 @@ import type { ContentfulStatusCode } from "hono/dist/types/utils/http-status";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
+type Constructor<T> = new (...args: unknown[]) => T;
+
 function isError(error: unknown): error is Error {
   return error instanceof Error;
 }
@@ -43,11 +45,15 @@ export function mapError<T extends AppError>(map: (error: Error) => T) {
   };
 }
 
-abstract class AppError extends Error {
+export abstract class AppError extends Error {
   abstract readonly tag: string;
   constructor(cause?: unknown) {
     super();
     this.cause = cause;
+  }
+
+  override get message(): string {
+    return `${this.tag}: ${this.cause instanceof Error ? this.cause.message : String(this.cause)}`;
   }
 
   humanize(): string[] {
@@ -93,10 +99,10 @@ export class GetRepositoryError extends AppError {
   tag = "GetRepositoryError";
 }
 
-abstract class EntityError<T extends object> extends AppError {
-  entity: T;
+abstract class EntityError<T> extends AppError {
+  entity: Constructor<T>;
 
-  constructor(entity: T, cause?: unknown) {
+  constructor(entity: Constructor<T>, cause?: unknown) {
     super(cause);
     this.entity = entity;
   }
@@ -104,29 +110,27 @@ abstract class EntityError<T extends object> extends AppError {
   override humanize(): string[] {
     const baseMessage = super.humanize();
     delete baseMessage[0];
-    return [`${this.tag}<${this.entity.constructor.name}>`, ...baseMessage];
+    return [`${this.tag}<${this.entity.name}>`, ...baseMessage];
   }
 }
 
-export class CreateEntityError<T extends object> extends EntityError<T> {
+export class CreateEntityError<T> extends EntityError<T> {
   tag = "CreateEntityError";
 }
 
-export class CreateOrUpdateEntityError<
-  T extends object,
-> extends EntityError<T> {
+export class CreateOrUpdateEntityError<T> extends EntityError<T> {
   tag = "CreateOrUpdateEntityError";
 }
 
-export class FindEntityError<T extends object> extends EntityError<T> {
+export class FindEntityError<T> extends EntityError<T> {
   tag = "FindEntityError";
 }
 
-export class UpdateEntityError<T extends object> extends EntityError<T> {
+export class UpdateEntityError<T> extends EntityError<T> {
   tag = "UpdateEntityError";
 }
 
-export class RemoveEntityError<T extends object> extends EntityError<T> {
+export class RemoveEntityError<T> extends EntityError<T> {
   tag = "RemoveEntityError";
 }
 
@@ -137,7 +141,7 @@ export class InstancesNotAvailable extends AppError {
 export class HttpError extends AppError {
   tag = "HttpError";
   statusCode: ContentfulStatusCode;
-
+  humanizeMessage: string;
   constructor({
     message,
     statusCode,
@@ -145,10 +149,14 @@ export class HttpError extends AppError {
   }: { message: string; statusCode: ContentfulStatusCode; cause?: unknown }) {
     super(cause);
     this.statusCode = statusCode;
-    this.message = message;
+    this.humanizeMessage = message;
+  }
+
+  override get message(): string {
+    return `${this.tag} (${this.statusCode}): ${this.humanizeMessage}`;
   }
 
   override humanize(): string[] {
-    return [this.message];
+    return [this.tag, this.humanizeMessage];
   }
 }

@@ -23,7 +23,6 @@ import {
   ListWorkloadsResponse,
   UpdateWorkloadRequest,
 } from "./workload.dto";
-import { workloadService } from "./workload.service";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
@@ -55,7 +54,7 @@ export function create(options: ControllerOptions): void {
     async (c) => {
       const payload = c.req.valid("json");
       try {
-        const workload = await workloadService.create(
+        const workload = await bindings.services.workload.create(
           bindings,
           payload,
           c.get("txQueryRunner"),
@@ -100,7 +99,7 @@ export function list(options: ControllerOptions): void {
     }),
     responseValidator(bindings, CreateWorkloadResponse.array()),
     async (c) => {
-      const workloads = await workloadService.list(bindings);
+      const workloads = await bindings.services.workload.list(bindings);
       return c.json(workloads.map(workloadMapper.entityToResponse));
     },
   );
@@ -131,7 +130,10 @@ export function read(options: ControllerOptions): void {
     responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
       const params = c.req.valid("param");
-      const workload = await workloadService.read(bindings, params.id);
+      const workload = await bindings.services.workload.read(
+        bindings,
+        params.id,
+      );
       if (!workload) {
         return c.notFound();
       }
@@ -157,7 +159,10 @@ export function update(options: ControllerOptions): void {
     zValidator("json", UpdateWorkloadRequest),
     async (c) => {
       const payload = c.req.valid("json");
-      const updated = await workloadService.update(bindings, payload);
+      const updated = await bindings.services.workload.update(
+        bindings,
+        payload,
+      );
       if (!updated) {
         return c.notFound();
       }
@@ -183,7 +188,10 @@ export function remove(options: ControllerOptions): void {
     paramsValidator(idParamSchema),
     async (c) => {
       const workloadId = c.req.valid("param").id;
-      const deleted = await workloadService.remove(bindings, workloadId);
+      const deleted = await bindings.services.workload.remove(
+        bindings,
+        workloadId,
+      );
       if (!deleted) {
         return c.notFound();
       }

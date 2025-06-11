@@ -1,3 +1,4 @@
+import type { Logger } from "pino";
 import * as vitest from "vitest";
 import type { App } from "#/app";
 import type { AppBindings } from "#/env";
@@ -61,9 +62,18 @@ export function createTestFixtureExtension(): TestFixtureExtension {
       log.debug("Dropping database and destroying data source");
       await dataSource.dropDatabase();
       await dataSource.destroy();
-
+      await flushLogger(log);
+      await flushLogger(bindings.log);
       await fn(fixture);
     });
 
   return { beforeAll, afterAll, it };
+}
+
+async function flushLogger(logger: Logger) {
+  return new Promise<void>((resolve) => {
+    logger.flush(() => {
+      resolve();
+    });
+  });
 }

@@ -9,7 +9,6 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import { metalInstanceService } from "#/metal-instance/metal-instance.service";
 import type {
   CreateWorkloadRequest,
   UpdateWorkloadRequest,
@@ -34,16 +33,17 @@ export class WorkloadService {
     workload: CreateWorkloadRequest,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
-    const metalInstances = await metalInstanceService.findWithFreeResources(
-      {
-        cpus: workload.cpus,
-        memory: workload.memory,
-        disk: workload.disk,
-        gpu: workload.gpu,
-      },
-      bindings,
-      tx,
-    );
+    const metalInstances =
+      await bindings.services.metalInstance.findWithFreeResources(
+        {
+          cpus: workload.cpus,
+          memory: workload.memory,
+          disk: workload.disk,
+          gpu: workload.gpu,
+        },
+        bindings,
+        tx,
+      );
 
     if (metalInstances.length === 0) {
       throw new InstancesNotAvailable();
@@ -61,7 +61,13 @@ export class WorkloadService {
       createdAt: now,
       updatedAt: now,
     });
-    return await repository.save(entity);
+    const createdWorkload = await repository.save(entity);
+    await this.createCnameForWorkload(
+      bindings,
+      createdWorkload.id,
+      metalInstance.id,
+    );
+    return createdWorkload;
   }
 
   @mapError((e) => new FindEntityError(WorkloadEntity, e))
@@ -108,8 +114,30 @@ export class WorkloadService {
   async remove(bindings: AppBindings, workloadId: string): Promise<boolean> {
     const repository = this.getRepository(bindings);
     const result = await repository.delete({ id: workloadId });
+    await this.removeCnameForWorkload(bindings, workloadId);
     return result.affected ? result.affected > 0 : false;
   }
-}
 
-export const workloadService = new WorkloadService();
+  async createCnameForWorkload(
+    bindings: AppBindings,
+    workloadId: string,
+    metalInstanceId: string,
+  ): Promise<void> {
+    const metalInstanceDomain = `${metalInstanceId}.${bindings.config.metalInstanceDnsDomain}`;
+    return await bindings.services.dns.registerCname(
+      bindings.config.workloadDnsDomain,
+      workloadId,
+      metalInstanceDomain,
+    );
+  }
+
+  async removeCnameForWorkload(
+    bindings: AppBindings,
+    workloadId: string,
+  ): Promise<void> {
+    return await bindings.services.dns.removeDomain(
+      bindings.config.workloadDnsDomain,
+      workloadId,
+    );
+  }
+}

@@ -9,7 +9,6 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import { workloadService } from "#/workload/workload.service";
 import type {
   RegisterMetalInstanceRequest,
   SyncMetalInstanceRequest,
@@ -173,7 +172,10 @@ export class MetalInstanceService {
       return null;
     }
 
-    const workloadRepository = workloadService.getRepository(bindings, tx);
+    const workloadRepository = bindings.services.workload.getRepository(
+      bindings,
+      tx,
+    );
 
     const workloadsInInstance = payload.workloads.filter((w) => {
       const workloadEntity = instance.workloads?.find((wl) => wl.id === w.id);
@@ -199,5 +201,3 @@ export class MetalInstanceService {
     return instanceUpdated;
   }
 }
-
-export const metalInstanceService = new MetalInstanceService();
