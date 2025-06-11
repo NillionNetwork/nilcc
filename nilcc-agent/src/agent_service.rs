@@ -1,6 +1,6 @@
 use crate::{
     build_info::get_agent_version,
-    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncResponse, Workload},
+    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, Workload},
     gpu,
     http_client::NilccApiClient,
     repositories::workload::WorkloadRepository,
@@ -90,36 +90,24 @@ impl AgentService {
                     break;
                 }
                 _ = interval.tick() => {
-                    self.run_once().await;
+                    if let Err(e) = self.run_once().await {
+                        error!("Failed to run: {e:#}");
+                    }
                 }
             }
         }
         info!("Sync executor task for agent has finished.");
     }
 
-    async fn run_once(&self) {
+    async fn run_once(&self) -> anyhow::Result<()> {
         let sync_request = SyncRequest {};
-        let response = match self.api_client.sync(self.agent_id, sync_request).await {
-            Ok(response) => response,
-            Err(e) => {
-                //TODO: Consider more robust error handling: e.g., retries with backoff.
-                error!("Failed to sync {e:#}");
-                return;
-            }
-        };
-        if let Err(e) = self.process_sync_response(response).await {
-            error!("Failed to process sync response: {e:#}");
-        }
-    }
-
-    async fn process_sync_response(&self, response: SyncResponse) -> anyhow::Result<()> {
+        let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
         let actions = self.compute_workload_actions(response.workloads).await?;
         if actions.is_empty() {
             info!("No actions need to be executed");
         }
         info!("Need to perform {} workload actions", actions.len());
-        self.apply_actions(actions).await?;
-        Ok(())
+        self.apply_actions(actions).await
     }
 
     async fn compute_workload_actions(&self, expected: Vec<Workload>) -> anyhow::Result<Vec<WorkloadAction>> {
