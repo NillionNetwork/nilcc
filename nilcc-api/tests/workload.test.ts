@@ -25,7 +25,7 @@ describe("workload CRUD", () => {
     serviceToExpose: "app",
     servicePortToExpose: 80,
     memory: 4,
-    cpu: 2,
+    cpus: 2,
     disk: 40,
   };
 
@@ -71,7 +71,7 @@ describe("workload CRUD", () => {
   }) => {
     const overloadedWorkloadRequest = {
       ...createWorkloadRequest,
-      cpu: 63, // Exceeding the available CPU
+      cpus: 63, // Exceeding the available CPU
     };
     const myWorkloadResponse = await workloadClient.create(
       overloadedWorkloadRequest,

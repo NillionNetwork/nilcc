@@ -69,7 +69,7 @@ export class MetalInstanceService {
 
   async findWithFreeResources(
     param: {
-      cpu: number;
+      cpus: number;
       memory: number;
       disk: number;
       gpu: number | undefined;
@@ -83,8 +83,8 @@ export class MetalInstanceService {
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
       .having(
-        "metalInstance.totalCpus - metalInstance.osReservedCpus - COALESCE(SUM(workload.cpu), 0) > :requiredCpus",
-        { requiredCpus: param.cpu },
+        "metalInstance.totalCpus - metalInstance.osReservedCpus - COALESCE(SUM(workload.cpus), 0) > :requiredCpus",
+        { requiredCpus: param.cpus },
       )
       .andHaving(
         "metalInstance.totalMemory - metalInstance.osReservedMemory - COALESCE(SUM(workload.memory), 0) > :requiredMemory",

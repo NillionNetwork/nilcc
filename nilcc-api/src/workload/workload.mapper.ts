@@ -13,7 +13,7 @@ export const workloadMapper = {
       serviceToExpose: workload.serviceToExpose,
       servicePortToExpose: workload.servicePortToExpose,
       memory: workload.memory,
-      cpu: workload.cpu,
+      cpus: workload.cpus,
       disk: workload.disk,
       status: workload.status,
       createdAt: workload.createdAt.toISOString(),
