@@ -1,13 +1,20 @@
-use crate::qemu_client::HardDiskFormat;
+use crate::{
+    iso::{IsoMaker, IsoSpec},
+    qemu_client::HardDiskFormat,
+};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait DiskService: Send + Sync {
     /// Create a disk at the given path with the given format.
-    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: usize) -> anyhow::Result<()>;
+    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u16) -> anyhow::Result<()>;
+
+    /// Create the ISO for an application.
+    async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> anyhow::Result<DockerComposeHash>;
 }
 
 pub struct DefaultDiskService {
@@ -22,7 +29,7 @@ impl DefaultDiskService {
 
 #[async_trait]
 impl DiskService for DefaultDiskService {
-    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: usize) -> anyhow::Result<()> {
+    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u16) -> anyhow::Result<()> {
         let format = format.to_string();
         let args = ["create", "-f", &format, &path.to_string_lossy(), &format!("{size_gib}G")];
         let output = Command::new(&self.qemu_img_path)
@@ -36,4 +43,13 @@ impl DiskService for DefaultDiskService {
             bail!("qemu-img failed: {}", String::from_utf8_lossy(&output.stderr))
         }
     }
+
+    async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> anyhow::Result<DockerComposeHash> {
+        let meta = IsoMaker.create_application_iso(path, spec).await?;
+        let compose_hash = hex::encode(meta.docker_compose_hash);
+        Ok(DockerComposeHash(compose_hash))
+    }
 }
+
+#[derive(Clone, Debug)]
+pub struct DockerComposeHash(pub String);

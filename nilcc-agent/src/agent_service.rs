@@ -4,6 +4,7 @@ use crate::{
     gpu,
     http_client::NilccApiClient,
     repositories::workload::WorkloadRepository,
+    services::vm::VmService,
 };
 use anyhow::{Context, Result};
 use std::{collections::HashMap, time::Duration};
@@ -23,6 +24,9 @@ pub struct AgentServiceArgs {
     /// The workloads repository.
     pub workload_repository: Box<dyn WorkloadRepository>,
 
+    /// The VM service.
+    pub vm_service: Box<dyn VmService>,
+
     /// The interval to use for sync requests.
     pub sync_interval: Duration,
 }
@@ -31,13 +35,14 @@ pub struct AgentService {
     agent_id: Uuid,
     api_client: Box<dyn NilccApiClient>,
     workload_repository: Box<dyn WorkloadRepository>,
+    vm_service: Box<dyn VmService>,
     sync_interval: Duration,
 }
 
 impl AgentService {
     pub fn new(args: AgentServiceArgs) -> Self {
-        let AgentServiceArgs { agent_id, api_client, workload_repository, sync_interval } = args;
-        Self { agent_id, api_client, workload_repository, sync_interval }
+        let AgentServiceArgs { agent_id, api_client, workload_repository, vm_service, sync_interval } = args;
+        Self { agent_id, api_client, workload_repository, vm_service, sync_interval }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
@@ -147,11 +152,15 @@ impl AgentService {
 
     async fn apply_actions(&self, actions: Vec<WorkloadAction>) -> anyhow::Result<()> {
         for action in actions {
-            // TODO start/stop vms based on actions.
             match action {
-                WorkloadAction::Start(workload) => self.workload_repository.upsert(workload).await?,
-                WorkloadAction::Update(workload) => self.workload_repository.upsert(workload).await?,
-                WorkloadAction::Stop(id) => self.workload_repository.delete(id).await?,
+                WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
+                    self.workload_repository.upsert(workload.clone()).await?;
+                    self.vm_service.sync_vm(workload).await;
+                }
+                WorkloadAction::Stop(id) => {
+                    self.workload_repository.delete(id).await?;
+                    self.vm_service.stop_vm(id).await;
+                }
             };
         }
         Ok(())
@@ -225,10 +234,11 @@ pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
 
 #[cfg(test)]
 mod tests {
-    use mockall::predicate::eq;
-
     use super::*;
-    use crate::{http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository};
+    use crate::{
+        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
+    };
+    use mockall::predicate::eq;
 
     fn make_workload() -> Workload {
         Workload {
@@ -248,15 +258,17 @@ mod tests {
         agent_id: Uuid,
         workload_repository: MockWorkloadRepository,
         api_client: MockNilccApiClient,
+        vm_service: MockVmService,
     }
 
     impl ServiceBuilder {
         fn build(self) -> AgentService {
-            let Self { agent_id, workload_repository, api_client } = self;
+            let Self { agent_id, workload_repository, vm_service, api_client } = self;
             let args = AgentServiceArgs {
                 agent_id,
                 api_client: Box::new(api_client),
                 workload_repository: Box::new(workload_repository),
+                vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
             };
             AgentService::new(args)
@@ -265,7 +277,12 @@ mod tests {
 
     impl Default for ServiceBuilder {
         fn default() -> Self {
-            Self { agent_id: Uuid::new_v4(), workload_repository: Default::default(), api_client: Default::default() }
+            Self {
+                agent_id: Uuid::new_v4(),
+                workload_repository: Default::default(),
+                vm_service: Default::default(),
+                api_client: Default::default(),
+            }
         }
     }
 
@@ -306,8 +323,11 @@ mod tests {
             WorkloadAction::Stop(stop_id),
         ];
         builder.workload_repository.expect_delete().with(eq(stop_id)).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(start_workload)).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(update_workload)).return_once(move |_| Ok(()));
+        builder.workload_repository.expect_upsert().with(eq(start_workload.clone())).return_once(move |_| Ok(()));
+        builder.workload_repository.expect_upsert().with(eq(update_workload.clone())).return_once(move |_| Ok(()));
+        builder.vm_service.expect_sync_vm().with(eq(start_workload)).return_once(|_| ());
+        builder.vm_service.expect_sync_vm().with(eq(update_workload)).return_once(|_| ());
+        builder.vm_service.expect_stop_vm().with(eq(stop_id)).return_once(|_| ());
 
         let service = builder.build();
         service.apply_actions(actions).await.expect("failed to apply actions");

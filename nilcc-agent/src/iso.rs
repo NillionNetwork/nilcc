@@ -24,13 +24,19 @@ static RESERVED_CONTAINERS: &[&str] = &["nilcc-attester", "nilcc-proxy"];
 static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &["NILCC_VERSION", "NILCC_VM_TYPE"];
 
 /// An environment variable.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnvironmentVariable {
     /// The environment variable name.
     pub name: String,
 
     /// The environment variable value.
     pub value: String,
+}
+
+impl EnvironmentVariable {
+    pub fn new<S: Into<String>>(name: S, value: S) -> Self {
+        Self { name: name.into(), value: value.into() }
+    }
 }
 
 impl FromStr for EnvironmentVariable {
@@ -50,7 +56,7 @@ impl FromStr for EnvironmentVariable {
 pub struct ParseEnvironmentVariableError;
 
 /// Information about the API container that will be the entrypoint to the VM image.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 pub struct ContainerMetadata {
     /// The name of the container.
     pub container: String,
@@ -60,7 +66,7 @@ pub struct ContainerMetadata {
 }
 
 /// The metadata for the application being ran.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 pub struct ApplicationMetadata {
     /// The hostname to use for the TLS certificate exposed by this host.
     pub hostname: String,
@@ -70,7 +76,7 @@ pub struct ApplicationMetadata {
 }
 
 /// The spec for the ISO being created.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct IsoSpec {
     /// The docker compose information.
     pub docker_compose_yaml: String,
@@ -89,8 +95,8 @@ impl IsoMaker {
     /// Create an ISO for an application to be run in a confidential VM.
     pub async fn create_application_iso(
         &self,
-        spec: IsoSpec,
         iso_path: &Path,
+        spec: IsoSpec,
     ) -> Result<IsoMetadata, ApplicationIsoError> {
         use ApplicationIsoError::*;
         let IsoSpec { docker_compose_yaml, metadata, environment_variables } = spec;
@@ -154,7 +160,7 @@ impl IsoMaker {
 #[derive(Serialize)]
 pub struct IsoMetadata {
     #[serde(with = "hex::serde")]
-    docker_compose_hash: [u8; 32],
+    pub(crate) docker_compose_hash: [u8; 32],
 }
 
 struct ComposeSanitizer<'a> {

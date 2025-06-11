@@ -28,7 +28,7 @@ type QmpCommandService = QapiService<QmpWriteStreamHalf>;
 type QmpDriverTaskHandle = JoinHandle<()>;
 
 /// The spec for a hard disk.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HardDiskSpec {
     /// The path to the hard disk.
     pub path: PathBuf,
@@ -38,7 +38,7 @@ pub struct HardDiskSpec {
 }
 
 /// A hard disk format.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HardDiskFormat {
     /// A hard disk in raw format.
     Raw,
@@ -57,10 +57,10 @@ impl fmt::Display for HardDiskFormat {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct VmSpec {
     /// Number of vCPUs to allocate to the VM.
-    pub cpu: u8,
+    pub cpu: u16,
 
     /// Amount of RAM to allocate to the VM (in MiB).
     pub ram_mib: u32,
@@ -126,6 +126,7 @@ pub enum QemuClientError {
 pub type Result<T> = std::result::Result<T, QemuClientError>;
 
 /// A client to manage VMs
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmClient: Send + Sync {
     /// Start a VM with the given spec that we will be able to talk to via the socket in the given

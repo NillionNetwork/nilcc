@@ -7,7 +7,9 @@ use nilcc_agent::{
     http_client::RestNilccApiClient,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
+    qemu_client::QemuClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
+    services::{disk::DefaultDiskService, vm::DefaultVmService},
 };
 use serde::Serialize;
 use std::{fs, ops::Deref, path::PathBuf};
@@ -83,7 +85,7 @@ async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
                 environment_variables,
             };
-            let details = IsoMaker.create_application_iso(spec, &output).await.context("creating ISO")?;
+            let details = IsoMaker.create_application_iso(&output, spec).await.context("creating ISO")?;
             Ok(ActionOutput { status: "created".into(), details })
         }
     }
@@ -103,13 +105,23 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     let ApiConfig { endpoint, key, sync_interval } = config.api;
-    fs::create_dir_all(&config.vm_store).context("Failed to create VM store directory")?;
 
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+    let disk_service = DefaultDiskService::new(config.qemu.img_bin);
+    let qemu_client = QemuClient::new(config.qemu.system_bin);
+    let vm_service = DefaultVmService::new(config.vm_store, Box::new(qemu_client), Box::new(disk_service), config.cvm)
+        .await
+        .context("Failed to create vm service")?;
 
-    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, workload_repository, sync_interval };
+    let args = AgentServiceArgs {
+        agent_id: config.agent_id,
+        api_client,
+        vm_service: Box::new(vm_service),
+        workload_repository,
+        sync_interval,
+    };
     let agent_service = AgentService::new(args);
 
     let _handle = agent_service.run().await.context("AgentService failed to start and register")?;
