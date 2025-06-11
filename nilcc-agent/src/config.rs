@@ -15,6 +15,9 @@ pub struct AgentConfig {
 
     /// nilCC API configuration.
     pub api: ApiConfig,
+
+    /// The database configuration.
+    pub db: DbConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -37,6 +40,12 @@ pub struct ApiConfig {
     /// Interval for periodic synchronization task.
     #[serde(with = "humantime_serde", default = "default_agent_sync_interval")]
     pub sync_interval: Duration,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DbConfig {
+    /// The database URL.
+    pub url: String,
 }
 
 fn default_agent_sync_interval() -> Duration {

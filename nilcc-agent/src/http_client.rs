@@ -1,17 +1,18 @@
-use crate::data_schemas::{MetalInstance, SyncRequest};
+use crate::data_schemas::{MetalInstance, SyncRequest, SyncResponse};
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder, Response as ReqwestResponse};
 use tracing::debug;
 use uuid::Uuid;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait NilccApiClient: Send {
+pub trait NilccApiClient: Send + Sync {
     /// Register an agent.
     async fn register(&self, payload: MetalInstance) -> anyhow::Result<()>;
 
     /// Reports the status of an agent
-    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<()>;
+    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<SyncResponse>;
 }
 
 pub struct RestNilccApiClient {
@@ -71,7 +72,7 @@ impl NilccApiClient for RestNilccApiClient {
         self.handle_response(&full_url, response).await
     }
 
-    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<()> {
+    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<SyncResponse> {
         let endpoint_suffix = format!("/api/v1/metal-instances/{agent_id}/~/sync");
         let full_url = format!("{}{endpoint_suffix}", self.api_base_url);
         debug!("Sending agent sync request to {full_url}: {payload:?}");
