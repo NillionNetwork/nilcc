@@ -1,5 +1,5 @@
 use crate::data_schemas::{MetalInstance, SyncRequest, SyncResponse};
-use anyhow::Context;
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder, Response as ReqwestResponse};
 use tracing::debug;
@@ -69,7 +69,15 @@ impl NilccApiClient for RestNilccApiClient {
             .await
             .with_context(|| format!("Failed to send registration request to {full_url}"))?;
 
-        self.handle_response(&full_url, response).await
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            bail!(
+                "Failed to register agent at {full_url}. Status: {}; Error: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
+            );
+        }
     }
 
     async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<SyncResponse> {

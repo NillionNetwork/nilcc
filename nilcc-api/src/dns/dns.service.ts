@@ -36,7 +36,13 @@ export class Route53DnsService implements DnsService {
       credentials?: { accessKeyId: string; secretAccessKey: string };
     },
   ): Promise<Route53DnsService> {
-    const route53 = new Route53Client([options]);
+    let route53: Route53Client;
+    if (options) {
+      route53 = new Route53Client(options);
+    } else {
+      route53 = new Route53Client();
+    }
+
     const zoneId = await Route53DnsService.findHostedZone(route53, subdomain);
     return new Route53DnsService(subdomain, zoneId, route53);
   }
@@ -119,16 +125,14 @@ export class Route53DnsService implements DnsService {
 
 export class LocalStackDnsService extends Route53DnsService {
   static override async create(subdomain: string): Promise<Route53DnsService> {
-    const route53 = new Route53Client([
-      {
-        endpoint: "http://localhost:4566",
-        region: "us-east-1", // LocalStack default region
-        credentials: {
-          accessKeyId: "test",
-          secretAccessKey: "test",
-        },
+    const route53 = new Route53Client({
+      endpoint: "http://localhost:4566",
+      region: "us-east-1", // LocalStack default region
+      credentials: {
+        accessKeyId: "test",
+        secretAccessKey: "test",
       },
-    ]);
+    });
 
     const zoneId = await LocalStackDnsService.createHostedZone(
       subdomain,

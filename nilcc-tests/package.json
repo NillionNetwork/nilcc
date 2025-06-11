@@ -1,0 +1,50 @@
+{
+  "name": "@nillion/nilcc-tests",
+  "private": true,
+  "version": "1.0.0-preview.0",
+  "repository": "https://github.com/NillionNetwork/nilcc",
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run e2e-tests/",
+    "fmt": "biome format --fix",
+    "check": "biome check --fix",
+    "lint": "biome lint --fix"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.0.0-beta.4",
+    "@faker-js/faker": "^9.8.0",
+    "@stoplight/spectral-cli": "^6.15.0",
+    "@types/node": "^22.15.21",
+    "@types/pg": "^8.15.4",
+    "@vitest/coverage-v8": "^3.1.4",
+    "docker-compose": "^1.2.0",
+    "node-fetch": "^3.3.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.1.4"
+  },
+  "dependencies": {
+    "@apidevtools/json-schema-ref-parser": "^12.0.2",
+    "@hono/node-server": "^1.14.2",
+    "commander": "^14.0.0",
+    "dotenv": "^16.5.0",
+    "effect": "^3.15.2",
+    "hono": "^4.7.10",
+    "hono-openapi": "^0.4.8",
+    "http-status-codes": "^2.3.0",
+    "pg": "^8.16.0",
+    "pino": "^9.7.0",
+    "pino-pretty": "^13.0.0",
+    "reflect-metadata": "^0.2.2",
+    "temporal-polyfill": "^0.3.0",
+    "typeorm": "^0.3.24",
+    "zod": "^3.25.13",
+    "zod-openapi": "^4.2.4",
+    "zod-validation-error": "^3.4.1"
+  },
+  "packageManager": "pnpm@10.10.0"
+}

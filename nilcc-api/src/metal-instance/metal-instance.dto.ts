@@ -6,7 +6,7 @@ export const RegisterMetalInstanceRequest = z
   .object({
     id: Uuid,
     agentVersion: z.string().min(1, "Agent version is required"),
-    hostname: z.string().min(10, "hostname is required"),
+    hostname: z.string().min(1, "hostname is required"),
     totalMemory: z.number().int().positive(),
     osReservedMemory: z.number().int().positive(),
     totalCpus: z.number().int().positive(),

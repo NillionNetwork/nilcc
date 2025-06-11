@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "35432:5432"
+  localstack:
+    image: localstack/localstack
+    ports:
+      - "4566:4566"

@@ -1,5 +1,5 @@
 use crate::{build_info::get_agent_version, config::ReservedResourcesConfig, data_schemas::MetalInstanceDetails};
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use sysinfo::{Disks, System};
 use tokio::process::Command;
 use tracing::info;
@@ -17,10 +17,12 @@ impl SystemResources {
         let sys = System::new_all();
 
         let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
+
         let memory_gb = sys.total_memory() / (1024 * 1024 * 1024);
-        let memory_gb = memory_gb
-            .checked_sub(reserved.memory_gb)
-            .ok_or_else(|| anyhow!("have {memory_gb}GB memory but need to reserve {}", reserved.memory_gb))?;
+        if reserved.memory_gb > memory_gb {
+            bail!("Reserved memory ({}) exceeds total memory ({memory_gb})", reserved.memory_gb);
+        }
+
         let disks = Disks::new_with_refreshed_list();
         let mut root_disk_bytes = 0;
         for disk in disks.list() {
@@ -29,10 +31,14 @@ impl SystemResources {
             }
         }
         let disk_size_gb = root_disk_bytes / (1024 * 1024 * 1024);
+        if reserved.disk_space_gb > disk_size_gb {
+            bail!("Reserved disk space ({}) exceeds total disk space ({disk_size_gb})", reserved.disk_space_gb);
+        }
+
         let cpus = sys.cpus().len() as u32;
-        let cpus = cpus
-            .checked_sub(reserved.cpus)
-            .ok_or_else(|| anyhow!("have {cpus} cpus but need to reserve {}", reserved.cpus))?;
+        if reserved.cpus > cpus {
+            bail!("Reserved CPUs ({}) exceed total CPUs ({cpus})", reserved.cpus);
+        }
 
         let gpu_group = Self::find_gpus().await?;
 
@@ -43,8 +49,11 @@ impl SystemResources {
             agent_version: get_agent_version().to_string(),
             hostname,
             memory_gb,
+            os_reserved_memory_gb: reserved.memory_gb,
             disk_space_gb: disk_size_gb,
+            os_reserved_disk_space_gb: reserved.disk_space_gb,
             cpus,
+            os_reserved_cpus: reserved.cpus,
             gpus: gpu_count,
             gpu_model,
         };
@@ -106,13 +115,19 @@ mod tests {
 
     #[tokio::test]
     async fn gather_too_much_reserved_cpu() {
-        let reserved = ReservedResourcesConfig { cpus: 1024, memory_gb: 0 };
+        let reserved = ReservedResourcesConfig { cpus: 1024, memory_gb: 0, disk_space_gb: 0 };
         SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 
     #[tokio::test]
     async fn gather_too_much_reserved_memory() {
-        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 1024 };
+        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 1024, disk_space_gb: 0 };
+        SystemResources::gather(reserved).await.expect_err("gathering did not fail");
+    }
+
+    #[tokio::test]
+    async fn gather_too_much_reserved_disk() {
+        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 0, disk_space_gb: 100_000 };
         SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 }
