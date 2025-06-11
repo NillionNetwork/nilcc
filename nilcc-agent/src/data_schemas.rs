@@ -16,22 +16,34 @@ pub struct MetalInstanceDetails {
     pub hostname: String,
 
     /// The amount of memory in GBs.
-    #[serde(rename = "memory")]
+    #[serde(rename = "totalMemory")]
     pub memory_gb: u64,
 
+    /// The amount of memory in GBs.
+    #[serde(rename = "osReservedMemory")]
+    pub os_reserved_memory_gb: u64,
+
     /// The amount of disk space, in GBs.
-    #[serde(rename = "disk")]
+    #[serde(rename = "totalDisk")]
     pub disk_space_gb: u64,
 
-    /// The number of CPUs
-    #[serde(rename = "cpu")]
+    /// The amount of disk space reserved for the OS, in GBs.
+    #[serde(rename = "osReservedDisk")]
+    pub os_reserved_disk_space_gb: u64,
+
+    /// The number of CPUs.
+    #[serde(rename = "totalCpus")]
     pub cpus: u32,
 
+    /// The number of CPUs reserved for the OS.
+    pub os_reserved_cpus: u32,
+
     /// The number of GPUs.
-    #[serde(rename = "gpu")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gpus: Option<u32>,
 
     /// The GPU model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_model: Option<String>,
 }
 

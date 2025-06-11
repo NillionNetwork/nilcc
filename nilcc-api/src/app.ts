@@ -44,6 +44,10 @@ export async function buildApp(
   app.use("*", registerMetrics);
   metricsApp.get("/metrics", printMetrics);
 
+  app.get("/health", (c) => {
+    return c.json({ status: "ok", time: new Date().toISOString() });
+  });
+
   const limit = Temporal.Duration.from({ minutes: 1 }).total("milliseconds");
   app.use("*", timeout(limit));
 

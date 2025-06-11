@@ -25,9 +25,6 @@ pub struct AgentConfig {
     /// The SNI proxy configuration.
     pub sni_proxy: SniProxyConfig,
 
-    /// The DNS subdomain where workloads will be accessible.
-    pub dns_subdomain: String,
-
     /// The metrics configuration.
     pub metrics: MetricsConfig,
 
@@ -141,6 +138,9 @@ pub struct ReservedResourcesConfig {
 
     /// The reserved memory in GBs.
     pub memory_gb: u64,
+
+    /// The reserved disk space in GBs.
+    pub disk_space_gb: u64,
 }
 
 fn default_agent_sync_interval() -> Duration {

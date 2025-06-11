@@ -1,4 +1,4 @@
-agent_id: "f7b27e21-eabb-4acb-8cd7-1d8113fd2237"
+agent_id: "dc96ffc5-2424-4809-b5cb-3eb405e6f519"
 vm_store: /tmp
 
 qemu:
@@ -6,12 +6,12 @@ qemu:
   img_bin: qemu-img
 
 api:
-  endpoint: "http://127.0.0.1:50051"
-  key: test
+  endpoint: "http://127.0.0.1:8081"
+  key: your-metal-instance-api-key
   sync_interval: 10s
 
 db:
-  url: sqlite:///tmp/db.sqlite
+  url: "sqlite://:memory:"
 
 cvm:
   initrd: /tmp/artifacts/initramfs.cpio
@@ -22,7 +22,7 @@ cvm:
   verity_root_hash: "80d9c99845b2295110259d18684d0daf4720c8837558146e4cc50a4b0a44a18e"
 
 sni_proxy:
-  dns_subdomain: "workloads.nilcc.com"
+  dns_subdomain: "localhost"
   start_port_range: 10000
   end_port_range: 20000
   config_file_path: /etc/haproxy/haproxy.cfg
@@ -34,9 +34,11 @@ sni_proxy:
   max_connections: 100000
 
 metrics:
-  bind_endpoint: 0.0.0.0:8080
+  bind_endpoint: 0.0.0.0:9092
 
 resources:
   reserved:
     cpus: 1
     memory_gb: 2
+    disk_space_gb: 10
+

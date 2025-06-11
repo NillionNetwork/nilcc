@@ -119,6 +119,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let metal_details = SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
+    debug!("sqlite db url: {}", config.db.url);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let disk_service = DefaultDiskService::new(config.qemu.img_bin);
