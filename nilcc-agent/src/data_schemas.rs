@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, num::NonZeroU16};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+    num::NonZeroU16,
+};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -49,11 +53,12 @@ pub struct Workload {
 
 impl fmt::Debug for Workload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Hide this one since it can have sensitive data
+        let clean_env_vars: BTreeMap<_, _> = self.env_vars.keys().map(|key| (key, "...")).collect();
         f.debug_struct("Workload")
             .field("id", &self.id)
             .field("docker_compose", &self.docker_compose)
-            // Hide this one since it can have sensitive data
-            .field("env_vars", &"{ ... }")
+            .field("env_vars", &clean_env_vars)
             .field("service_to_expose", &self.service_to_expose)
             .field("service_port_to_expose", &self.service_port_to_expose)
             .field("memory", &self.memory)
