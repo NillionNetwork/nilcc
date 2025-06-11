@@ -13,3 +13,10 @@ api:
 db:
   url: sqlite:///tmp/db.sqlite
 
+cvm:
+  initrd: /tmp/artifacts/initramfs.cpio
+  kernel: /tmp/artifacts/vmlinuz
+  bios: /tmp/artifacts/OVMF.fd
+  base_disk: /tmp/artifacts/disk.qcow2
+  verity_disk: /tmp/artifacts/verity-hash-dev.raw
+  verity_root_hash: "80d9c99845b2295110259d18684d0daf4720c8837558146e4cc50a4b0a44a18e"
