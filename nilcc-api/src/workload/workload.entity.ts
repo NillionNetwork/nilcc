@@ -43,7 +43,7 @@ export class WorkloadEntity {
   memory: number;
 
   @Column({ type: "int" })
-  cpu: number;
+  cpus: number;
 
   @Column({ type: "int" })
   disk: number;

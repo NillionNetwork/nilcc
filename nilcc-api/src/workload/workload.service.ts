@@ -36,7 +36,7 @@ export class WorkloadService {
   ): Promise<WorkloadEntity> {
     const metalInstances = await metalInstanceService.findWithFreeResources(
       {
-        cpu: workload.cpu,
+        cpus: workload.cpus,
         memory: workload.memory,
         disk: workload.disk,
         gpu: workload.gpu,
@@ -97,7 +97,7 @@ export class WorkloadService {
         serviceToExpose: payload.serviceToExpose,
         servicePortToExpose: payload.servicePortToExpose,
         memory: payload.memory,
-        cpu: payload.cpu,
+        cpus: payload.cpus,
         updatedAt: new Date(),
       },
     );

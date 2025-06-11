@@ -11,7 +11,7 @@ export const CreateWorkloadRequest = z
     serviceToExpose: z.string().min(1, "Service to expose is required"),
     servicePortToExpose: z.number().int().positive(),
     memory: z.number().int().positive(),
-    cpu: z.number().int().positive(),
+    cpus: z.number().int().positive(),
     disk: z
       .number()
       .int()
@@ -62,7 +62,7 @@ export const UpdateWorkloadRequest = z
       .int()
       .min(1, "Memory must be a positive integer")
       .optional(),
-    cpu: z.number().int().min(1, "CPU must be a positive integer").optional(),
+    cpus: z.number().int().min(1, "CPU must be a positive integer").optional(),
   })
   .openapi({ ref: "UpdateWorkloadRequest" });
 export type UpdateWorkloadRequest = z.infer<typeof UpdateWorkloadRequest>;

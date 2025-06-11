@@ -33,7 +33,7 @@ describe("Metal Instance", () => {
     serviceToExpose: "app",
     servicePortToExpose: 80,
     memory: 4,
-    cpu: 2,
+    cpus: 2,
     disk: 40,
   };
 
