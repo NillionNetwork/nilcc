@@ -1,16 +1,26 @@
-use crate::data_schemas::{EmptyResponse, MetalInstance, SyncRequest};
+use crate::data_schemas::{MetalInstance, SyncRequest};
 use anyhow::Context;
+use async_trait::async_trait;
 use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder, Response as ReqwestResponse};
 use tracing::debug;
 use uuid::Uuid;
 
-pub struct AgentHttpRestClient {
+#[async_trait]
+pub trait NilccApiClient: Send {
+    /// Register an agent.
+    async fn register(&self, payload: MetalInstance) -> anyhow::Result<()>;
+
+    /// Reports the status of an agent
+    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<()>;
+}
+
+pub struct RestNilccApiClient {
     http_client: Client,
     api_base_url: String,
     api_key: String,
 }
 
-impl AgentHttpRestClient {
+impl RestNilccApiClient {
     /// Creates a new instance with the specified API base URL.
     pub fn new(api_base_url: String, api_key: String) -> anyhow::Result<Self> {
         let http_client = Client::builder()
@@ -42,9 +52,11 @@ impl AgentHttpRestClient {
             Err(anyhow::anyhow!("HTTP request to {endpoint} failed with status {status}: {response_text}"))
         }
     }
+}
 
-    /// Registers an agent
-    pub async fn register(&self, payload: MetalInstance) -> anyhow::Result<EmptyResponse> {
+#[async_trait]
+impl NilccApiClient for RestNilccApiClient {
+    async fn register(&self, payload: MetalInstance) -> anyhow::Result<()> {
         let endpoint_suffix = "/api/v1/metal-instances/~/register";
         let full_url = format!("{}{endpoint_suffix}", self.api_base_url,);
         debug!("Sending agent registration request to {full_url}: {payload:?}");
@@ -59,8 +71,7 @@ impl AgentHttpRestClient {
         self.handle_response(&full_url, response).await
     }
 
-    /// Reports the status of an agent
-    pub async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<EmptyResponse> {
+    async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<()> {
         let endpoint_suffix = format!("/api/v1/metal-instances/{agent_id}/~/sync");
         let full_url = format!("{}{endpoint_suffix}", self.api_base_url);
         debug!("Sending agent sync request to {full_url}: {payload:?}");

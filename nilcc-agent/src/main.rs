@@ -1,24 +1,27 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
-
+use clap::{Args, Parser, Subcommand};
 use nilcc_agent::{
-    agent_service::AgentService,
+    agent_service::{AgentService, AgentServiceArgs},
     build_info,
-    config::AgentConfig,
+    config::{AgentConfig, ApiConfig},
+    http_client::RestNilccApiClient,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
     output::{serialize_error, serialize_output, SerializeAsAny},
-    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmDetails, VmSpec},
+    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClient, QemuClientError, VmClient, VmDetails, VmSpec},
 };
 use serde::Serialize;
-use std::{fs, ops::Deref, path::PathBuf};
+use std::{env, fs, ops::Deref, path::PathBuf};
 use tracing::debug;
+use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
+use uuid::Uuid;
+
+const DEFAULT_QEMU_SYSTEM: &str = "qemu-system-x86_64";
+const DEFAULT_QEMU_IMG: &str = "qemu-img";
+const DEFAULT_VM_STORE: &str = ".nilcc/vms";
 
 #[derive(Parser)]
 #[clap(author, version = build_info::get_agent_version(), about = "nilCC Agent CLI")]
 struct Cli {
-    #[clap(flatten)]
-    configs: AgentConfig,
-
     /// The command to be ran.
     #[command(subcommand)]
     command: Command,
@@ -27,15 +30,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// VM commands.
-    #[clap(subcommand)]
-    Vm(VmCommand),
+    Vm {
+        #[clap(flatten)]
+        args: VmCommandArgs,
+    },
 
     /// ISO commands.
     #[clap(subcommand)]
     Iso(IsoCommand),
 
     /// Run the agent in daemon mode and connect to nilCC API.
-    #[clap(name = "daemon")]
     Daemon {
         /// Path to the agent configuration file
         #[clap(long, short, default_value = "nilcc-agent-config.yaml")]
@@ -46,12 +50,39 @@ enum Command {
     Info,
 }
 
+#[derive(Args)]
+struct VmCommandArgs {
+    /// Directory where VM folders live (default: $HOME/.nilcc/vms)
+    #[clap(env, long, short, default_value_os_t = default_vm_store())]
+    vm_store: PathBuf,
+
+    /// Optional qemu-system binary
+    #[clap(
+        long = "qemu-system-bin",
+        env = "VM_QEMU_SYSTEM_BIN",
+        default_value = DEFAULT_QEMU_SYSTEM
+    )]
+    qemu_system_bin: PathBuf,
+
+    /// Optional; qemu-img binary
+    #[clap(
+        long = "qemu-img-bin",
+        env = "VM_QEMU_IMG_BIN",
+        default_value = DEFAULT_QEMU_IMG
+    )]
+    qemu_img_bin: PathBuf,
+
+    /// The command to be ran.
+    #[clap(subcommand)]
+    command: VmCommand,
+}
+
 #[derive(Subcommand)]
 enum VmCommand {
     /// Create and start a fresh VM
     Create {
-        /// Unique name of the VM
-        name: String,
+        /// VM identifier.
+        id: Uuid,
 
         /// vCPUs
         #[clap(long)]
@@ -103,26 +134,26 @@ enum VmCommand {
     },
 
     /// Start already created VM
-    Start { name: String },
+    Start { id: Uuid },
 
     /// Gracefully stop running VM or force stop if `force` is true
     Stop {
-        name: String,
+        id: Uuid,
         #[arg(short, long, help = "Force stop the VM (power-off)")]
         force: bool,
     },
 
     /// Gracefully restart VM
-    Restart { name: String },
+    Restart { id: Uuid },
 
     /// Delete VM and all its files
-    Delete { name: String },
+    Delete { id: Uuid },
 
     /// Check if VM spec matches the current state
-    Check { name: String },
+    Check { id: Uuid },
 
     /// Get VM status: running, stopped
-    Status { name: String },
+    Status { id: Uuid },
 }
 
 #[derive(Subcommand)]
@@ -154,6 +185,24 @@ enum IsoCommand {
     },
 }
 
+fn default_vm_store() -> PathBuf {
+    // if launched through sudo SUDO_UID will be our user
+    if let Ok(uid_str) = env::var("SUDO_UID") {
+        if let Ok(uid) = uid_str.parse::<u32>() {
+            if let Some(u) = get_user_by_uid(uid) {
+                return u.home_dir().join(DEFAULT_VM_STORE);
+            }
+        }
+    }
+
+    if let Some(u) = get_user_by_uid(get_current_uid()) {
+        return u.home_dir().join(DEFAULT_VM_STORE);
+    }
+
+    // fallback to the current directory
+    PathBuf::from(DEFAULT_VM_STORE)
+}
+
 /// JSON wrapper for success responses
 #[derive(Serialize)]
 struct ActionOutput<T: Serialize> {
@@ -176,11 +225,11 @@ async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata
     }
 }
 
-async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<ActionOutput<VmDetails>, QemuClientError> {
-    let client = QemuClient::new(configs.qemu_system_bin, configs.qemu_img_bin, configs.vm_store);
-    match command {
+async fn run_vm_command(args: VmCommandArgs) -> Result<ActionOutput<VmDetails>, QemuClientError> {
+    let client = QemuClient::new(args.qemu_system_bin, args.qemu_img_bin, args.vm_store);
+    match args.command {
         VmCommand::Create {
-            name,
+            id,
             cpu,
             ram_mib,
             disk_gib,
@@ -211,24 +260,24 @@ async fn run_vm_command(configs: AgentConfig, command: VmCommand) -> Result<Acti
                 enable_cvm,
             };
 
-            client.create_vm(&name, spec).await.map(|details| ActionOutput { status: "created".into(), details })
+            client.create_vm(id, spec).await.map(|details| ActionOutput { status: "created".into(), details })
         }
-        VmCommand::Start { name } => {
-            client.start_vm(&name).await.map(|details| ActionOutput { status: "started".into(), details })
+        VmCommand::Start { id } => {
+            client.start_vm(id).await.map(|details| ActionOutput { status: "started".into(), details })
         }
-        VmCommand::Stop { name, force } => {
-            client.stop_vm(&name, force).await.map(|details| ActionOutput { status: "stopped".into(), details })
+        VmCommand::Stop { id, force } => {
+            client.stop_vm(id, force).await.map(|details| ActionOutput { status: "stopped".into(), details })
         }
-        VmCommand::Restart { name } => {
-            client.restart_vm(&name).await.map(|details| ActionOutput { status: "restarted".into(), details })
+        VmCommand::Restart { id } => {
+            client.restart_vm(id).await.map(|details| ActionOutput { status: "restarted".into(), details })
         }
-        VmCommand::Delete { name } => {
-            client.delete_vm(&name).await.map(|details| ActionOutput { status: "deleted".into(), details })
+        VmCommand::Delete { id } => {
+            client.delete_vm(id).await.map(|details| ActionOutput { status: "deleted".into(), details })
         }
-        VmCommand::Check { name } => {
-            client.check_vm_spec(&name).await.map(|details| ActionOutput { status: "matching".into(), details })
+        VmCommand::Check { id } => {
+            client.check_vm_spec(id).await.map(|details| ActionOutput { status: "matching".into(), details })
         }
-        VmCommand::Status { name } => client.vm_status(&name).await.map(|(details, running)| ActionOutput {
+        VmCommand::Status { id } => client.vm_status(id).await.map(|(details, running)| ActionOutput {
             status: if running { "running".into() } else { "stopped".into() },
             details,
         }),
@@ -248,37 +297,24 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 }
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
-    let agent_id =
-        config.agent_id.ok_or_else(|| anyhow::anyhow!("Agent ID is required when running in daemon mode"))?;
+    let ApiConfig { endpoint, key, sync_interval } = config.api;
+    fs::create_dir_all(&config.vm_store).context("Failed to create VM store directory")?;
 
-    let api_endpoint = config
-        .nilcc_api_endpoint
-        .ok_or_else(|| anyhow::anyhow!("nilCC API endpoint is required when running in daemon mode"))?;
+    let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
+    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, sync_interval };
+    let agent_service = AgentService::new(args);
 
-    let api_key =
-        config.nilcc_api_key.ok_or_else(|| anyhow::anyhow!("nilCC API key is required when running in daemon mode"))?;
-
-    let mut agent_builder = AgentService::builder(agent_id, api_endpoint.clone(), api_key);
-
-    if let Some(sync_interval) = config.sync_interval {
-        agent_builder = agent_builder.sync_interval(sync_interval);
-    }
-
-    let mut agent_service = agent_builder.build().context("Building AgentService")?;
-    agent_service.run().await.context("AgentService failed to start and register")?;
+    let _handle = agent_service.run().await.context("AgentService failed to start and register")?;
     debug!("AgentService is running.");
 
     tokio::signal::ctrl_c().await?;
-    debug!("Ctrl+C received. Initiating graceful shutdown of AgentService.");
-    agent_service.request_shutdown();
-
     Ok(())
 }
 
 async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
-    let Cli { configs, command } = cli;
+    let Cli { command } = cli;
     match command {
-        Command::Vm(command) => Ok(Box::new(run_vm_command(configs, command).await?)),
+        Command::Vm { args } => Ok(Box::new(run_vm_command(args).await?)),
         Command::Iso(command) => Ok(Box::new(run_iso_command(command).await?)),
         Command::Daemon { config } => {
             let agent_config = load_config(config).context("Loading agent configuration")?;
