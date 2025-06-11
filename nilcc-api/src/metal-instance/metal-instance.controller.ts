@@ -15,7 +15,6 @@ import {
   SyncMetalInstanceResponse,
 } from "#/metal-instance/metal-instance.dto";
 import { metalInstanceMapper } from "#/metal-instance/metal-instance.mapper";
-import { metalInstanceService } from "#/metal-instance/metal-instance.service";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
@@ -41,7 +40,7 @@ export function register(options: ControllerOptions) {
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      await metalInstanceService.createOrUpdate(
+      await bindings.services.metalInstance.createOrUpdate(
         bindings,
         payload,
         c.get("txQueryRunner"),
@@ -71,7 +70,7 @@ export function sync(options: ControllerOptions) {
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      const result = await metalInstanceService.sync(
+      const result = await bindings.services.metalInstance.sync(
         bindings,
         payload,
         c.get("txQueryRunner"),
@@ -108,7 +107,7 @@ export function read(options: ControllerOptions) {
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
       const id = c.req.param("id");
-      const instance = await metalInstanceService.read(bindings, id);
+      const instance = await bindings.services.metalInstance.read(bindings, id);
       if (!instance) {
         return c.notFound();
       }
@@ -139,7 +138,7 @@ export function list(options: ControllerOptions) {
     }),
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
-      const instances = await metalInstanceService.list(bindings);
+      const instances = await bindings.services.metalInstance.list(bindings);
       return c.json(instances);
     },
   );

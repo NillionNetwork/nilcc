@@ -23,6 +23,7 @@ export const ApiErrorResponse = z
   .object({
     errors: z.array(z.string()),
     ts: z.string(),
+    errorsTrace: z.string().optional(),
   })
   .openapi({ ref: "ApiErrorResponse" });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
@@ -33,10 +34,12 @@ export function errorHandler(e: unknown, c: Context) {
     errors: string[],
     statusCode: ContentfulStatusCode,
   ): Response => {
-    e && c.env.log.debug(e);
+    const errorsTrace = e ? new TraceableError(e).toString() : undefined;
+    errorsTrace && c.env.log.debug(errorsTrace);
     const payload: ApiErrorResponse = {
       ts: Temporal.Now.instant().toString(),
       errors,
+      errorsTrace,
     };
     return c.json(payload, statusCode);
   };
@@ -64,4 +67,30 @@ export function errorHandler(e: unknown, c: Context) {
   }
   // Default error
   return toResponse(null, ["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
+}
+
+class TraceableError {
+  error: Error;
+
+  constructor(error: Error) {
+    this.error = error;
+  }
+
+  toString(): string {
+    let str = "";
+    let current: Error | null = this.error;
+
+    while (current) {
+      if (current.stack) {
+        str += `${current.stack}\n\n`;
+      }
+      if (current.cause) {
+        current = current.cause as Error;
+        str += "Caused by:\n";
+      } else {
+        current = null;
+      }
+    }
+    return str;
+  }
 }

@@ -1,11 +1,15 @@
 import "reflect-metadata";
 import type { Context, Next } from "hono";
+import type { Logger } from "pino";
 import { DataSource } from "typeorm";
 import { type EnvVars, FeatureFlag, hasFeatureFlag } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
-export async function buildDataSource(config: EnvVars): Promise<DataSource> {
+export async function buildDataSource(
+  config: EnvVars,
+  log: Logger,
+): Promise<DataSource> {
   const synchronize = hasFeatureFlag(
     config.enabledFeatures,
     FeatureFlag.MIGRATIONS,
@@ -19,6 +23,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
     logging: false,
   });
 
+  log.debug("Initializing database");
   await dataSource.initialize();
 
   return dataSource;
