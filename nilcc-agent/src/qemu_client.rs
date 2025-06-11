@@ -2,10 +2,9 @@ use crate::gpu;
 use async_trait::async_trait;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
-    qmp::{query_cpus_fast, quit, system_powerdown, system_reset, QmpCommand},
+    qmp::{quit, system_powerdown, system_reset, QmpCommand},
     Command as QapiCommandTrait, ExecuteError,
 };
-use serde::{Deserialize, Serialize};
 use std::{
     fmt, io,
     ops::Deref,
@@ -21,7 +20,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::debug;
-use uuid::Uuid;
 
 type QmpReadStreamHalf = QmpStreamTokio<ReadHalf<UnixStream>>;
 type QmpWriteStreamHalf = QmpStreamTokio<WriteHalf<UnixStream>>;
@@ -30,17 +28,17 @@ type QmpCommandService = QapiService<QmpWriteStreamHalf>;
 type QmpDriverTaskHandle = JoinHandle<()>;
 
 /// The spec for a hard disk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HardDiskSpec {
-    /// Create a new hard disk with the given size.
-    Create { gib: u32, format: HardDiskFormat },
+#[derive(Debug, Clone)]
+pub struct HardDiskSpec {
+    /// The path to the hard disk.
+    pub path: PathBuf,
 
-    /// Attach an existing hard disk.
-    Existing { path: PathBuf, format: HardDiskFormat },
+    /// The hard disk format
+    pub format: HardDiskFormat,
 }
 
 /// A hard disk format.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub enum HardDiskFormat {
     /// A hard disk in raw format.
     Raw,
@@ -59,7 +57,7 @@ impl fmt::Display for HardDiskFormat {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct VmSpec {
     /// Number of vCPUs to allocate to the VM.
     pub cpu: u8,
@@ -71,49 +69,31 @@ pub struct VmSpec {
     pub hard_disks: Vec<HardDiskSpec>,
 
     /// Optional ISO path to attach as CD-ROM.
-    #[serde(default)]
     pub cdrom_iso_path: Option<PathBuf>,
 
     /// If true, add a VFIO GPU passthrough device (`-device vfio-pci,…`).
-    #[serde(default)]
     pub gpu_enabled: bool,
 
     /// Vec of (HOST, GUEST) ports to forward.
-    #[serde(default)]
     pub port_forwarding: Vec<(u16, u16)>,
 
     /// Optional BIOS path to use for the VM.
-    #[serde(default)]
     pub bios_path: Option<PathBuf>,
 
     /// Optional kernel path to use for the VM.
-    #[serde(default)]
     pub initrd_path: Option<PathBuf>,
 
     /// Optional kernel path to use for the VM.
-    #[serde(default)]
     pub kernel_path: Option<PathBuf>,
 
     /// The kernel parameters.
-    #[serde(default)]
     pub kernel_args: Option<String>,
 
     /// If true, show VM display using GTK.
-    #[serde(default)]
     pub display_gtk: bool,
 
     /// Enable CVM (Confidential VM) support.
-    #[serde(default)]
     pub enable_cvm: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VmDetails {
-    pub name: String,
-    pub qmp_sock: PathBuf,
-    pub pid: Option<u32>,
-    pub workdir: PathBuf,
-    pub spec: VmSpec,
 }
 
 #[derive(Error, Debug)]
@@ -147,27 +127,23 @@ pub type Result<T> = std::result::Result<T, QemuClientError>;
 
 /// A client to manage VMs
 #[async_trait]
-pub trait VmClient {
-    /// Create a VM with the given spec.
-    async fn create_vm(&self, id: Uuid, spec: VmSpec) -> Result<VmDetails>;
-
-    /// Start a VM that was previously created.
-    async fn start_vm(&self, id: Uuid) -> Result<VmDetails>;
+pub trait VmClient: Send + Sync {
+    /// Start a VM with the given spec that we will be able to talk to via the socket in the given
+    /// path.
+    async fn start_vm(&self, spec: VmSpec, socket_path: &Path) -> Result<()>;
 
     /// Restart a VM.
-    async fn restart_vm(&self, id: Uuid) -> Result<VmDetails>;
+    async fn restart_vm(&self, socket_path: &Path) -> Result<()>;
 
     /// Stop a VM.
-    async fn stop_vm(&self, id: Uuid, force: bool) -> Result<VmDetails>;
+    async fn stop_vm(&self, socket_path: &Path, force: bool) -> Result<()>;
 
-    /// Delete VM directory after best effort kill
-    async fn delete_vm(&self, id: Uuid) -> Result<VmDetails>;
+    /// Check if a VM is running.
+    async fn is_vm_running(&self, socket_path: &Path) -> bool;
 }
 
 pub struct QemuClient {
     qemu_bin: PathBuf,
-    qemu_img_bin: PathBuf,
-    store: PathBuf,
 }
 
 pub struct CommandOutput {
@@ -176,13 +152,12 @@ pub struct CommandOutput {
 }
 
 impl QemuClient {
-    pub fn new<P: Into<PathBuf>>(qemu_bin: P, qemu_img_bin: P, store: P) -> Self {
-        Self { qemu_bin: qemu_bin.into(), qemu_img_bin: qemu_img_bin.into(), store: store.into() }
+    pub fn new<P: Into<PathBuf>>(qemu_bin: P) -> Self {
+        Self { qemu_bin: qemu_bin.into() }
     }
 
     /// Build complete QEMU command-line args for starting a VM.
-    async fn build_vm_start_cli_args(&self, workdir: &Path, spec: &VmSpec) -> Result<Vec<String>> {
-        let qmp_sock = workdir.join("qmp.sock");
+    async fn build_vm_start_cli_args(&self, spec: &VmSpec, socket_path: &Path) -> Result<Vec<String>> {
         let mut args: Vec<String> = Vec::new();
 
         // --- CVM support ---
@@ -218,7 +193,7 @@ impl QemuClient {
             "-fw_cfg".into(),
             "name=opt/ovmf/X-PciMmio64Mb,string=151072".into(),
             "-qmp".into(),
-            format!("unix:{},server,nowait", qmp_sock.display()),
+            format!("unix:{},server,nowait", socket_path.display()),
         ]);
 
         // --- BIOS ---
@@ -244,22 +219,7 @@ impl QemuClient {
         // --- Main system drive ---
         let mut scsi_device_count = 0;
         for disk in &spec.hard_disks {
-            let (path, format) = match disk {
-                HardDiskSpec::Create { gib, format } => {
-                    let format = format.to_string();
-                    let disk_path = workdir.join(format!("disk-{scsi_device_count}.{format}"));
-                    let args = ["create", "-f", &format, &disk_path.to_string_lossy(), &format!("{gib}G")];
-                    let output = Self::invoke_cli_command(&self.qemu_img_bin, &args).await?;
-                    if !output.status.success() {
-                        return Err(QemuClientError::Io(io::Error::other(format!(
-                            "qemu-img failed: {}",
-                            output.stderr
-                        ))));
-                    }
-                    (disk_path, format)
-                }
-                HardDiskSpec::Existing { path, format } => (path.clone(), format.to_string()),
-            };
+            let HardDiskSpec { path, format } = disk;
             let path_display = path.display();
             let disk_id = format!("disk{scsi_device_count}");
             let scsi_id = format!("scsi{scsi_device_count}");
@@ -335,21 +295,6 @@ impl QemuClient {
         Ok(args)
     }
 
-    async fn load_details(&self, id: Uuid) -> Result<VmDetails> {
-        let json = self.store.join(id.to_string()).join("vm.json");
-        if !fs::try_exists(&json).await? {
-            return Err(QemuClientError::VmNotFound);
-        }
-        Ok(serde_json::from_str(&fs::read_to_string(json).await?)?)
-    }
-
-    async fn is_running(&self, qmp_sock: &Path) -> bool {
-        match QmpStreamTokio::open_uds(qmp_sock).await {
-            Ok(stream) => stream.negotiate().await.is_ok(),
-            Err(_) => false,
-        }
-    }
-
     async fn connect_qmp(&self, qmp_sock_path: &Path) -> Result<(QmpCommandService, QmpDriverTaskHandle)> {
         debug!("Connecting to QMP socket at: {}", qmp_sock_path.display());
 
@@ -377,7 +322,7 @@ impl QemuClient {
     where
         C: QapiCommandTrait + QmpCommand,
     {
-        if !self.is_running(qmp_sock).await {
+        if !self.is_vm_running(qmp_sock).await {
             return Err(QemuClientError::VmNotRunning);
         }
 
@@ -394,30 +339,6 @@ impl QemuClient {
         Ok(response)
     }
 
-    /// Verify running VM matches spec.
-    pub async fn check_vm_spec(&self, id: Uuid) -> Result<VmDetails> {
-        let details = self.load_details(id).await?;
-
-        // TODO: add more checks here, like checking disk size, RAM, etc.
-        let cpus = self.execute_qmp_command(&details.qmp_sock, query_cpus_fast {}).await?;
-
-        if cpus.len() as u8 != details.spec.cpu {
-            return Err(QemuClientError::Qmp(format!(
-                "CPU mismatch: running={}, expected={}",
-                cpus.len(),
-                details.spec.cpu
-            )));
-        }
-        Ok(details)
-    }
-
-    /// Get VM status
-    pub async fn vm_status(&self, id: Uuid) -> Result<(VmDetails, bool)> {
-        let details = self.load_details(id).await?;
-        let running = self.is_running(&details.qmp_sock).await;
-        Ok((details, running))
-    }
-
     async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
         debug!("Executing: {} {}", command.display(), args.join(" "));
 
@@ -429,31 +350,13 @@ impl QemuClient {
 
 #[async_trait]
 impl VmClient for QemuClient {
-    /// Create and start a brand-new VM. Fails if the VM directory already exists.
-    async fn create_vm(&self, id: Uuid, spec: VmSpec) -> Result<VmDetails> {
-        let workdir = self.store.join(id.to_string());
-        let meta_json = workdir.join("vm.json");
-
-        if fs::try_exists(&meta_json).await? {
-            return Err(QemuClientError::VmAlreadyExists);
-        }
-        fs::create_dir_all(&workdir).await?;
-
-        let details = VmDetails { name: id.to_string(), qmp_sock: workdir.join("qmp.sock"), pid: None, workdir, spec };
-        fs::write(&meta_json, serde_json::to_string_pretty(&details)?).await?;
-        Ok(details)
-    }
-
     /// Start an existing (stopped) VM.
-    async fn start_vm(&self, id: Uuid) -> Result<VmDetails> {
-        let details = self.load_details(id).await?;
-
-        if self.is_running(&details.qmp_sock).await {
+    async fn start_vm(&self, spec: VmSpec, socket_path: &Path) -> Result<()> {
+        if self.is_vm_running(socket_path).await {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let workdir = self.store.join(id.to_string());
-        let args = self.build_vm_start_cli_args(&workdir, &details.spec).await?;
+        let args = self.build_vm_start_cli_args(&spec, socket_path).await?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
         let output = Self::invoke_cli_command(&self.qemu_bin, &args).await?;
@@ -461,69 +364,57 @@ impl VmClient for QemuClient {
             return Err(QemuClientError::Io(io::Error::other(format!("qemu failed: {}", output.stderr))));
         }
 
-        while !fs::try_exists(&details.qmp_sock).await? {
+        while !fs::try_exists(socket_path).await? {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-        Ok(details)
+        Ok(())
     }
 
     /// Restart the VM
-    async fn restart_vm(&self, id: Uuid) -> Result<VmDetails> {
-        let details = self.load_details(id).await?;
-        self.execute_qmp_command(&details.qmp_sock, system_reset {}).await?;
-        Ok(details)
+    async fn restart_vm(&self, socket_path: &Path) -> Result<()> {
+        self.execute_qmp_command(socket_path, system_reset {}).await?;
+        Ok(())
     }
 
     /// Gracefully stop the VM, waiting for it to shut down
-    async fn stop_vm(&self, id: Uuid, force: bool) -> Result<VmDetails> {
-        let details = self.load_details(id).await?;
-
+    async fn stop_vm(&self, socket_path: &Path, force: bool) -> Result<()> {
         if force {
-            self.execute_qmp_command(&details.qmp_sock, quit {}).await?;
+            self.execute_qmp_command(socket_path, quit {}).await?;
         } else {
-            self.execute_qmp_command(&details.qmp_sock, system_powerdown {}).await?;
-        };
-
-        Ok(details)
+            self.execute_qmp_command(socket_path, system_powerdown {}).await?;
+        }
+        Ok(())
     }
 
-    /// Delete VM directory after best effort kill
-    async fn delete_vm(&self, id: Uuid) -> Result<VmDetails> {
-        let details = self.load_details(id).await?;
-
-        // Kill vm if it's running
-        let _ = Command::new("pkill").args(["-f", &details.qmp_sock.to_string_lossy()]).output().await;
-
-        fs::remove_dir_all(&details.workdir).await?;
-        Ok(details)
+    async fn is_vm_running(&self, socket_path: &Path) -> bool {
+        match QmpStreamTokio::open_uds(socket_path).await {
+            Ok(stream) => stream.negotiate().await.is_ok(),
+            Err(_) => false,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::services::disk::{DefaultDiskService, DiskService};
     use tracing_test::traced_test;
 
-    fn make_client(workdir: &Path) -> QemuClient {
-        QemuClient::new(Path::new("qemu-system-x86_64"), Path::new("qemu-img"), workdir)
+    fn make_client() -> QemuClient {
+        QemuClient::new(Path::new("qemu-system-x86_64"))
     }
 
     #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {
-        let workdir = Path::new("/tmp").join("dummy");
-        fs::create_dir_all(&workdir).await.expect("failed to create workdir");
-        let client = make_client(&workdir);
+        let client = make_client();
         let spec = VmSpec {
             cpu: 2,
             ram_mib: 2048,
             hard_disks: vec![
-                HardDiskSpec::Create { gib: 1, format: HardDiskFormat::Qcow2 },
-                HardDiskSpec::Create { gib: 2, format: HardDiskFormat::Raw },
-                HardDiskSpec::Existing { path: "/tmp/existing.qcow2".into(), format: HardDiskFormat::Qcow2 },
-                HardDiskSpec::Existing { path: "/tmp/existing.raw".into(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: "/tmp/1.qcow2".into(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: "/tmp/2.raw".into(), format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some("/tmp/cd.iso".into()),
             gpu_enabled: false,
@@ -535,7 +426,8 @@ mod tests {
             display_gtk: false,
             enable_cvm: true,
         };
-        let args = client.build_vm_start_cli_args(&workdir, &spec).await.expect("failed to build command line");
+        let socket_path = Path::new("/tmp/vm.socket");
+        let args = client.build_vm_start_cli_args(&spec, &socket_path).await.expect("failed to build command line");
         let expected = [
             // SNP
             "-machine",
@@ -563,7 +455,7 @@ mod tests {
             "name=opt/ovmf/X-PciMmio64Mb,string=151072",
             // QMP socket
             "-qmp",
-            "unix:/tmp/dummy/qmp.sock,server,nowait",
+            "unix:/tmp/vm.socket,server,nowait",
             // BIOS
             "-bios",
             "/tmp/bios",
@@ -576,41 +468,27 @@ mod tests {
             // kernel cmdline
             "-append",
             "root=/dev/foo1",
-            // Drive 1 (generated .qcow2)
+            // Drive 1 (.qcow2)
             "-drive",
-            "file=/tmp/dummy/disk-0.qcow2,if=none,id=disk0,format=qcow2",
+            "file=/tmp/1.qcow2,if=none,id=disk0,format=qcow2",
             "-device",
             "virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true",
             "-device",
             "scsi-hd,drive=disk0",
-            // Drive 2 (generated .raw)
+            // Drive 2 (.raw)
             "-drive",
-            "file=/tmp/dummy/disk-1.raw,if=none,id=disk1,format=raw",
+            "file=/tmp/2.raw,if=none,id=disk1,format=raw",
             "-device",
             "virtio-scsi-pci,id=scsi1,disable-legacy=on,iommu_platform=true",
             "-device",
             "scsi-hd,drive=disk1",
-            // Drive 3 (existing .qcow2)
-            "-drive",
-            "file=/tmp/existing.qcow2,if=none,id=disk2,format=qcow2",
-            "-device",
-            "virtio-scsi-pci,id=scsi2,disable-legacy=on,iommu_platform=true",
-            "-device",
-            "scsi-hd,drive=disk2",
-            // Drive 4 (existing .raw)
-            "-drive",
-            "file=/tmp/existing.raw,if=none,id=disk3,format=raw",
-            "-device",
-            "virtio-scsi-pci,id=scsi3,disable-legacy=on,iommu_platform=true",
-            "-device",
-            "scsi-hd,drive=disk3",
             // cdrom
             "-drive",
-            "file=/tmp/cd.iso,if=none,id=disk4,readonly=true",
+            "file=/tmp/cd.iso,if=none,id=disk2,readonly=true",
             "-device",
-            "virtio-scsi-pci,id=scsi4",
+            "virtio-scsi-pci,id=scsi2",
             "-device",
-            "scsi-cd,bus=scsi4.0,drive=disk4",
+            "scsi-cd,bus=scsi2.0,drive=disk2",
             // Network
             "-device".into(),
             "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into(),
@@ -625,24 +503,23 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn vm_lifecycle() {
-        let store = PathBuf::from("/tmp/nilcc-test-vms");
-        let client = make_client(&store);
-        for bin in [&client.qemu_bin, &client.qemu_img_bin] {
-            if Command::new(bin).arg("--version").output().await.is_err() {
-                eprintln!("QEMU binary {} not found or not executable", bin.display());
-                return;
-            }
-        }
-
-        let vm_id = Uuid::new_v4();
+        let store = tempfile::tempdir().expect("failed to create tempdir");
+        let client = make_client();
 
         let _ = fs::remove_dir_all(&store).await;
         fs::create_dir_all(&store).await.unwrap();
 
+        let hard_disk_path = store.path().join("disk.qcow2");
+        let hard_disk_format = HardDiskFormat::Qcow2;
+        DefaultDiskService::new("qemu-img".into())
+            .create_disk(&hard_disk_path, hard_disk_format, 1)
+            .await
+            .expect("failed to create hard disk");
+
         let spec = VmSpec {
             cpu: 1,
             ram_mib: 512,
-            hard_disks: vec![HardDiskSpec::Create { gib: 1, format: HardDiskFormat::Qcow2 }],
+            hard_disks: vec![HardDiskSpec { path: hard_disk_path, format: hard_disk_format }],
             cdrom_iso_path: None,
             gpu_enabled: false,
             port_forwarding: vec![],
@@ -654,17 +531,14 @@ mod tests {
             enable_cvm: false,
         };
 
-        let details = client.create_vm(vm_id, spec).await.unwrap();
-        assert!(!client.is_running(&details.qmp_sock).await);
+        let socket_path = store.path().join("vm.sock");
 
-        client.start_vm(vm_id).await.unwrap();
-        assert!(client.is_running(&details.qmp_sock).await);
+        // Start it and make sure it's running
+        client.start_vm(spec, &socket_path).await.unwrap();
+        assert!(client.is_vm_running(&socket_path).await);
 
-        client.check_vm_spec(vm_id).await.unwrap();
-        client.stop_vm(vm_id, false).await.unwrap();
-        client.delete_vm(vm_id).await.unwrap();
-
-        assert!(!store.join(vm_id.to_string()).exists());
-        let _ = fs::remove_dir_all(&store).await;
+        // Stop is and make sure it's not running anymore.
+        client.stop_vm(&socket_path, true).await.unwrap();
+        assert!(!client.is_vm_running(&socket_path).await);
     }
 }
