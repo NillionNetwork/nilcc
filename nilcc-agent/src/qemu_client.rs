@@ -145,7 +145,7 @@ pub enum QemuClientError {
 
 pub type Result<T> = std::result::Result<T, QemuClientError>;
 
-/// A client to
+/// A client to manage VMs
 #[async_trait]
 pub trait VmClient {
     /// Create a VM with the given spec.
