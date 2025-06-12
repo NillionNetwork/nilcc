@@ -5,7 +5,7 @@ use crate::{
     services::vm::MockVmService,
 };
 use anyhow::Context;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tracing::info;
 use tracing_test::traced_test;
 use uuid::Uuid;
@@ -41,7 +41,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
 
     let api_client = Box::new(RestNilccApiClient::new(api_base_url, api_key.to_string())?);
     let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
-    let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let vm_service = Box::new(MockVmService::default());
     let args = AgentServiceArgs {
         agent_id,

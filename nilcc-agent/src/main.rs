@@ -9,10 +9,13 @@ use nilcc_agent::{
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::QemuClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
-    services::{disk::DefaultDiskService, vm::DefaultVmService},
+    services::{
+        disk::DefaultDiskService,
+        vm::{DefaultVmService, VmServiceArgs},
+    },
 };
 use serde::Serialize;
-use std::{fs, ops::Deref, path::PathBuf};
+use std::{fs, ops::Deref, path::PathBuf, sync::Arc};
 use tracing::debug;
 
 #[derive(Parser)]
@@ -108,12 +111,17 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
-    let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let disk_service = DefaultDiskService::new(config.qemu.img_bin);
     let qemu_client = QemuClient::new(config.qemu.system_bin);
-    let vm_service = DefaultVmService::new(config.vm_store, Box::new(qemu_client), Box::new(disk_service), config.cvm)
-        .await
-        .context("Failed to create vm service")?;
+    let vm_service_args = VmServiceArgs {
+        state_path: config.vm_store,
+        vm_client: Box::new(qemu_client),
+        disk_service: Box::new(disk_service),
+        workload_repository: workload_repository.clone(),
+        cvm_config: config.cvm,
+    };
+    let vm_service = DefaultVmService::new(vm_service_args).await.context("Failed to create vm service")?;
 
     let args = AgentServiceArgs {
         agent_id: config.agent_id,

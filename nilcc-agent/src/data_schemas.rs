@@ -4,6 +4,7 @@ use std::{
     fmt,
     num::NonZeroU16,
 };
+use strum::{Display, EnumString};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -29,7 +30,17 @@ pub struct MetalInstance {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncRequest {}
+pub struct SyncRequest {
+    pub id: Uuid,
+    pub workloads: Vec<SyncWorkload>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncWorkload {
+    pub id: Uuid,
+    pub status: WorkloadStatus,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -49,22 +60,47 @@ pub struct Workload {
     pub(crate) cpu: NonZeroU16,
     pub(crate) disk: NonZeroU16,
     pub(crate) gpu: u16,
+    pub(crate) status: WorkloadStatus,
 }
 
 impl fmt::Debug for Workload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            id,
+            docker_compose,
+            env_vars,
+            service_to_expose,
+            service_port_to_expose,
+            memory,
+            cpu,
+            disk,
+            gpu,
+            status,
+        } = self;
         // Hide this one since it can have sensitive data
-        let clean_env_vars: BTreeMap<_, _> = self.env_vars.keys().map(|key| (key, "...")).collect();
+        let env_vars: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
         f.debug_struct("Workload")
-            .field("id", &self.id)
-            .field("docker_compose", &self.docker_compose)
-            .field("env_vars", &clean_env_vars)
-            .field("service_to_expose", &self.service_to_expose)
-            .field("service_port_to_expose", &self.service_port_to_expose)
-            .field("memory", &self.memory)
-            .field("cpu", &self.cpu)
-            .field("disk", &self.disk)
-            .field("gpu", &self.gpu)
+            .field("id", id)
+            .field("docker_compose", docker_compose)
+            .field("env_vars", &env_vars)
+            .field("service_to_expose", service_to_expose)
+            .field("service_port_to_expose", service_port_to_expose)
+            .field("memory", memory)
+            .field("cpu", cpu)
+            .field("disk", disk)
+            .field("gpu", gpu)
+            .field("status", status)
             .finish()
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, EnumString, Display)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkloadStatus {
+    #[default]
+    Starting,
+    Running,
+    Stopping,
+    Stopped,
+    Error,
 }

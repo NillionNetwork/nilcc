@@ -1,13 +1,13 @@
 use crate::{
     build_info::get_agent_version,
-    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, Workload},
+    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, Workload, WorkloadStatus},
     gpu,
     http_client::NilccApiClient,
     repositories::workload::WorkloadRepository,
     services::vm::VmService,
 };
 use anyhow::{Context, Result};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, mem, sync::Arc, time::Duration};
 use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
@@ -22,7 +22,7 @@ pub struct AgentServiceArgs {
     pub api_client: Box<dyn NilccApiClient>,
 
     /// The workloads repository.
-    pub workload_repository: Box<dyn WorkloadRepository>,
+    pub workload_repository: Arc<dyn WorkloadRepository>,
 
     /// The VM service.
     pub vm_service: Box<dyn VmService>,
@@ -34,7 +34,7 @@ pub struct AgentServiceArgs {
 pub struct AgentService {
     agent_id: Uuid,
     api_client: Box<dyn NilccApiClient>,
-    workload_repository: Box<dyn WorkloadRepository>,
+    workload_repository: Arc<dyn WorkloadRepository>,
     vm_service: Box<dyn VmService>,
     sync_interval: Duration,
 }
@@ -105,9 +105,13 @@ impl AgentService {
     }
 
     async fn run_once(&self) -> anyhow::Result<()> {
-        let sync_request = SyncRequest {};
+        let existing = self.workload_repository.list().await.context("failed to find workloads")?;
+        let sync_workloads =
+            existing.iter().map(|workload| SyncWorkload { id: workload.id, status: workload.status }).collect();
+        let sync_request = SyncRequest { id: self.agent_id, workloads: sync_workloads };
+
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
-        let actions = self.compute_workload_actions(response.workloads).await?;
+        let actions = self.compute_workload_actions(existing, response.workloads).await?;
         if actions.is_empty() {
             info!("No actions need to be executed");
         }
@@ -115,35 +119,46 @@ impl AgentService {
         self.apply_actions(actions).await
     }
 
-    async fn compute_workload_actions(&self, expected: Vec<Workload>) -> anyhow::Result<Vec<WorkloadAction>> {
-        let mut existing: HashMap<_, _> = self
-            .workload_repository
-            .list()
-            .await
-            .context("failed to find workloads")?
-            .into_iter()
-            .map(|w| (w.id, w))
-            .collect();
+    async fn compute_workload_actions(
+        &self,
+        existing_workloads: Vec<Workload>,
+        desired_workloads: Vec<Workload>,
+    ) -> anyhow::Result<Vec<WorkloadAction>> {
+        let mut existing_workloads: HashMap<_, _> = existing_workloads.into_iter().map(|w| (w.id, w)).collect();
         let mut actions = Vec::new();
-        for workload in expected {
-            let workload_id = workload.id;
-            match existing.remove(&workload_id) {
-                Some(existing) => {
+        for mut desired in desired_workloads {
+            let workload_id = desired.id;
+            match existing_workloads.remove(&workload_id) {
+                Some(mut existing) => {
+                    // Take these so we don't compare status during the equality check
+                    let existing_status = mem::take(&mut existing.status);
+                    let desired_status = mem::take(&mut desired.status);
+                    let mut needs_update = existing != desired;
+
+                    // Check the existing vs desired status to see what we should be doing.
+                    match (existing_status, desired_status) {
+                        (WorkloadStatus::Stopped, WorkloadStatus::Running)
+                        | (WorkloadStatus::Running, WorkloadStatus::Stopped) => needs_update = true,
+                        _ => (),
+                    };
+
                     // If it exists and is different, we need to update it
-                    if existing != workload {
+                    if needs_update {
+                        // Set the status back
+                        desired.status = desired_status;
                         info!("Need to update workload {workload_id}");
-                        actions.push(WorkloadAction::Update(workload));
+                        actions.push(WorkloadAction::Update(desired));
                     }
                 }
                 None => {
                     // It doesn't exist, it needs to be started
                     info!("Need to start workload {workload_id}");
-                    actions.push(WorkloadAction::Start(workload));
+                    actions.push(WorkloadAction::Start(desired));
                 }
             };
         }
         // Anything that's left we should remove
-        for workload_id in existing.into_keys() {
+        for workload_id in existing_workloads.into_keys() {
             info!("Need to stop workload {workload_id}");
             actions.push(WorkloadAction::Stop(workload_id));
         }
@@ -154,11 +169,12 @@ impl AgentService {
         for action in actions {
             match action {
                 WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
-                    self.workload_repository.upsert(workload.clone()).await?;
+                    let repo_workload = Workload { status: WorkloadStatus::Starting, ..workload.clone() };
+                    self.workload_repository.upsert(repo_workload).await?;
                     self.vm_service.sync_vm(workload).await;
                 }
                 WorkloadAction::Stop(id) => {
-                    self.workload_repository.delete(id).await?;
+                    self.workload_repository.update_status(id, WorkloadStatus::Stopping).await?;
                     self.vm_service.stop_vm(id).await;
                 }
             };
@@ -251,6 +267,7 @@ mod tests {
             cpu: 1.try_into().unwrap(),
             disk: 1.try_into().unwrap(),
             gpu: Default::default(),
+            status: Default::default(),
         }
     }
 
@@ -267,7 +284,7 @@ mod tests {
             let args = AgentServiceArgs {
                 agent_id,
                 api_client: Box::new(api_client),
-                workload_repository: Box::new(workload_repository),
+                workload_repository: Arc::new(workload_repository),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
             };
@@ -288,22 +305,26 @@ mod tests {
 
     #[tokio::test]
     async fn diff_workloads() {
-        let mut builder = ServiceBuilder::default();
         let unmodified = make_workload();
         let mut modified = make_workload();
         let removed = make_workload();
-        let existing = vec![unmodified.clone(), modified.clone(), removed.clone()];
-        builder.workload_repository.expect_list().return_once(move || Ok(existing.clone()));
-
-        modified.cpu = modified.cpu.checked_add(1).unwrap();
+        let mut status_changed = Workload { status: WorkloadStatus::Running, ..make_workload() };
+        let existing = vec![unmodified.clone(), modified.clone(), removed.clone(), status_changed.clone()];
 
         let new = make_workload();
-        let expected_workloads = vec![unmodified, modified.clone(), new.clone()];
-        let service = builder.build();
+        modified.cpu = modified.cpu.checked_add(1).unwrap();
+        status_changed.status = WorkloadStatus::Stopped;
+        let expected_workloads = vec![unmodified, modified.clone(), new.clone(), status_changed.clone()];
+
+        let service = ServiceBuilder::default().build();
         let mut actions =
-            service.compute_workload_actions(expected_workloads.clone()).await.expect("failed to compute");
-        let mut expected_actions =
-            vec![WorkloadAction::Start(new), WorkloadAction::Stop(removed.id), WorkloadAction::Update(modified)];
+            service.compute_workload_actions(existing, expected_workloads).await.expect("failed to compute");
+        let mut expected_actions = vec![
+            WorkloadAction::Start(new),
+            WorkloadAction::Stop(removed.id),
+            WorkloadAction::Update(modified),
+            WorkloadAction::Update(status_changed),
+        ];
         // Sort by workload id so we can compare them
         actions.sort_by_key(WorkloadAction::workload_id);
         expected_actions.sort_by_key(WorkloadAction::workload_id);
@@ -322,7 +343,11 @@ mod tests {
             WorkloadAction::Update(update_workload.clone()),
             WorkloadAction::Stop(stop_id),
         ];
-        builder.workload_repository.expect_delete().with(eq(stop_id)).return_once(move |_| Ok(()));
+        builder
+            .workload_repository
+            .expect_update_status()
+            .with(eq(stop_id), eq(WorkloadStatus::Stopping))
+            .return_once(move |_, _| Ok(()));
         builder.workload_repository.expect_upsert().with(eq(start_workload.clone())).return_once(move |_| Ok(()));
         builder.workload_repository.expect_upsert().with(eq(update_workload.clone())).return_once(move |_| Ok(()));
         builder.vm_service.expect_sync_vm().with(eq(start_workload)).return_once(|_| ());

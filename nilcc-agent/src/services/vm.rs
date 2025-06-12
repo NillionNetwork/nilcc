@@ -1,13 +1,14 @@
 use crate::{
     config::CvmConfig,
-    data_schemas::Workload,
+    data_schemas::{Workload, WorkloadStatus},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
+    repositories::workload::WorkloadRepository,
     services::disk::{DiskService, DockerComposeHash},
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use std::{fmt, path::PathBuf};
+use std::{fmt, path::PathBuf, sync::Arc};
 use tokio::{
     fs,
     sync::mpsc::{channel, Receiver, Sender},
@@ -27,20 +28,24 @@ pub trait VmService: Send + Sync {
     async fn stop_vm(&self, id: Uuid);
 }
 
+pub struct VmServiceArgs {
+    pub state_path: PathBuf,
+    pub vm_client: Box<dyn VmClient>,
+    pub disk_service: Box<dyn DiskService>,
+    pub workload_repository: Arc<dyn WorkloadRepository>,
+    pub cvm_config: CvmConfig,
+}
+
 pub struct DefaultVmService {
     worker_sender: Sender<Command>,
 }
 
 impl DefaultVmService {
-    pub async fn new(
-        state_path: PathBuf,
-        vm_client: Box<dyn VmClient>,
-        disk_service: Box<dyn DiskService>,
-        cvm_config: CvmConfig,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(args: VmServiceArgs) -> anyhow::Result<Self> {
+        let VmServiceArgs { state_path, vm_client, disk_service, workload_repository, cvm_config } = args;
         fs::create_dir_all(&state_path).await.context("Failed to create state path")?;
 
-        let worker_sender = Worker::start(state_path, vm_client, disk_service, cvm_config);
+        let worker_sender = Worker::start(state_path, vm_client, disk_service, workload_repository, cvm_config);
         Ok(Self { worker_sender })
     }
 
@@ -67,6 +72,7 @@ struct Worker {
     vm_client: Box<dyn VmClient>,
     disk_service: Box<dyn DiskService>,
     cvm_config: CvmConfig,
+    workload_repository: Arc<dyn WorkloadRepository>,
     receiver: Receiver<Command>,
 }
 
@@ -75,11 +81,12 @@ impl Worker {
         state_path: PathBuf,
         vm_client: Box<dyn VmClient>,
         disk_service: Box<dyn DiskService>,
+        workload_repository: Arc<dyn WorkloadRepository>,
         cvm_config: CvmConfig,
     ) -> Sender<Command> {
         let (sender, receiver) = channel(WORKER_CHANNEL_SIZE);
         tokio::spawn(async move {
-            let worker = Worker { state_path, vm_client, disk_service, cvm_config, receiver };
+            let worker = Worker { state_path, vm_client, disk_service, cvm_config, workload_repository, receiver };
             worker.run().await;
             warn!("Worker loop exited");
         });
@@ -104,7 +111,7 @@ impl Worker {
         }
     }
 
-    async fn sync_vm(&mut self, workload: Workload) -> anyhow::Result<()> {
+    async fn sync_vm(&mut self, mut workload: Workload) -> anyhow::Result<()> {
         let id = workload.id;
         let socket_path = self.socket_path(id);
         info!("Trying to stop VM {id} before syncing");
@@ -121,6 +128,9 @@ impl Worker {
         let state_disk = self.create_state_disk(&workload).await?;
         let vm_spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash)?;
         self.vm_client.start_vm(vm_spec, &socket_path).await.context("Failed to start VM")?;
+
+        workload.status = WorkloadStatus::Running;
+        self.workload_repository.upsert(workload).await.context("Failed to update workload state")?;
         Ok(())
     }
 
@@ -128,13 +138,16 @@ impl Worker {
         let socket_path = self.socket_path(id);
         info!("Stopping VM {id}");
         match self.vm_client.stop_vm(&socket_path, true).await {
-            Ok(()) => Ok(()),
+            Ok(()) => {}
             Err(QemuClientError::VmNotRunning) => {
                 info!("VM was not running");
-                Ok(())
             }
-            Err(e) => Err(e).context("Failed to stop running VM")?,
-        }
+            Err(e) => return Err(e).context("Failed to stop running VM"),
+        };
+        self.workload_repository
+            .update_status(id, WorkloadStatus::Stopped)
+            .await
+            .context("Failed to update workload status")
     }
 
     fn socket_path(&self, vm_id: Uuid) -> PathBuf {
@@ -229,7 +242,9 @@ impl fmt::Display for KernelArgs<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{qemu_client::MockVmClient, services::disk::MockDiskService};
+    use crate::{
+        qemu_client::MockVmClient, repositories::workload::MockWorkloadRepository, services::disk::MockDiskService,
+    };
     use mockall::predicate::eq;
     use tempfile::TempDir;
 
@@ -244,6 +259,7 @@ mod tests {
             cpu: 1.try_into().unwrap(),
             disk: 1.try_into().unwrap(),
             gpu: Default::default(),
+            status: Default::default(),
         }
     }
 
@@ -257,17 +273,19 @@ mod tests {
         state_path: TempDir,
         vm_client: MockVmClient,
         disk_service: MockDiskService,
+        workload_repository: MockWorkloadRepository,
         cvm_config: CvmConfig,
     }
 
     impl WorkerBuilder {
         fn build(self) -> WorkerCtx {
-            let Self { state_path, vm_client, disk_service, cvm_config } = self;
+            let Self { state_path, vm_client, disk_service, workload_repository, cvm_config } = self;
             WorkerCtx {
                 worker: Worker {
                     state_path: state_path.path().into(),
                     vm_client: Box::new(vm_client),
                     disk_service: Box::new(disk_service),
+                    workload_repository: Arc::new(workload_repository),
                     cvm_config,
                     receiver: channel(1).1,
                 },
@@ -282,6 +300,7 @@ mod tests {
                 state_path: tempfile::tempdir().expect("failed to create temp dir"),
                 vm_client: Default::default(),
                 disk_service: Default::default(),
+                workload_repository: Default::default(),
                 cvm_config: CvmConfig {
                     initrd: "/initrd".into(),
                     kernel: "/kernel".into(),
