@@ -46,9 +46,9 @@ $QEMU_BASE_PATH/usr/local/bin/qemu-img create -f raw "$STATE_DISK" 10G
 
 DEBUG_ARGS=""
 if [ "${NILCC_DEBUG}" == "1" ]; then
-  DEBUG_ARGS="console=ttyS0 earlyprintk=serial panic=-1 "
+  DEBUG_ARGS="console=ttyS0 earlyprintk=serial "
 fi
-BOOT_ARGS="root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=$DOCKER_COMPOSE_HASH"
+BOOT_ARGS="panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=${VM_IMAGE_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=$DOCKER_COMPOSE_HASH"
 KERNEL_ARGS="${DEBUG_ARGS}${BOOT_ARGS}"
 
 $QEMU_BASE_PATH/usr/local/bin/qemu-system-x86_64 \

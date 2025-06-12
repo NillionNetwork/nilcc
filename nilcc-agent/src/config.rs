@@ -7,6 +7,9 @@ pub struct AgentConfig {
     /// Directory where VM folders live
     pub vm_store: PathBuf,
 
+    /// Confidential VM configuration.
+    pub cvm: CvmConfig,
+
     /// Qemu configuration.
     pub qemu: QemuConfig,
 
@@ -18,6 +21,27 @@ pub struct AgentConfig {
 
     /// The database configuration.
     pub db: DbConfig,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CvmConfig {
+    /// The path to the initrd file.
+    pub initrd: PathBuf,
+
+    /// The path to the kernel file.
+    pub kernel: PathBuf,
+
+    /// The path to the bios file.
+    pub bios: PathBuf,
+
+    /// The path to the base disk.
+    pub base_disk: PathBuf,
+
+    /// The path to the verity disk.
+    pub verity_disk: PathBuf,
+
+    /// The verity root hash.
+    pub verity_root_hash: String,
 }
 
 #[derive(Deserialize, Debug)]

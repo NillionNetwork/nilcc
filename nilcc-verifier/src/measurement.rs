@@ -30,12 +30,12 @@ impl MeasurementGenerator {
             kernel_debug_options: debug_options,
         } = self;
         let debug_options = match debug_options {
-            true => "console=ttyS0 earlyprintk=serial panic=-1 ",
+            true => "console=ttyS0 earlyprintk=serial ",
             false => "",
         };
         let docker_compose_hash = hex::encode(docker_compose_hash);
         let filesystem_root_hash = hex::encode(filesystem_root_hash);
-        let cmd_line = format!("{debug_options}root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}");
+        let cmd_line = format!("{debug_options}panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}");
         info!("Using kernel parameters for measurement: {cmd_line}");
         let guest_features = GuestFeatures(0x01);
         let args = SnpMeasurementArgs {
