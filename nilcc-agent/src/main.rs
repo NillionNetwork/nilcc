@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     agent_service::{AgentService, AgentServiceArgs},
     build_info,
@@ -106,6 +107,10 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     let ApiConfig { endpoint, key, sync_interval } = config.api;
 
+    PrometheusBuilder::default()
+        .with_http_listener(config.metrics.bind_endpoint)
+        .install()
+        .context("Failed to start metrics exporter")?;
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));

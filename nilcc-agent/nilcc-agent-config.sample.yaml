@@ -32,3 +32,6 @@ sni_proxy:
     server: 5s
     client: 5s
   max_connections: 100000
+
+metrics:
+  bind_endpoint: 0.0.0.0:8080

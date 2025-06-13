@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
@@ -24,6 +24,12 @@ pub struct AgentConfig {
 
     /// The SNI proxy configuration.
     pub sni_proxy: SniProxyConfig,
+
+    /// The DNS subdomain where workloads will be accessible.
+    pub dns_subdomain: String,
+
+    /// The metrics configuration.
+    pub metrics: MetricsConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -109,6 +115,12 @@ pub struct SniProxyConfigTimeouts {
 
     /// Timeout for client in ms.
     pub client: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct MetricsConfig {
+    /// The endpoint where metrics are exposed.
+    pub bind_endpoint: SocketAddr,
 }
 
 fn default_agent_sync_interval() -> Duration {

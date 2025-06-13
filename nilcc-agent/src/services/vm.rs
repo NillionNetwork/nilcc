@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
+use metrics::{counter, gauge};
 use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     fs, select,
@@ -100,11 +101,13 @@ impl Worker {
                         break;
                     };
                     if let Err(e) = self.handle_command(command).await {
+                        counter!("vm_commands_failed_total").increment(1);
                         error!("Failed to run command: {e}")
                     }
                 },
                 _ = ticker.tick() => {
                     if let Err(e) = self.check_running_vms().await {
+                        counter!("vm_check_running_vms_errors_total").increment(1);
                         error!("Failed to check running VMs: {e}");
                     }
                 }
@@ -117,10 +120,12 @@ impl Worker {
         match command {
             Command::SyncVm { workload } => {
                 info!("Need to sync vm {}", workload.id);
+                counter!("vm_commands_executed_total", "command" => "start").increment(1);
                 self.sync_vm(workload).await
             }
             Command::StopVm { id } => {
                 info!("Need to stop vm {id}");
+                counter!("vm_commands_executed_total", "command" => "stop").increment(1);
                 self.stop_vm(id).await
             }
         }
@@ -131,6 +136,9 @@ impl Worker {
         let mut running = 0;
         let workloads = self.workload_repository.list().await.context("Failed to find workloads")?;
         let expected = workloads.len();
+        let mut total_cpus: u16 = 0;
+        let mut total_gpus: u16 = 0;
+        let mut total_memory: u32 = 0;
         for workload in workloads {
             let id = workload.id;
             let socket_path = self.socket_path(id);
@@ -143,8 +151,16 @@ impl Worker {
                     error!("Failed to delete VM {id}: {e}");
                 }
             }
+            total_cpus = total_cpus.saturating_add(workload.cpus.into());
+            total_gpus = total_gpus.saturating_add(workload.gpus);
+            total_memory = total_memory.saturating_add(workload.memory_mb);
         }
         info!("{running}/{expected} machines are running");
+        gauge!("vms_total", "type" => "running").set(running);
+        gauge!("vms_total", "type" => "desired").set(expected as u32);
+        gauge!("vms_resources_used_total", "resource" => "cpu").set(total_cpus);
+        gauge!("vms_resources_used_total", "resource" => "gpu").set(total_gpus);
+        gauge!("vms_resources_used_total", "resource" => "memory_mb").set(total_memory);
         Ok(())
     }
 
