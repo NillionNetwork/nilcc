@@ -204,7 +204,6 @@ impl AgentService {
                     self.vm_service.sync_vm(workload).await;
                 }
                 WorkloadAction::Stop(id) => {
-                    self.workload_repository.delete(id).await?;
                     self.vm_service.stop_vm(id).await;
                 }
             };
