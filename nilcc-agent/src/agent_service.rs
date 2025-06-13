@@ -3,8 +3,11 @@ use crate::{
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, Workload},
     gpu,
     http_client::NilccApiClient,
-    repositories::workload::WorkloadRepository,
-    services::vm::VmService,
+    repositories::workload::{WorkloadModel, WorkloadRepository},
+    services::{
+        sni_proxy::{SniProxyService, SniProxyWorkload},
+        vm::VmService,
+    },
 };
 use anyhow::{Context, Result};
 use std::{collections::HashMap, time::Duration};
@@ -27,8 +30,20 @@ pub struct AgentServiceArgs {
     /// The VM service.
     pub vm_service: Box<dyn VmService>,
 
+    /// The SNI proxy service.
+    pub sni_proxy_service: Box<dyn SniProxyService>,
+
     /// The interval to use for sync requests.
     pub sync_interval: Duration,
+
+    /// The DNS subdomain where workloads will be registered
+    pub dns_subdomain: String,
+
+    /// The start port range for workloads.
+    pub start_port_range: u16,
+
+    /// The end port range for workloads.
+    pub end_port_range: u16,
 }
 
 pub struct AgentService {
@@ -36,13 +51,37 @@ pub struct AgentService {
     api_client: Box<dyn NilccApiClient>,
     workload_repository: Box<dyn WorkloadRepository>,
     vm_service: Box<dyn VmService>,
+    sni_proxy_service: Box<dyn SniProxyService>,
     sync_interval: Duration,
+    dns_subdomain: String,
+    start_port_range: u16,
+    end_port_range: u16,
 }
 
 impl AgentService {
     pub fn new(args: AgentServiceArgs) -> Self {
-        let AgentServiceArgs { agent_id, api_client, workload_repository, vm_service, sync_interval } = args;
-        Self { agent_id, api_client, workload_repository, vm_service, sync_interval }
+        let AgentServiceArgs {
+            agent_id,
+            api_client,
+            workload_repository,
+            vm_service,
+            sync_interval,
+            sni_proxy_service,
+            dns_subdomain,
+            start_port_range,
+            end_port_range,
+        } = args;
+        Self {
+            agent_id,
+            api_client,
+            workload_repository,
+            vm_service,
+            sync_interval,
+            sni_proxy_service,
+            dns_subdomain,
+            start_port_range,
+            end_port_range,
+        }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
@@ -104,18 +143,20 @@ impl AgentService {
         info!("Sync executor task for agent has finished.");
     }
 
-    async fn run_once(&self) -> anyhow::Result<()> {
+    async fn run_once(&self) -> Result<()> {
         let sync_request = SyncRequest {};
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
         let actions = self.compute_workload_actions(response.workloads).await?;
         if actions.is_empty() {
             info!("No actions need to be executed");
+            return Ok(());
         }
         info!("Need to perform {} workload actions", actions.len());
-        self.apply_actions(actions).await
+        self.apply_actions(actions).await?;
+        self.update_sni_proxy().await
     }
 
-    async fn compute_workload_actions(&self, expected: Vec<Workload>) -> anyhow::Result<Vec<WorkloadAction>> {
+    async fn compute_workload_actions(&self, expected: Vec<Workload>) -> Result<Vec<WorkloadAction>> {
         let mut existing: HashMap<_, _> = self
             .workload_repository
             .list()
@@ -130,15 +171,20 @@ impl AgentService {
             match existing.remove(&workload_id) {
                 Some(existing) => {
                     // If it exists and is different, we need to update it
-                    if existing != workload {
+                    let (metal_http_port, metal_https_port) = (existing.metal_http_port, existing.metal_https_port);
+                    if Workload::from(existing) != workload {
                         info!("Need to update workload {workload_id}");
-                        actions.push(WorkloadAction::Update(workload));
+                        let new_workload_model =
+                            WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
+                        actions.push(WorkloadAction::Update(new_workload_model));
                     }
                 }
                 None => {
                     // It doesn't exist, it needs to be started
                     info!("Need to start workload {workload_id}");
-                    actions.push(WorkloadAction::Start(workload));
+                    let (metal_http_port, metal_https_port) = self.find_free_ports().await?;
+                    let workload_model = WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
+                    actions.push(WorkloadAction::Start(workload_model));
                 }
             };
         }
@@ -165,12 +211,41 @@ impl AgentService {
         }
         Ok(())
     }
+    async fn find_free_ports(&self) -> Result<(u16, u16)> {
+        let workloads = self.workload_repository.list().await?;
+        let mut used_ports =
+            workloads.iter().flat_map(|w| vec![w.metal_http_port, w.metal_https_port]).collect::<Vec<_>>();
+        let mut first_port = 0;
+        for port in self.start_port_range..self.end_port_range {
+            if first_port == 0 && !used_ports.contains(&port) {
+                used_ports.push(port);
+                first_port = port;
+            } else if !used_ports.contains(&port) {
+                return Ok((first_port, port));
+            }
+        }
+        Err(anyhow::anyhow!("No free ports were found."))
+    }
+    async fn update_sni_proxy(&self) -> Result<()> {
+        info!("Updating SNI proxy configuration");
+        let workloads = self.workload_repository.list().await?;
+        let sni_workloads: Vec<_> = workloads
+            .into_iter()
+            .map(|w| SniProxyWorkload {
+                id: w.id.to_string(),
+                domain: format!("{}.{}", w.id, self.dns_subdomain),
+                http_address: format!("127.0.0.1:{}", w.metal_http_port),
+                https_address: format!("127.0.0.1:{}", w.metal_https_port),
+            })
+            .collect();
+        self.sni_proxy_service.update_config(sni_workloads).context("Failed to update SNI proxy configuration")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum WorkloadAction {
-    Start(Workload),
-    Update(Workload),
+    Start(WorkloadModel),
+    Update(WorkloadModel),
     Stop(Uuid),
 }
 
@@ -236,21 +311,25 @@ pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
 mod tests {
     use super::*;
     use crate::{
-        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
+        http_client::MockNilccApiClient,
+        repositories::workload::MockWorkloadRepository,
+        services::{sni_proxy::MockSniProxyService, vm::MockVmService},
     };
     use mockall::predicate::eq;
 
-    fn make_workload() -> Workload {
-        Workload {
+    fn make_workload() -> WorkloadModel {
+        WorkloadModel {
             id: Uuid::new_v4(),
             docker_compose: Default::default(),
-            env_vars: Default::default(),
-            service_to_expose: Default::default(),
-            service_port_to_expose: Default::default(),
-            memory: Default::default(),
-            cpu: 1.try_into().unwrap(),
-            disk: 1.try_into().unwrap(),
-            gpu: Default::default(),
+            environment_variables: Default::default(),
+            public_container_name: Default::default(),
+            public_container_port: Default::default(),
+            memory_mb: Default::default(),
+            cpus: 1.try_into().unwrap(),
+            disk_gb: 1.try_into().unwrap(),
+            gpus: Default::default(),
+            metal_http_port: 0,
+            metal_https_port: 0,
         }
     }
 
@@ -268,8 +347,12 @@ mod tests {
                 agent_id,
                 api_client: Box::new(api_client),
                 workload_repository: Box::new(workload_repository),
+                sni_proxy_service: Box::new(MockSniProxyService::new()),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
+                dns_subdomain: "workloads.nilcc.com".to_string(),
+                start_port_range: 10000,
+                end_port_range: 20000,
             };
             AgentService::new(args)
         }
@@ -293,15 +376,18 @@ mod tests {
         let mut modified = make_workload();
         let removed = make_workload();
         let existing = vec![unmodified.clone(), modified.clone(), removed.clone()];
-        builder.workload_repository.expect_list().return_once(move || Ok(existing.clone()));
+        builder.workload_repository.expect_list().returning(move || Ok(existing.clone()));
 
-        modified.cpu = modified.cpu.checked_add(1).unwrap();
+        modified.cpus = modified.cpus.checked_add(1).unwrap();
 
-        let new = make_workload();
-        let expected_workloads = vec![unmodified, modified.clone(), new.clone()];
+        let mut new = make_workload();
+        let expected_workloads: Vec<Workload> =
+            vec![unmodified, modified.clone(), new.clone()].into_iter().map(Workload::from).collect();
         let service = builder.build();
         let mut actions =
             service.compute_workload_actions(expected_workloads.clone()).await.expect("failed to compute");
+        new.metal_http_port = 10000;
+        new.metal_https_port = 10001;
         let mut expected_actions =
             vec![WorkloadAction::Start(new), WorkloadAction::Stop(removed.id), WorkloadAction::Update(modified)];
         // Sort by workload id so we can compare them

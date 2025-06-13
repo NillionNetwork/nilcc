@@ -1,8 +1,8 @@
 use crate::{
     config::CvmConfig,
-    data_schemas::Workload,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
+    repositories::workload::WorkloadModel,
     services::disk::{DiskService, DockerComposeHash},
 };
 use anyhow::Context;
@@ -21,7 +21,7 @@ const WORKER_CHANNEL_SIZE: usize = 1024;
 #[async_trait]
 pub trait VmService: Send + Sync {
     /// Synchronize a VM's to the given workload.
-    async fn sync_vm(&self, workload: Workload);
+    async fn sync_vm(&self, workload: WorkloadModel);
 
     /// Stop a VM and delete all associated resources.
     async fn stop_vm(&self, id: Uuid);
@@ -53,7 +53,7 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn sync_vm(&self, workload: Workload) {
+    async fn sync_vm(&self, workload: WorkloadModel) {
         self.send_worker(Command::SyncVm { workload }).await;
     }
 
@@ -104,7 +104,7 @@ impl Worker {
         }
     }
 
-    async fn sync_vm(&mut self, workload: Workload) -> anyhow::Result<()> {
+    async fn sync_vm(&mut self, workload: WorkloadModel) -> anyhow::Result<()> {
         let id = workload.id;
         let socket_path = self.socket_path(id);
         info!("Trying to stop VM {id} before syncing");
@@ -142,28 +142,28 @@ impl Worker {
         self.state_path.join(file_name)
     }
 
-    async fn create_state_disk(&self, workload: &Workload) -> anyhow::Result<PathBuf> {
+    async fn create_state_disk(&self, workload: &WorkloadModel) -> anyhow::Result<PathBuf> {
         let disk_name = format!("{}.raw", workload.id);
         let disk_path = self.state_path.join(disk_name);
         self.disk_service
-            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk.into())
+            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_gb.into())
             .await
             .context("Failed to create state disk")?;
         Ok(disk_path)
     }
 
-    async fn create_application_iso(&self, workload: &Workload) -> anyhow::Result<(PathBuf, DockerComposeHash)> {
+    async fn create_application_iso(&self, workload: &WorkloadModel) -> anyhow::Result<(PathBuf, DockerComposeHash)> {
         let iso_name = format!("{}.iso", workload.id);
         let iso_path = self.state_path.join(iso_name);
         let environment_variables =
-            workload.env_vars.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
+            workload.environment_variables.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
         let spec = IsoSpec {
             docker_compose_yaml: workload.docker_compose.clone(),
             metadata: ApplicationMetadata {
                 hostname: "UNKNOWN".into(),
                 api: ContainerMetadata {
-                    container: workload.service_to_expose.clone(),
-                    port: workload.service_port_to_expose,
+                    container: workload.public_container_name.clone(),
+                    port: workload.public_container_port,
                 },
             },
             environment_variables,
@@ -178,7 +178,7 @@ impl Worker {
 
     fn create_vm_spec(
         &self,
-        workload: &Workload,
+        workload: &WorkloadModel,
         iso_path: PathBuf,
         state_disk_path: PathBuf,
         docker_compose_hash: DockerComposeHash,
@@ -188,8 +188,8 @@ impl Worker {
             docker_compose_hash: &docker_compose_hash.0,
         };
         let spec = VmSpec {
-            cpu: workload.cpu.into(),
-            ram_mib: workload.memory,
+            cpu: workload.cpus.into(),
+            ram_mib: workload.memory_mb,
             hard_disks: vec![
                 HardDiskSpec { path: self.cvm_config.base_disk.clone(), format: HardDiskFormat::Qcow2 },
                 HardDiskSpec { path: self.cvm_config.verity_disk.clone(), format: HardDiskFormat::Raw },
@@ -197,7 +197,7 @@ impl Worker {
             ],
             cdrom_iso_path: Some(iso_path),
             gpu_enabled: false,
-            port_forwarding: Default::default(),
+            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some(self.cvm_config.bios.clone()),
             initrd_path: Some(self.cvm_config.initrd.clone()),
             kernel_path: Some(self.cvm_config.kernel.clone()),
@@ -210,7 +210,7 @@ impl Worker {
 }
 
 enum Command {
-    SyncVm { workload: Workload },
+    SyncVm { workload: WorkloadModel },
     StopVm { id: Uuid },
 }
 
@@ -233,17 +233,19 @@ mod tests {
     use mockall::predicate::eq;
     use tempfile::TempDir;
 
-    fn make_workload() -> Workload {
-        Workload {
+    fn make_workload() -> WorkloadModel {
+        WorkloadModel {
             id: Uuid::new_v4(),
             docker_compose: Default::default(),
-            env_vars: Default::default(),
-            service_to_expose: Default::default(),
-            service_port_to_expose: Default::default(),
-            memory: Default::default(),
-            cpu: 1.try_into().unwrap(),
-            disk: 1.try_into().unwrap(),
-            gpu: Default::default(),
+            environment_variables: Default::default(),
+            public_container_name: Default::default(),
+            public_container_port: Default::default(),
+            memory_mb: Default::default(),
+            cpus: 1.try_into().unwrap(),
+            disk_gb: 1.try_into().unwrap(),
+            gpus: Default::default(),
+            metal_http_port: 1080,
+            metal_https_port: 1443,
         }
     }
 
@@ -299,12 +301,12 @@ mod tests {
         let mut builder = WorkerBuilder::default();
         let id = Uuid::new_v4();
         let expected_iso_path = builder.state_path.path().join(format!("{id}.iso"));
-        let workload = Workload {
+        let workload = WorkloadModel {
             id,
             docker_compose: "some_yaml".into(),
-            service_to_expose: "foo".into(),
-            service_port_to_expose: 80,
-            env_vars: [("var".into(), "value".into())].into(),
+            public_container_name: "foo".into(),
+            public_container_port: 80,
+            environment_variables: [("var".into(), "value".into())].into(),
             ..make_workload()
         };
         let spec = IsoSpec {
@@ -312,8 +314,8 @@ mod tests {
             metadata: ApplicationMetadata {
                 hostname: "UNKNOWN".into(),
                 api: ContainerMetadata {
-                    container: workload.service_to_expose.clone(),
-                    port: workload.service_port_to_expose,
+                    container: workload.public_container_name.clone(),
+                    port: workload.public_container_port,
                 },
             },
             environment_variables: vec![EnvironmentVariable::new("var", "value")],
@@ -334,7 +336,7 @@ mod tests {
     fn vm_spec() {
         let builder = WorkerBuilder::default();
         let docker_compose_hash = "deadbeef";
-        let workload = Workload { memory: 1024, cpu: 2.try_into().unwrap(), gpu: 0, ..make_workload() };
+        let workload = WorkloadModel { memory_mb: 1024, cpus: 2.try_into().unwrap(), gpus: 0, ..make_workload() };
         let iso_path = PathBuf::from("/tmp/vm.iso");
         let filesystem_root_hash = &builder.cvm_config.verity_root_hash;
         let kernel_args = KernelArgs { docker_compose_hash, filesystem_root_hash }.to_string();
@@ -350,7 +352,7 @@ mod tests {
             ],
             cdrom_iso_path: Some(iso_path.clone()),
             gpu_enabled: false,
-            port_forwarding: Default::default(),
+            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some("/bios".into()),
             initrd_path: Some("/initrd".into()),
             kernel_path: Some("/kernel".into()),

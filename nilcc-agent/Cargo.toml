@@ -19,6 +19,7 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 sqlx = { version = "0.8", features = ["chrono", "migrate", "runtime-tokio", "sqlite", "uuid"] }
 tempfile = "3.19.1"
+tera = { version = "1", default-features = false }
 thiserror = "2"
 tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "net", "process", "time", "fs", "signal"] }
 tracing = "0.1"

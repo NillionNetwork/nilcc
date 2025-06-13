@@ -9,7 +9,7 @@ use nilcc_agent::{
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::QemuClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
-    services::{disk::DefaultDiskService, vm::DefaultVmService},
+    services::{disk::DefaultDiskService, sni_proxy::HaProxySniProxyService, vm::DefaultVmService},
 };
 use serde::Serialize;
 use std::{fs, ops::Deref, path::PathBuf};
@@ -114,13 +114,23 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let vm_service = DefaultVmService::new(config.vm_store, Box::new(qemu_client), Box::new(disk_service), config.cvm)
         .await
         .context("Failed to create vm service")?;
+    let sni_proxy_service = Box::new(HaProxySniProxyService::new(
+        config.sni_proxy.config_file_path,
+        config.sni_proxy.ha_proxy_config_reload_command,
+        config.sni_proxy.timeouts,
+        config.sni_proxy.max_connections,
+    ));
 
     let args = AgentServiceArgs {
         agent_id: config.agent_id,
         api_client,
         vm_service: Box::new(vm_service),
         workload_repository,
+        sni_proxy_service,
         sync_interval,
+        dns_subdomain: config.dns_subdomain,
+        start_port_range: config.sni_proxy.start_port_range,
+        end_port_range: config.sni_proxy.end_port_range,
     };
     let agent_service = AgentService::new(args);
 
