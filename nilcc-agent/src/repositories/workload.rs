@@ -1,20 +1,109 @@
-use crate::{data_schemas::Workload, repositories::sqlite::SqliteDb};
+use crate::repositories::sqlite::SqliteDb;
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::{prelude::FromRow, SqlitePool};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+    num::NonZeroU16,
+};
 use uuid::Uuid;
+
+#[derive(FromRow, Clone, PartialEq)]
+pub struct WorkloadModel {
+    pub id: Uuid,
+    pub docker_compose: String,
+    #[sqlx(json)]
+    pub environment_variables: HashMap<String, String>,
+    pub public_container_name: String,
+    pub public_container_port: u16,
+    pub memory_mb: u32,
+    pub cpus: NonZeroU16,
+    pub disk_gb: NonZeroU16,
+    pub gpus: u16,
+    pub metal_http_port: u16,
+    pub metal_https_port: u16,
+}
+
+impl fmt::Debug for WorkloadModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Hide this one since it can have sensitive data
+        let clean_env_vars: BTreeMap<_, _> = self.environment_variables.keys().map(|key| (key, "...")).collect();
+        f.debug_struct("Workload")
+            .field("id", &self.id)
+            .field("docker_compose", &self.docker_compose)
+            .field("env_vars", &clean_env_vars)
+            .field("public_container_name", &self.public_container_name)
+            .field("public_container_port", &self.public_container_port)
+            .field("memory_mb", &self.memory_mb)
+            .field("cpus", &self.cpus)
+            .field("disk_gb", &self.disk_gb)
+            .field("gpus", &self.gpus)
+            .field("metal_http_port", &self.metal_http_port)
+            .field("metal_https_port", &self.metal_https_port)
+            .finish()
+    }
+}
+
+impl From<WorkloadModel> for crate::data_schemas::Workload {
+    fn from(workload: WorkloadModel) -> Self {
+        let WorkloadModel {
+            id,
+            docker_compose,
+            environment_variables: env_vars,
+            public_container_name: service_to_expose,
+            public_container_port: service_port_to_expose,
+            memory_mb,
+            cpus: cpu,
+            disk_gb: disk,
+            gpus: gpu,
+            ..
+        } = workload;
+        let memory = memory_mb / 1024; // Convert Mb to Gb
+        Self { id, docker_compose, env_vars, service_to_expose, service_port_to_expose, memory, cpu, disk, gpu }
+    }
+}
+
+impl WorkloadModel {
+    pub fn from_schema(workload: crate::data_schemas::Workload, metal_http_port: u16, metal_https_port: u16) -> Self {
+        let crate::data_schemas::Workload {
+            id,
+            docker_compose,
+            env_vars,
+            service_to_expose,
+            service_port_to_expose,
+            memory,
+            cpu,
+            disk,
+            gpu,
+        } = workload;
+        Self {
+            id,
+            docker_compose,
+            environment_variables: env_vars,
+            public_container_name: service_to_expose,
+            public_container_port: service_port_to_expose,
+            memory_mb: memory * 1024, // Convert Gb to Mb
+            cpus: cpu,
+            disk_gb: disk,
+            gpus: gpu,
+            metal_http_port,
+            metal_https_port,
+        }
+    }
+}
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait WorkloadRepository: Send + Sync {
     /// Create a workload.
-    async fn upsert(&self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
+    async fn upsert(&self, workload: WorkloadModel) -> Result<(), WorkloadRepositoryError>;
 
     /// Find the details for a workload.
-    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
+    async fn find(&self, id: Uuid) -> Result<WorkloadModel, WorkloadRepositoryError>;
 
     /// List all workflows.
-    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError>;
+    async fn list(&self) -> Result<Vec<WorkloadModel>, WorkloadRepositoryError>;
 
     /// Delete a workload.
     async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
@@ -41,7 +130,7 @@ impl SqliteWorkloadRepository {
 
 #[async_trait]
 impl WorkloadRepository for SqliteWorkloadRepository {
-    async fn upsert(&self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
+    async fn upsert(&self, workload: WorkloadModel) -> Result<(), WorkloadRepositoryError> {
         let query = r"
 INSERT INTO workloads (
     id,
@@ -53,9 +142,11 @@ INSERT INTO workloads (
     cpus,
     gpus,
     disk_gb,
+    metal_http_port,
+    metal_https_port,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     docker_compose = $2,
     environment_variables = $3,
@@ -64,92 +155,62 @@ ON CONFLICT (id) DO UPDATE SET
     memory_mb = $6,
     cpus = $7,
     gpus = $8,
-    disk_gb = $9
+    disk_gb = $9,
+    metal_http_port = $10,
+    metal_https_port = $11
 ";
-        let Workload {
+        let WorkloadModel {
             id,
             docker_compose,
-            env_vars,
-            service_to_expose,
-            service_port_to_expose,
-            memory,
-            cpu,
-            disk,
-            gpu,
+            environment_variables,
+            public_container_name,
+            public_container_port,
+            memory_mb,
+            cpus,
+            disk_gb,
+            gpus,
+            metal_http_port,
+            metal_https_port,
         } = workload;
+
         sqlx::query(query)
             .bind(id)
             .bind(docker_compose)
-            .bind(sqlx::types::Json(env_vars))
-            .bind(service_to_expose)
-            .bind(service_port_to_expose)
-            .bind(memory)
-            .bind(cpu)
-            .bind(gpu)
-            .bind(disk)
+            .bind(sqlx::types::Json(environment_variables))
+            .bind(public_container_name)
+            .bind(public_container_port)
+            .bind(memory_mb)
+            .bind(cpus)
+            .bind(gpus)
+            .bind(disk_gb)
+            .bind(metal_http_port)
+            .bind(metal_https_port)
             .bind(Utc::now())
             .execute(&self.pool)
             .await?;
         Ok(())
     }
 
-    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError> {
+    async fn find(&self, id: Uuid) -> Result<WorkloadModel, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads WHERE id = ?";
-        let workload: model::Workload = sqlx::query_as(query)
+        let workload: WorkloadModel = sqlx::query_as(query)
             .bind(id)
             .fetch_optional(&self.pool)
             .await?
             .ok_or(WorkloadRepositoryError::WorkloadNotFound)?;
-        Ok(workload.into())
+        Ok(workload)
     }
 
-    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError> {
+    async fn list(&self) -> Result<Vec<WorkloadModel>, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads";
-        let workloads: Vec<model::Workload> = sqlx::query_as(query).fetch_all(&self.pool).await?;
-        Ok(workloads.into_iter().map(Into::into).collect())
+        let workloads: Vec<WorkloadModel> = sqlx::query_as(query).fetch_all(&self.pool).await?;
+        Ok(workloads)
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError> {
         let query = "DELETE FROM workloads WHERE id = ?";
         sqlx::query(query).bind(id).execute(&self.pool).await?;
         Ok(())
-    }
-}
-
-mod model {
-    use sqlx::prelude::FromRow;
-    use std::{collections::HashMap, num::NonZeroU16};
-    use uuid::Uuid;
-
-    #[derive(FromRow)]
-    pub(super) struct Workload {
-        id: Uuid,
-        docker_compose: String,
-        #[sqlx(json)]
-        environment_variables: HashMap<String, String>,
-        public_container_name: String,
-        public_container_port: u16,
-        memory_mb: u32,
-        cpus: NonZeroU16,
-        disk_gb: NonZeroU16,
-        gpus: u16,
-    }
-
-    impl From<Workload> for crate::data_schemas::Workload {
-        fn from(workload: Workload) -> Self {
-            let Workload {
-                id,
-                docker_compose,
-                environment_variables: env_vars,
-                public_container_name: service_to_expose,
-                public_container_port: service_port_to_expose,
-                memory_mb: memory,
-                cpus: cpu,
-                disk_gb: disk,
-                gpus: gpu,
-            } = workload;
-            Self { id, docker_compose, env_vars, service_to_expose, service_port_to_expose, memory, cpu, disk, gpu }
-        }
     }
 }
 
@@ -166,16 +227,18 @@ mod tests {
     #[tokio::test]
     async fn lookup() {
         let repo = make_repo().await;
-        let workload = Workload {
+        let workload = WorkloadModel {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),
-            env_vars: HashMap::from([("FOO".into(), "value".into())]),
-            service_to_expose: "container-1".into(),
-            service_port_to_expose: 80,
-            memory: 1024,
-            cpu: 1.try_into().unwrap(),
-            disk: 10.try_into().unwrap(),
-            gpu: 1,
+            environment_variables: HashMap::from([("FOO".into(), "value".into())]),
+            public_container_name: "container-1".into(),
+            public_container_port: 80,
+            memory_mb: 1024,
+            cpus: 1.try_into().unwrap(),
+            disk_gb: 10.try_into().unwrap(),
+            gpus: 1,
+            metal_http_port: 1080,
+            metal_https_port: 1443,
         };
         repo.upsert(workload.clone()).await.expect("failed to insert");
 
@@ -189,27 +252,31 @@ mod tests {
     #[tokio::test]
     async fn update() {
         let repo = make_repo().await;
-        let original = Workload {
+        let original = WorkloadModel {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),
-            env_vars: HashMap::from([("FOO".into(), "value".into())]),
-            service_to_expose: "container-1".into(),
-            service_port_to_expose: 80,
-            memory: 1024,
-            cpu: 1.try_into().unwrap(),
-            disk: 10.try_into().unwrap(),
-            gpu: 1,
+            environment_variables: HashMap::from([("FOO".into(), "value".into())]),
+            public_container_name: "container-1".into(),
+            public_container_port: 80,
+            memory_mb: 1024,
+            cpus: 1.try_into().unwrap(),
+            disk_gb: 10.try_into().unwrap(),
+            gpus: 1,
+            metal_http_port: 1080,
+            metal_https_port: 1443,
         };
-        let updated = Workload {
+        let updated = WorkloadModel {
             id: original.id,
             docker_compose: "bye".into(),
-            env_vars: HashMap::default(),
-            service_to_expose: "container-2".into(),
-            service_port_to_expose: 443,
-            memory: 2048,
-            cpu: 2.try_into().unwrap(),
-            disk: 20.try_into().unwrap(),
-            gpu: 2,
+            environment_variables: HashMap::default(),
+            public_container_name: "container-2".into(),
+            public_container_port: 443,
+            memory_mb: 2048,
+            gpus: 2.try_into().unwrap(),
+            disk_gb: 20.try_into().unwrap(),
+            cpus: 2.try_into().unwrap(),
+            metal_http_port: 1080,
+            metal_https_port: 1443,
         };
         repo.upsert(original).await.expect("failed to insert");
         repo.upsert(updated.clone()).await.expect("failed to insert");

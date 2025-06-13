@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use uuid::Uuid;
 
@@ -21,6 +21,12 @@ pub struct AgentConfig {
 
     /// The database configuration.
     pub db: DbConfig,
+
+    /// The SNI proxy configuration.
+    pub sni_proxy: SniProxyConfig,
+
+    /// The DNS subdomain where workloads will be accessible.
+    pub dns_subdomain: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -70,6 +76,39 @@ pub struct ApiConfig {
 pub struct DbConfig {
     /// The database URL.
     pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SniProxyConfig {
+    /// Start of the port range for the SNI proxy.
+    pub start_port_range: u16,
+
+    /// The end of the port range for the SNI proxy.
+    pub end_port_range: u16,
+
+    /// The path to the HAProxy configuration file.
+    pub config_file_path: String,
+
+    /// The command to reload the HAProxy configuration.
+    pub ha_proxy_config_reload_command: String,
+
+    /// The timeouts for the SNI proxy.
+    pub timeouts: SniProxyConfigTimeouts,
+
+    /// The maximum number of connections for the SNI proxy.
+    pub max_connections: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SniProxyConfigTimeouts {
+    /// Timeout for connection establishment in ms.
+    pub connect: u64,
+
+    /// Timeout for server in ms.
+    pub server: u64,
+
+    /// Timeout for client in ms.
+    pub client: u64,
 }
 
 fn default_agent_sync_interval() -> Duration {
