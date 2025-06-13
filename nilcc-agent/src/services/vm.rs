@@ -2,12 +2,12 @@ use crate::{
     config::CvmConfig,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
-    repositories::workload::WorkloadModel,
+    repositories::workload::{WorkloadModel, WorkloadRepository},
     services::disk::{DiskService, DockerComposeHash},
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use std::{fmt, path::PathBuf};
+use std::{fmt, path::PathBuf, sync::Arc};
 use tokio::{
     fs,
     sync::mpsc::{channel, Receiver, Sender},
@@ -36,11 +36,12 @@ impl DefaultVmService {
         state_path: PathBuf,
         vm_client: Box<dyn VmClient>,
         disk_service: Box<dyn DiskService>,
+        workload_repository: Arc<dyn WorkloadRepository>,
         cvm_config: CvmConfig,
     ) -> anyhow::Result<Self> {
         fs::create_dir_all(&state_path).await.context("Failed to create state path")?;
 
-        let worker_sender = Worker::start(state_path, vm_client, disk_service, cvm_config);
+        let worker_sender = Worker::start(state_path, vm_client, disk_service, workload_repository, cvm_config);
         Ok(Self { worker_sender })
     }
 
@@ -66,6 +67,7 @@ struct Worker {
     state_path: PathBuf,
     vm_client: Box<dyn VmClient>,
     disk_service: Box<dyn DiskService>,
+    workload_repository: Arc<dyn WorkloadRepository>,
     cvm_config: CvmConfig,
     receiver: Receiver<Command>,
 }
@@ -75,11 +77,12 @@ impl Worker {
         state_path: PathBuf,
         vm_client: Box<dyn VmClient>,
         disk_service: Box<dyn DiskService>,
+        workload_repository: Arc<dyn WorkloadRepository>,
         cvm_config: CvmConfig,
     ) -> Sender<Command> {
         let (sender, receiver) = channel(WORKER_CHANNEL_SIZE);
         tokio::spawn(async move {
-            let worker = Worker { state_path, vm_client, disk_service, cvm_config, receiver };
+            let worker = Worker { state_path, vm_client, disk_service, workload_repository, cvm_config, receiver };
             worker.run().await;
             warn!("Worker loop exited");
         });
@@ -121,6 +124,7 @@ impl Worker {
         let state_disk = self.create_state_disk(&workload).await?;
         let vm_spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash)?;
         self.vm_client.start_vm(vm_spec, &socket_path).await.context("Failed to start VM")?;
+        self.workload_repository.upsert(workload).await.context("Failed to upsert workload")?;
         Ok(())
     }
 
@@ -229,7 +233,9 @@ impl fmt::Display for KernelArgs<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{qemu_client::MockVmClient, services::disk::MockDiskService};
+    use crate::{
+        qemu_client::MockVmClient, repositories::workload::MockWorkloadRepository, services::disk::MockDiskService,
+    };
     use mockall::predicate::eq;
     use tempfile::TempDir;
 
@@ -259,17 +265,19 @@ mod tests {
         state_path: TempDir,
         vm_client: MockVmClient,
         disk_service: MockDiskService,
+        workload_repository: MockWorkloadRepository,
         cvm_config: CvmConfig,
     }
 
     impl WorkerBuilder {
         fn build(self) -> WorkerCtx {
-            let Self { state_path, vm_client, disk_service, cvm_config } = self;
+            let Self { state_path, vm_client, disk_service, workload_repository, cvm_config } = self;
             WorkerCtx {
                 worker: Worker {
                     state_path: state_path.path().into(),
                     vm_client: Box::new(vm_client),
                     disk_service: Box::new(disk_service),
+                    workload_repository: Arc::new(workload_repository),
                     cvm_config,
                     receiver: channel(1).1,
                 },
@@ -284,6 +292,7 @@ mod tests {
                 state_path: tempfile::tempdir().expect("failed to create temp dir"),
                 vm_client: Default::default(),
                 disk_service: Default::default(),
+                workload_repository: Default::default(),
                 cvm_config: CvmConfig {
                     initrd: "/initrd".into(),
                     kernel: "/kernel".into(),

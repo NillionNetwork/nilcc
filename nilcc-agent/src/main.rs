@@ -12,7 +12,7 @@ use nilcc_agent::{
     services::{disk::DefaultDiskService, sni_proxy::HaProxySniProxyService, vm::DefaultVmService},
 };
 use serde::Serialize;
-use std::{fs, ops::Deref, path::PathBuf};
+use std::{fs, ops::Deref, path::PathBuf, sync::Arc};
 use tracing::debug;
 
 #[derive(Parser)]
@@ -108,12 +108,18 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
-    let workload_repository = Box::new(SqliteWorkloadRepository::new(db));
+    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let disk_service = DefaultDiskService::new(config.qemu.img_bin);
     let qemu_client = QemuClient::new(config.qemu.system_bin);
-    let vm_service = DefaultVmService::new(config.vm_store, Box::new(qemu_client), Box::new(disk_service), config.cvm)
-        .await
-        .context("Failed to create vm service")?;
+    let vm_service = DefaultVmService::new(
+        config.vm_store,
+        Box::new(qemu_client),
+        Box::new(disk_service),
+        workload_repository.clone(),
+        config.cvm,
+    )
+    .await
+    .context("Failed to create vm service")?;
     let sni_proxy_service = Box::new(HaProxySniProxyService::new(
         config.sni_proxy.config_file_path,
         config.sni_proxy.ha_proxy_config_reload_command,
