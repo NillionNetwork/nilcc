@@ -39,6 +39,8 @@ autoinstall:
     # Copy metadata files
     - curtin in-target -- cp /cdrom/nillion/nilcc-version /opt/nillion
     - curtin in-target -- cp /cdrom/nillion/nilcc-vm-type /opt/nillion
+    # Remove unattended upgrades
+    - curtin in-target -- apt purge -y unattended-upgrades
     # Copy kernel and initrd to host
     - |
       curtin in-target -- bash -c '
