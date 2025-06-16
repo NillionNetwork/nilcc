@@ -1,13 +1,17 @@
 use crate::{
     build_info::get_agent_version,
-    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, Workload},
+    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
     gpu,
     http_client::NilccApiClient,
     repositories::workload::{WorkloadModel, WorkloadRepository},
     services::{sni_proxy::SniProxyService, vm::VmService},
 };
-use anyhow::{Context, Result};
-use std::{collections::HashMap, time::Duration};
+use anyhow::{bail, Context, Result};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
@@ -22,7 +26,7 @@ pub struct AgentServiceArgs {
     pub api_client: Box<dyn NilccApiClient>,
 
     /// The workloads repository.
-    pub workload_repository: Box<dyn WorkloadRepository>,
+    pub workload_repository: Arc<dyn WorkloadRepository>,
 
     /// The VM service.
     pub vm_service: Box<dyn VmService>,
@@ -43,7 +47,7 @@ pub struct AgentServiceArgs {
 pub struct AgentService {
     agent_id: Uuid,
     api_client: Box<dyn NilccApiClient>,
-    workload_repository: Box<dyn WorkloadRepository>,
+    workload_repository: Arc<dyn WorkloadRepository>,
     vm_service: Box<dyn VmService>,
     sni_proxy_service: Box<dyn SniProxyService>,
     sync_interval: Duration,
@@ -135,9 +139,16 @@ impl AgentService {
     }
 
     async fn run_once(&self) -> Result<()> {
-        let sync_request = SyncRequest {};
+        let existing_workloads = self.workload_repository.list().await.context("Failed to find workloads")?;
+        let sync_request = SyncRequest {
+            id: self.agent_id,
+            workloads: existing_workloads
+                .iter()
+                .map(|w| SyncWorkload { id: w.id, status: SyncWorkloadStatus::Running })
+                .collect(),
+        };
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
-        let actions = self.compute_workload_actions(response.workloads).await?;
+        let actions = self.compute_workload_actions(existing_workloads, response.workloads).await?;
         if actions.is_empty() {
             info!("No actions need to be executed");
             return Ok(());
@@ -147,15 +158,14 @@ impl AgentService {
         self.update_sni_proxy().await
     }
 
-    async fn compute_workload_actions(&self, expected: Vec<Workload>) -> Result<Vec<WorkloadAction>> {
-        let mut existing: HashMap<_, _> = self
-            .workload_repository
-            .list()
-            .await
-            .context("failed to find workloads")?
-            .into_iter()
-            .map(|w| (w.id, w))
-            .collect();
+    async fn compute_workload_actions(
+        &self,
+        existing: Vec<WorkloadModel>,
+        expected: Vec<Workload>,
+    ) -> Result<Vec<WorkloadAction>> {
+        let mut used_ports: HashSet<_> =
+            existing.iter().flat_map(|w| [w.metal_http_port, w.metal_https_port]).collect();
+        let mut existing: HashMap<_, _> = existing.into_iter().map(|w| (w.id, w)).collect();
         let mut actions = Vec::new();
         for workload in expected {
             let workload_id = workload.id;
@@ -173,7 +183,7 @@ impl AgentService {
                 None => {
                     // It doesn't exist, it needs to be started
                     info!("Need to start workload {workload_id}");
-                    let (metal_http_port, metal_https_port) = self.find_free_ports().await?;
+                    let (metal_http_port, metal_https_port) = self.find_free_ports(&mut used_ports)?;
                     let workload_model = WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
                     actions.push(WorkloadAction::Start(workload_model));
                 }
@@ -191,7 +201,6 @@ impl AgentService {
         for action in actions {
             match action {
                 WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
-                    self.workload_repository.upsert(workload.clone()).await?;
                     self.vm_service.sync_vm(workload).await;
                 }
                 WorkloadAction::Stop(id) => {
@@ -202,21 +211,20 @@ impl AgentService {
         }
         Ok(())
     }
-    async fn find_free_ports(&self) -> Result<(u16, u16)> {
-        let workloads = self.workload_repository.list().await?;
-        let mut used_ports =
-            workloads.iter().flat_map(|w| vec![w.metal_http_port, w.metal_https_port]).collect::<Vec<_>>();
-        let mut first_port = 0;
-        for port in self.start_port_range..self.end_port_range {
-            if first_port == 0 && !used_ports.contains(&port) {
-                used_ports.push(port);
-                first_port = port;
-            } else if !used_ports.contains(&port) {
-                return Ok((first_port, port));
-            }
+
+    fn find_free_ports(&self, used_ports: &mut HashSet<u16>) -> Result<(u16, u16)> {
+        let mut available_ports =
+            (self.start_port_range..self.end_port_range).filter(|port| !used_ports.contains(port));
+        let http = available_ports.next();
+        let https = available_ports.next();
+        if let (Some(http), Some(https)) = (http, https) {
+            used_ports.extend([http, https]);
+            Ok((http, https))
+        } else {
+            bail!("No free ports were found")
         }
-        Err(anyhow::anyhow!("No free ports were found."))
     }
+
     async fn update_sni_proxy(&self) -> Result<()> {
         info!("Updating SNI proxy configuration");
         let workloads = self.workload_repository.list().await?;
@@ -321,20 +329,22 @@ mod tests {
         workload_repository: MockWorkloadRepository,
         api_client: MockNilccApiClient,
         vm_service: MockVmService,
+        start_port_range: u16,
+        end_port_range: u16,
     }
 
     impl ServiceBuilder {
         fn build(self) -> AgentService {
-            let Self { agent_id, workload_repository, vm_service, api_client } = self;
+            let Self { agent_id, workload_repository, vm_service, api_client, start_port_range, end_port_range } = self;
             let args = AgentServiceArgs {
                 agent_id,
                 api_client: Box::new(api_client),
-                workload_repository: Box::new(workload_repository),
+                workload_repository: Arc::new(workload_repository),
                 sni_proxy_service: Box::new(MockSniProxyService::new()),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
-                start_port_range: 10000,
-                end_port_range: 20000,
+                start_port_range,
+                end_port_range,
             };
             AgentService::new(args)
         }
@@ -347,27 +357,27 @@ mod tests {
                 workload_repository: Default::default(),
                 vm_service: Default::default(),
                 api_client: Default::default(),
+                start_port_range: 10000,
+                end_port_range: 20000,
             }
         }
     }
 
     #[tokio::test]
     async fn diff_workloads() {
-        let mut builder = ServiceBuilder::default();
         let unmodified = make_workload();
         let mut modified = make_workload();
         let removed = make_workload();
         let existing = vec![unmodified.clone(), modified.clone(), removed.clone()];
-        builder.workload_repository.expect_list().returning(move || Ok(existing.clone()));
 
         modified.cpus = modified.cpus.checked_add(1).unwrap();
 
         let mut new = make_workload();
         let expected_workloads: Vec<Workload> =
             vec![unmodified, modified.clone(), new.clone()].into_iter().map(Workload::from).collect();
-        let service = builder.build();
+        let service = ServiceBuilder::default().build();
         let mut actions =
-            service.compute_workload_actions(expected_workloads.clone()).await.expect("failed to compute");
+            service.compute_workload_actions(existing, expected_workloads.clone()).await.expect("failed to compute");
         new.metal_http_port = 10000;
         new.metal_https_port = 10001;
         let mut expected_actions =
@@ -399,5 +409,21 @@ mod tests {
 
         let service = builder.build();
         service.apply_actions(actions).await.expect("failed to apply actions");
+    }
+
+    #[test]
+    fn free_ports() {
+        let mut builder = ServiceBuilder::default();
+        builder.start_port_range = 10;
+        builder.end_port_range = 19;
+
+        let mut used_ports = HashSet::from([11, 15]);
+        let service = builder.build();
+        assert_eq!((10, 12), service.find_free_ports(&mut used_ports).unwrap());
+        assert_eq!((13, 14), service.find_free_ports(&mut used_ports).unwrap());
+        assert_eq!((16, 17), service.find_free_ports(&mut used_ports).unwrap());
+
+        service.find_free_ports(&mut used_ports).expect_err("found ports when we shouldn't have");
+        assert_eq!(used_ports, (10..=17).collect());
     }
 }

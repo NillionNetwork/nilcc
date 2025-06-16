@@ -29,7 +29,23 @@ pub struct MetalInstance {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncRequest {}
+pub struct SyncRequest {
+    pub(crate) id: Uuid,
+    pub(crate) workloads: Vec<SyncWorkload>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncWorkload {
+    pub(crate) id: Uuid,
+    pub(crate) status: SyncWorkloadStatus,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncWorkloadStatus {
+    Running,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
