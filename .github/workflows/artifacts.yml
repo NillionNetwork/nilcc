@@ -20,7 +20,7 @@ defaults:
 jobs:
   build:
     name: Build
-    runs-on: ["nilcc-ci"]
+    runs-on: [ "nilcc-ci" ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -1,0 +1,33 @@
+name: nilcc-agent CD
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Build Agent
+        run: cargo build --release --package nilcc-agent
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::592920173613:role/nilcc-ci-nilcc-bucket"
+          aws-region: eu-west-1
+
+      - name: Publish
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          aws s3 cp "target/release/nilcc-agent" "s3://nilcc/${COMMIT}/nilcc-agent/x86-64/nilcc-agent"
