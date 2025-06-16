@@ -6,7 +6,7 @@ use crate::{
     repositories::workload::{WorkloadModel, WorkloadRepository},
     services::{sni_proxy::SniProxyService, vm::VmService},
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Error, Result};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -16,6 +16,11 @@ use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+struct PartialResult<T, E = Vec<Error>> {
+    pub(crate) value: T,
+    pub(crate) error: E,
+}
 
 /// Arguments to the agent service.
 pub struct AgentServiceArgs {
@@ -129,8 +134,10 @@ impl AgentService {
                     break;
                 }
                 _ = interval.tick() => {
-                    if let Err(e) = self.run_once().await {
-                        error!("Failed to run: {e:#}");
+                    if let Err(errors) = self.run_once().await {
+                        for e in errors {
+                             error!("Failed to run: {e:#}");
+                        }
                     }
                 }
             }
@@ -138,8 +145,9 @@ impl AgentService {
         info!("Sync executor task for agent has finished.");
     }
 
-    async fn run_once(&self) -> Result<()> {
-        let existing_workloads = self.workload_repository.list().await.context("Failed to find workloads")?;
+    async fn run_once(&self) -> Result<(), Vec<Error>> {
+        let existing_workloads =
+            self.workload_repository.list().await.context("Failed to find workloads").map_err(|e| vec![e])?;
         let sync_request = SyncRequest {
             id: self.agent_id,
             workloads: existing_workloads
@@ -147,22 +155,39 @@ impl AgentService {
                 .map(|w| SyncWorkload { id: w.id, status: SyncWorkloadStatus::Running })
                 .collect(),
         };
-        let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
-        let actions = self.compute_workload_actions(existing_workloads, response.workloads).await?;
+        let response =
+            self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync").map_err(|e| vec![e])?;
+        let mut errors = vec![];
+        let PartialResult { value: actions, error: compute_workload_errors } =
+            self.compute_workload_actions(existing_workloads, response.workloads).await;
+        errors.extend(compute_workload_errors);
+
         if actions.is_empty() {
-            info!("No actions need to be executed");
-            return Ok(());
+            if errors.is_empty() {
+                info!("No actions need to be executed");
+                return Ok(());
+            }
+            return Err(errors);
         }
         info!("Need to perform {} workload actions", actions.len());
-        self.apply_actions(actions).await?;
-        self.update_sni_proxy().await
+        self.apply_actions(actions).await;
+        let result = self.update_sni_proxy().await;
+
+        if let Err(e) = result {
+            errors.push(e);
+        }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(())
     }
 
     async fn compute_workload_actions(
         &self,
         existing: Vec<WorkloadModel>,
         expected: Vec<Workload>,
-    ) -> Result<Vec<WorkloadAction>> {
+    ) -> PartialResult<Vec<WorkloadAction>> {
+        let mut errors = Vec::new();
         let mut used_ports: HashSet<_> =
             existing.iter().flat_map(|w| [w.metal_http_port, w.metal_https_port]).collect();
         let mut existing: HashMap<_, _> = existing.into_iter().map(|w| (w.id, w)).collect();
@@ -183,7 +208,13 @@ impl AgentService {
                 None => {
                     // It doesn't exist, it needs to be started
                     info!("Need to start workload {workload_id}");
-                    let (metal_http_port, metal_https_port) = self.find_free_ports(&mut used_ports)?;
+                    let (metal_http_port, metal_https_port) = match self.find_free_ports(&mut used_ports) {
+                        Ok(ports) => ports,
+                        Err(e) => {
+                            errors.push(e);
+                            continue;
+                        }
+                    };
                     let workload_model = WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
                     actions.push(WorkloadAction::Start(workload_model));
                 }
@@ -194,10 +225,11 @@ impl AgentService {
             info!("Need to stop workload {workload_id}");
             actions.push(WorkloadAction::Stop(workload_id));
         }
-        Ok(actions)
+
+        PartialResult { value: actions, error: errors }
     }
 
-    async fn apply_actions(&self, actions: Vec<WorkloadAction>) -> anyhow::Result<()> {
+    async fn apply_actions(&self, actions: Vec<WorkloadAction>) {
         for action in actions {
             match action {
                 WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
@@ -208,7 +240,6 @@ impl AgentService {
                 }
             };
         }
-        Ok(())
     }
 
     fn find_free_ports(&self, used_ports: &mut HashSet<u16>) -> Result<(u16, u16)> {
@@ -375,17 +406,16 @@ mod tests {
         let expected_workloads: Vec<Workload> =
             vec![unmodified, modified.clone(), new.clone()].into_iter().map(Workload::from).collect();
         let service = ServiceBuilder::default().build();
-        let mut actions =
-            service.compute_workload_actions(existing, expected_workloads.clone()).await.expect("failed to compute");
+        let mut actions = service.compute_workload_actions(existing, expected_workloads.clone()).await;
         new.metal_http_port = 10000;
         new.metal_https_port = 10001;
         let mut expected_actions =
             vec![WorkloadAction::Start(new), WorkloadAction::Stop(removed.id), WorkloadAction::Update(modified)];
         // Sort by workload id so we can compare them
-        actions.sort_by_key(WorkloadAction::workload_id);
+        actions.value.sort_by_key(WorkloadAction::workload_id);
         expected_actions.sort_by_key(WorkloadAction::workload_id);
 
-        assert_eq!(actions, expected_actions);
+        assert_eq!(actions.value, expected_actions);
     }
 
     #[tokio::test]
@@ -407,7 +437,7 @@ mod tests {
         builder.vm_service.expect_stop_vm().with(eq(stop_id)).return_once(|_| ());
 
         let service = builder.build();
-        service.apply_actions(actions).await.expect("failed to apply actions");
+        service.apply_actions(actions).await;
     }
 
     #[test]
