@@ -12,6 +12,7 @@ import {
   RemoveEntityError,
   UpdateEntityError,
 } from "#/common/errors";
+import { hasFeatureFlag } from "#/env";
 
 export type ApiSuccessResponse<T> = {
   data: T;
@@ -34,8 +35,13 @@ export function errorHandler(e: unknown, c: Context) {
     errors: string[],
     statusCode: ContentfulStatusCode,
   ): Response => {
-    const errorsTrace = e ? new TraceableError(e).toString() : undefined;
+    let errorsTrace = e ? new TraceableError(e).toString() : undefined;
     errorsTrace && c.env.log.debug(errorsTrace);
+    if (
+      !hasFeatureFlag(c.env.config.enabledFeatures, "http-error-stacktrace")
+    ) {
+      errorsTrace = undefined;
+    }
     const payload: ApiErrorResponse = {
       ts: Temporal.Now.instant().toString(),
       errors,

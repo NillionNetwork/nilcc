@@ -18,6 +18,7 @@ export const FeatureFlag = {
   MIGRATIONS: "migrations",
   LOCALSTACK: "localstack",
   PRETTY_LOGS: "pretty-logs",
+  HTTP_ERROR_STACKTRACE: "http-error-stacktrace",
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
