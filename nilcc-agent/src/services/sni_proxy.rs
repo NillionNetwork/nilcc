@@ -4,6 +4,7 @@ use anyhow::{Context as anyhowContext, Result};
 use async_trait::async_trait;
 use serde::Serialize;
 use tera::{Context, Tera};
+use tokio::process::Command;
 
 const HAPROXY_TEMPLATE: &str = include_str!("../templates/haproxy.cfg.j2");
 
@@ -55,12 +56,27 @@ impl HaProxySniProxyService {
         Self { config_file_path, ha_proxy_config_reload_command, timeouts, dns_subdomain, max_connections }
     }
 
-    pub fn reload(&self) -> Result<()> {
-        std::process::Command::new("bash")
+    async fn reload(&self) -> Result<()> {
+        Command::new("bash")
             .arg("-c")
             .arg(self.ha_proxy_config_reload_command.clone())
             .status()
+            .await
             .context("Failed to reload HAProxy configuration")?;
+        Ok(())
+    }
+    async fn check_config(&self) -> Result<()> {
+        let output = Command::new("haproxy").arg("-c").arg("-f").arg(&self.config_file_path).output().await?;
+        if !output.status.success() {
+            let stderr_message = String::from_utf8_lossy(&output.stderr);
+            let stdout_message = String::from_utf8_lossy(&output.stdout);
+            return Err(anyhow::anyhow!(
+                "HAProxy configuration check failed: \nSTDOUT: \n{}\nSTDERR:\n{}",
+                stdout_message,
+                stderr_message
+            ));
+        }
+
         Ok(())
     }
 }
@@ -84,7 +100,8 @@ impl SniProxyService for HaProxySniProxyService {
         };
         let config_file = context.render_config_file()?;
         tokio::fs::write(&self.config_file_path, config_file).await.context("Failed to write HAProxy config file")?;
-        self.reload()
+        self.check_config().await?;
+        self.reload().await
     }
 }
 
