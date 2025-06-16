@@ -51,7 +51,6 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         vm_service,
         sni_proxy_service,
         sync_interval: Duration::from_secs(1),
-        dns_subdomain: "workloads.nilcc.com".to_string(),
         start_port_range: 10000,
         end_port_range: 20000,
     };

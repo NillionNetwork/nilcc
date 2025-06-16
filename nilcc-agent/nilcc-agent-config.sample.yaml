@@ -20,3 +20,15 @@ cvm:
   base_disk: /tmp/artifacts/disk.qcow2
   verity_disk: /tmp/artifacts/verity-hash-dev.raw
   verity_root_hash: "80d9c99845b2295110259d18684d0daf4720c8837558146e4cc50a4b0a44a18e"
+
+sni_proxy:
+  dns_subdomain: "workloads.nilcc.com"
+  start_port_range: 10000
+  end_port_range: 20000
+  config_file_path: /etc/haproxy/haproxy.cfg
+  ha_proxy_config_reload_command: sudo systemctl reload haproxy
+  timeouts:
+    connect: 5s
+    server: 5s
+    client: 5s
+  max_connections: 100000
