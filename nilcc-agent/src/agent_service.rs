@@ -4,10 +4,7 @@ use crate::{
     gpu,
     http_client::NilccApiClient,
     repositories::workload::{WorkloadModel, WorkloadRepository},
-    services::{
-        sni_proxy::{SniProxyService, SniProxyWorkload},
-        vm::VmService,
-    },
+    services::{sni_proxy::SniProxyService, vm::VmService},
 };
 use anyhow::{Context, Result};
 use std::{collections::HashMap, time::Duration};
@@ -36,9 +33,6 @@ pub struct AgentServiceArgs {
     /// The interval to use for sync requests.
     pub sync_interval: Duration,
 
-    /// The DNS subdomain where workloads will be registered
-    pub dns_subdomain: String,
-
     /// The start port range for workloads.
     pub start_port_range: u16,
 
@@ -53,7 +47,6 @@ pub struct AgentService {
     vm_service: Box<dyn VmService>,
     sni_proxy_service: Box<dyn SniProxyService>,
     sync_interval: Duration,
-    dns_subdomain: String,
     start_port_range: u16,
     end_port_range: u16,
 }
@@ -67,7 +60,6 @@ impl AgentService {
             vm_service,
             sync_interval,
             sni_proxy_service,
-            dns_subdomain,
             start_port_range,
             end_port_range,
         } = args;
@@ -78,7 +70,6 @@ impl AgentService {
             vm_service,
             sync_interval,
             sni_proxy_service,
-            dns_subdomain,
             start_port_range,
             end_port_range,
         }
@@ -229,16 +220,8 @@ impl AgentService {
     async fn update_sni_proxy(&self) -> Result<()> {
         info!("Updating SNI proxy configuration");
         let workloads = self.workload_repository.list().await?;
-        let sni_workloads: Vec<_> = workloads
-            .into_iter()
-            .map(|w| SniProxyWorkload {
-                id: w.id.to_string(),
-                domain: format!("{}.{}", w.id, self.dns_subdomain),
-                http_address: format!("127.0.0.1:{}", w.metal_http_port),
-                https_address: format!("127.0.0.1:{}", w.metal_https_port),
-            })
-            .collect();
-        self.sni_proxy_service.update_config(sni_workloads).context("Failed to update SNI proxy configuration")
+
+        self.sni_proxy_service.update_config(workloads).await.context("Failed to update SNI proxy configuration")
     }
 }
 
@@ -350,7 +333,6 @@ mod tests {
                 sni_proxy_service: Box::new(MockSniProxyService::new()),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
-                dns_subdomain: "workloads.nilcc.com".to_string(),
                 start_port_range: 10000,
                 end_port_range: 20000,
             };

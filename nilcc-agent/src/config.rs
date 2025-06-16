@@ -24,9 +24,6 @@ pub struct AgentConfig {
 
     /// The SNI proxy configuration.
     pub sni_proxy: SniProxyConfig,
-
-    /// The DNS subdomain where workloads will be accessible.
-    pub dns_subdomain: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -80,6 +77,9 @@ pub struct DbConfig {
 
 #[derive(Deserialize, Debug)]
 pub struct SniProxyConfig {
+    /// The DNS subdomain where workloads will be accessible.
+    pub dns_subdomain: String,
+
     /// Start of the port range for the SNI proxy.
     pub start_port_range: u16,
 

@@ -1,12 +1,14 @@
 use crate::config::SniProxyConfigTimeouts;
+use crate::repositories::workload::WorkloadModel;
 use anyhow::{Context as anyhowContext, Result};
+use async_trait::async_trait;
 use serde::Serialize;
 use tera::{Context, Tera};
 
 const HAPROXY_TEMPLATE: &str = include_str!("../templates/haproxy.cfg.j2");
 
 #[derive(Serialize)]
-pub struct SniProxyWorkload {
+struct SniProxyWorkload {
     pub id: String,
     pub domain: String,
     pub http_address: String,
@@ -28,15 +30,17 @@ impl SniProxyTemplateContext {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait SniProxyService: Send + Sync {
     /// create or update the SNI proxy configuration based on the provided workloads and reload the proxy service.
-    fn update_config(&self, workloads: Vec<SniProxyWorkload>) -> Result<()>;
+    async fn update_config(&self, workloads: Vec<WorkloadModel>) -> Result<()>;
 }
 
 pub struct HaProxySniProxyService {
     config_file_path: String,
     ha_proxy_config_reload_command: String,
     timeouts: SniProxyConfigTimeouts,
+    dns_subdomain: String,
     max_connections: u64,
 }
 
@@ -45,9 +49,10 @@ impl HaProxySniProxyService {
         config_file_path: String,
         ha_proxy_config_reload_command: String,
         timeouts: SniProxyConfigTimeouts,
+        dns_subdomain: String,
         max_connections: u64,
     ) -> Self {
-        Self { config_file_path, ha_proxy_config_reload_command, timeouts, max_connections }
+        Self { config_file_path, ha_proxy_config_reload_command, timeouts, dns_subdomain, max_connections }
     }
 
     pub fn reload(&self) -> Result<()> {
@@ -60,15 +65,25 @@ impl HaProxySniProxyService {
     }
 }
 
+#[async_trait]
 impl SniProxyService for HaProxySniProxyService {
-    fn update_config(&self, workloads: Vec<SniProxyWorkload>) -> Result<()> {
+    async fn update_config(&self, workloads: Vec<WorkloadModel>) -> Result<()> {
+        let workloads: Vec<_> = workloads
+            .into_iter()
+            .map(|w| SniProxyWorkload {
+                id: w.id.to_string(),
+                domain: format!("{}.{}", w.id, self.dns_subdomain),
+                http_address: format!("127.0.0.1:{}", w.metal_http_port),
+                https_address: format!("127.0.0.1:{}", w.metal_https_port),
+            })
+            .collect();
         let context = SniProxyTemplateContext {
             max_connections: self.max_connections,
             timeouts: self.timeouts.clone(),
             workloads,
         };
         let config_file = context.render_config_file()?;
-        std::fs::write(&self.config_file_path, config_file).context("Failed to write HAProxy config file")?;
+        tokio::fs::write(&self.config_file_path, config_file).await.context("Failed to write HAProxy config file")?;
         self.reload()
     }
 }

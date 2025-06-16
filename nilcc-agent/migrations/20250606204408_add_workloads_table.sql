@@ -10,6 +10,8 @@ CREATE TABLE workloads (
   cpus INT NOT NULL,
   gpus INT NOT NULL,
   disk_gb INT NOT NULL,
+  metal_http_port INT NOT NULL,
+  metal_https_port INT NOT NULL,
   created_at DATETIME WITH TIMEZONE NOT NULL,
   updated_at DATETIME WITH TIMEZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
