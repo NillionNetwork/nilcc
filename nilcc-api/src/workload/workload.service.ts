@@ -125,7 +125,6 @@ export class WorkloadService {
   ): Promise<void> {
     const metalInstanceDomain = `${metalInstanceId}.${bindings.config.metalInstanceDnsDomain}`;
     return await bindings.services.dns.registerCname(
-      bindings.config.workloadDnsDomain,
       workloadId,
       metalInstanceDomain,
     );
@@ -135,9 +134,6 @@ export class WorkloadService {
     bindings: AppBindings,
     workloadId: string,
   ): Promise<void> {
-    return await bindings.services.dns.removeDomain(
-      bindings.config.workloadDnsDomain,
-      workloadId,
-    );
+    return await bindings.services.dns.removeDomain(workloadId);
   }
 }

@@ -111,8 +111,8 @@ async function buildServices(
     config.enabledFeatures,
     FeatureFlag.LOCALSTACK,
   )
-    ? new LocalStackDnsService(config.workloadDnsDomain)
-    : new Route53DnsService();
+    ? await LocalStackDnsService.create(config.workloadDnsDomain)
+    : await Route53DnsService.create(config.workloadDnsDomain);
 
   log.debug("Using DNS service: %s", dnsService.constructor.name);
 
