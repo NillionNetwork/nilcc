@@ -9,28 +9,43 @@ import { mapError } from "#/common/errors";
 import { RegisterCnameError, RemoveDomainError } from "#/dns/dns.errors";
 
 export interface DnsService {
-  registerCname(zone: string, domain: string, to: string): Promise<void>;
-  removeDomain(zone: string, domain: string): Promise<void>;
+  registerCname(domain: string, to: string): Promise<void>;
+  removeDomain(domain: string): Promise<void>;
 }
 
 export class Route53DnsService implements DnsService {
   protected readonly route53: Route53Client;
-  readonly zoneIdCache: Record<string, string>;
-  constructor(options?: {
-    endpoint?: string;
-    region?: string;
-    credentials?: { accessKeyId: string; secretAccessKey: string };
-  }) {
-    this.route53 = new Route53Client([options]);
-    this.zoneIdCache = {};
+  readonly zoneId: string;
+  readonly subdomain: string;
+
+  protected constructor(
+    subdomain: string,
+    zoneId: string,
+    route53: Route53Client,
+  ) {
+    this.route53 = route53;
+    this.subdomain = subdomain;
+    this.zoneId = zoneId;
+  }
+
+  static async create(
+    subdomain: string,
+    options?: {
+      endpoint?: string;
+      region?: string;
+      credentials?: { accessKeyId: string; secretAccessKey: string };
+    },
+  ): Promise<Route53DnsService> {
+    const route53 = new Route53Client([options]);
+    const zoneId = await Route53DnsService.findHostedZone(route53, subdomain);
+    return new Route53DnsService(subdomain, zoneId, route53);
   }
 
   @mapError((e) => new RegisterCnameError(e))
-  async registerCname(zone: string, domain: string, to: string): Promise<void> {
-    const hostedZoneId = await this.findHostedZone(zone);
-    const fullDomain = `${domain}.${zone}`;
+  async registerCname(domain: string, to: string): Promise<void> {
+    const fullDomain = `${domain}.${this.subdomain}`;
     const command = new ChangeResourceRecordSetsCommand({
-      HostedZoneId: hostedZoneId,
+      HostedZoneId: this.zoneId,
       ChangeBatch: {
         Changes: [
           {
@@ -49,15 +64,14 @@ export class Route53DnsService implements DnsService {
   }
 
   @mapError((e) => new RemoveDomainError(e))
-  async removeDomain(zone: string, domain: string): Promise<void> {
-    const hostedZoneId = await this.findHostedZone(zone);
-    const fullDomain = `${domain}.${zone}`;
-    const domainData = await this.findDomain(hostedZoneId, fullDomain);
+  async removeDomain(domain: string): Promise<void> {
+    const fullDomain = `${domain}.${this.subdomain}`;
+    const domainData = await this.findDomain(this.zoneId, fullDomain);
     if (!domainData) {
       throw Error(`Domain not found: ${fullDomain}`);
     }
     const command = new ChangeResourceRecordSetsCommand({
-      HostedZoneId: hostedZoneId,
+      HostedZoneId: this.zoneId,
       ChangeBatch: {
         Changes: [
           {
@@ -70,22 +84,23 @@ export class Route53DnsService implements DnsService {
     await this.route53.send(command);
   }
 
-  private async findHostedZone(zone: string): Promise<string> {
-    if (zone in this.zoneIdCache) {
-      return this.zoneIdCache[zone];
-    }
+  private static async findHostedZone(
+    route53: Route53Client,
+    subdomain: string,
+  ): Promise<string> {
     const command = new ListHostedZonesCommand({});
-    const response = await this.route53.send(command);
+    const response = await route53.send(command);
     if (!response.HostedZones) {
-      throw Error(`Hosted zone not found: ${zone}`);
+      throw Error(`Hosted zone not found: ${subdomain}`);
     }
 
-    const hostedZone = response.HostedZones.find((z) => z.Name === `${zone}.`);
+    const hostedZone = response.HostedZones.find(
+      (z) => z.Name === `${subdomain}.`,
+    );
     if (!hostedZone || !hostedZone.Id) {
-      throw Error(`Hosted zone not found: ${zone}`);
+      throw Error(`Hosted zone not found: ${subdomain}`);
     }
 
-    this.zoneIdCache[zone] = hostedZone.Id;
     return hostedZone.Id;
   }
 
@@ -103,41 +118,33 @@ export class Route53DnsService implements DnsService {
 }
 
 export class LocalStackDnsService extends Route53DnsService {
-  initialized: boolean;
-  workloadDnsDomain: string;
-
-  constructor(workloadDnsDomain: string) {
-    super({
-      endpoint: "http://localhost:4566",
-      region: "us-east-1", // LocalStack default region
-      credentials: {
-        accessKeyId: "test",
-        secretAccessKey: "test",
+  static override async create(subdomain: string): Promise<Route53DnsService> {
+    const route53 = new Route53Client([
+      {
+        endpoint: "http://localhost:4566",
+        region: "us-east-1", // LocalStack default region
+        credentials: {
+          accessKeyId: "test",
+          secretAccessKey: "test",
+        },
       },
-    });
-    this.workloadDnsDomain = workloadDnsDomain;
-    this.initialized = false;
+    ]);
+
+    const zoneId = await LocalStackDnsService.createHostedZone(
+      subdomain,
+      route53,
+    );
+    return new LocalStackDnsService(subdomain, zoneId, route53);
   }
 
-  override async registerCname(
-    zone: string,
-    domain: string,
-    to: string,
-  ): Promise<void> {
-    this.initialized || (await this.initialize());
-    return super.registerCname(zone, domain, to);
-  }
-
-  override async removeDomain(zone: string, domain: string): Promise<void> {
-    this.initialized || (await this.initialize());
-    return super.removeDomain(zone, domain);
-  }
-
-  private async initialize() {
+  private static async createHostedZone(
+    subdomain: string,
+    route53: Route53Client,
+  ): Promise<string> {
     const callerReference = Math.random().toString();
 
     const createHostedZoneParams = {
-      Name: this.workloadDnsDomain,
+      Name: subdomain,
       CallerReference: callerReference,
     };
 
@@ -145,8 +152,10 @@ export class LocalStackDnsService extends Route53DnsService {
       createHostedZoneParams,
     );
 
-    await this.route53.send(createHostedZoneCommand);
-
-    this.initialized = true;
+    const response = await route53.send(createHostedZoneCommand);
+    if (!response.HostedZone || !response.HostedZone.Id) {
+      throw new Error(`Failed to create hosted zone: ${subdomain}`);
+    }
+    return response.HostedZone.Id;
   }
 }
