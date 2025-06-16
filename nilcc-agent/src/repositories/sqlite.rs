@@ -1,8 +1,8 @@
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     SqlitePool,
 };
-use std::path::Path;
+use std::{path::Path, str::FromStr};
 use tracing::info;
 
 #[derive(Clone)]
@@ -10,7 +10,7 @@ pub struct SqliteDb(SqlitePool);
 
 impl SqliteDb {
     pub async fn connect(url: &str) -> anyhow::Result<Self> {
-        let connect_options: SqliteConnectOptions = url.parse()?;
+        let connect_options = SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal);
         let mut pool_options = SqlitePoolOptions::new();
         if connect_options.get_filename() == Path::new(":memory:") {
             // if we don't do this eventually the database gets dropped and tables disappear.

@@ -7,15 +7,17 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use std::{fmt, path::PathBuf, sync::Arc};
+use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
-    fs,
+    fs, select,
     sync::mpsc::{channel, Receiver, Sender},
+    time::interval,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 const WORKER_CHANNEL_SIZE: usize = 1024;
+const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -90,21 +92,60 @@ impl Worker {
     }
 
     async fn run(mut self) {
-        while let Some(command) = self.receiver.recv().await {
-            let result = match command {
-                Command::SyncVm { workload } => {
-                    info!("Need to sync vm {}", workload.id);
-                    self.sync_vm(workload).await
-                }
-                Command::StopVm { id } => {
-                    info!("Need to stop vm {id}");
-                    self.stop_vm(id).await
+        let mut ticker = interval(WATCH_INTERVAL);
+        loop {
+            select! {
+                command = self.receiver.recv() => {
+                    let Some(command) = command else {
+                        break;
+                    };
+                    if let Err(e) = self.handle_command(command).await {
+                        error!("Failed to run command: {e}")
+                    }
+                },
+                _ = ticker.tick() => {
+                    if let Err(e) = self.check_running_vms().await {
+                        error!("Failed to check running VMs: {e}");
+                    }
                 }
             };
-            if let Err(e) = result {
-                error!("Failed to run command: {e}")
+        }
+        warn!("Worker loop ended");
+    }
+
+    async fn handle_command(&mut self, command: Command) -> anyhow::Result<()> {
+        match command {
+            Command::SyncVm { workload } => {
+                info!("Need to sync vm {}", workload.id);
+                self.sync_vm(workload).await
+            }
+            Command::StopVm { id } => {
+                info!("Need to stop vm {id}");
+                self.stop_vm(id).await
             }
         }
+    }
+
+    async fn check_running_vms(&self) -> anyhow::Result<()> {
+        info!("Checking which VMs are running");
+        let mut running = 0;
+        let workloads = self.workload_repository.list().await.context("Failed to find workloads")?;
+        let expected = workloads.len();
+        for workload in workloads {
+            let id = workload.id;
+            let socket_path = self.socket_path(id);
+            debug!("Checking if VM {id} is running");
+            if self.vm_client.is_vm_running(&socket_path).await {
+                running += 1;
+            } else {
+                warn!("VM {id} is not running, removing it");
+                if let Err(e) = self.workload_repository.delete(id).await {
+                    error!("Failed to delete VM {id}: {e}");
+                }
+            }
+        }
+        info!("{running}/{expected} machines are running");
+        Ok(())
     }
 
     async fn sync_vm(&mut self, workload: WorkloadModel) -> anyhow::Result<()> {
@@ -132,13 +173,14 @@ impl Worker {
         let socket_path = self.socket_path(id);
         info!("Stopping VM {id}");
         match self.vm_client.stop_vm(&socket_path, true).await {
-            Ok(()) => Ok(()),
+            Ok(()) => (),
             Err(QemuClientError::VmNotRunning) => {
                 info!("VM was not running");
-                Ok(())
             }
-            Err(e) => Err(e).context("Failed to stop running VM")?,
-        }
+            Err(e) => return Err(e).context("Failed to stop running VM")?,
+        };
+        self.workload_repository.delete(id).await.context("Failed to delete workload")?;
+        Ok(())
     }
 
     fn socket_path(&self, vm_id: Uuid) -> PathBuf {
@@ -376,5 +418,28 @@ mod tests {
             .expect("failed to create vm spec");
 
         assert_eq!(spec, expected_spec);
+    }
+
+    #[tokio::test]
+    async fn check_running_vms() {
+        let mut builder = WorkerBuilder::default();
+        // We should be running 2, one will be running, one will be stopped
+        let running_id = Uuid::new_v4();
+        let stopped_id = Uuid::new_v4();
+        let base_path = builder.state_path.path().display();
+        let running_socket = PathBuf::from(format!("{base_path}/{running_id}.sock"));
+        let stopped_socket = PathBuf::from(format!("{base_path}/{stopped_id}.sock"));
+        let workloads = vec![
+            WorkloadModel { id: running_id, ..make_workload() },
+            WorkloadModel { id: stopped_id, ..make_workload() },
+        ];
+        builder.workload_repository.expect_list().return_once(move || Ok(workloads));
+
+        // Claim they're running/stopped
+        builder.vm_client.expect_is_vm_running().with(eq(running_socket)).return_once(move |_| true);
+        builder.vm_client.expect_is_vm_running().with(eq(stopped_socket)).return_once(move |_| false);
+
+        // Expect to delete them
+        builder.workload_repository.expect_delete().with(eq(stopped_id)).return_once(move |_| Ok(()));
     }
 }
