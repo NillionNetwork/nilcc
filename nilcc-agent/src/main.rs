@@ -10,6 +10,7 @@ use nilcc_agent::{
     output::{serialize_error, serialize_output, SerializeAsAny},
     qemu_client::QemuClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
+    resources::SystemResources,
     services::{
         disk::DefaultDiskService,
         sni_proxy::HaProxySniProxyService,
@@ -115,6 +116,8 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         .with_http_listener(config.metrics.bind_endpoint)
         .install()
         .context("Failed to start metrics exporter")?;
+
+    let metal_details = SystemResources::gather().await.context("Failed to find resources")?;
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
@@ -146,6 +149,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         sync_interval,
         start_port_range: config.sni_proxy.start_port_range,
         end_port_range: config.sni_proxy.end_port_range,
+        metal_details,
     };
     let agent_service = AgentService::new(args);
 
@@ -166,7 +170,7 @@ async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
             Ok(Box::new(()))
         }
         Command::Info => {
-            let instance_details = nilcc_agent::agent_service::gather_metal_instance_details().await?;
+            let instance_details = SystemResources::gather().await?;
             Ok(Box::new(instance_details))
         }
     }

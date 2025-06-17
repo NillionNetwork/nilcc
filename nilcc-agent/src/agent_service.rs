@@ -1,7 +1,5 @@
 use crate::{
-    build_info::get_agent_version,
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
-    gpu,
     http_client::NilccApiClient,
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
     services::vm::VmService,
@@ -13,7 +11,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -40,6 +37,9 @@ pub struct AgentServiceArgs {
 
     /// The end port range for workloads.
     pub end_port_range: u16,
+
+    /// The details for this metal instance.
+    pub metal_details: MetalInstanceDetails,
 }
 
 pub struct AgentService {
@@ -50,6 +50,7 @@ pub struct AgentService {
     sync_interval: Duration,
     start_port_range: u16,
     end_port_range: u16,
+    metal_details: MetalInstanceDetails,
 }
 
 impl AgentService {
@@ -62,8 +63,18 @@ impl AgentService {
             sync_interval,
             start_port_range,
             end_port_range,
+            metal_details,
         } = args;
-        Self { agent_id, api_client, workload_repository, vm_service, sync_interval, start_port_range, end_port_range }
+        Self {
+            agent_id,
+            api_client,
+            workload_repository,
+            vm_service,
+            sync_interval,
+            start_port_range,
+            end_port_range,
+            metal_details,
+        }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
@@ -83,8 +94,7 @@ impl AgentService {
     async fn perform_registration(&mut self) -> Result<()> {
         info!("Attempting to register agent...");
 
-        let details = gather_metal_instance_details().await?;
-        let instance = MetalInstance { id: self.agent_id, details };
+        let instance = MetalInstance { id: self.agent_id, details: self.metal_details.clone() };
         info!("Metal instance: {instance:?}");
 
         self.api_client.register(instance).await.inspect_err(|e| {
@@ -249,42 +259,6 @@ impl Drop for AgentServiceHandle {
     }
 }
 
-// Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
-    info!("Gathering metal instance details...");
-
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
-    let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
-    let memory = sys.total_memory() / (1024 * 1024 * 1024);
-    let disks = Disks::new_with_refreshed_list();
-    let mut root_disk_bytes = 0;
-    for disk in disks.list() {
-        if disk.mount_point().as_os_str() == "/" {
-            root_disk_bytes = disk.total_space();
-        }
-    }
-    let disk = root_disk_bytes / (1024 * 1024 * 1024);
-    let cpu = sys.cpus().len() as u32;
-    let gpu_group = gpu::find_gpus().await?;
-
-    let (gpu_model, gpu_count) =
-        gpu_group.map(|group| (Some(group.model.clone()), Some(group.addresses.len() as u32))).unwrap_or_default();
-
-    let details = MetalInstanceDetails {
-        agent_version: get_agent_version().to_string(),
-        hostname,
-        memory,
-        disk,
-        cpu,
-        gpu: gpu_count,
-        gpu_model,
-    };
-
-    Ok(details)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,11 +291,20 @@ mod tests {
         vm_service: MockVmService,
         start_port_range: u16,
         end_port_range: u16,
+        metal_details: MetalInstanceDetails,
     }
 
     impl ServiceBuilder {
         fn build(self) -> AgentService {
-            let Self { agent_id, workload_repository, vm_service, api_client, start_port_range, end_port_range } = self;
+            let Self {
+                agent_id,
+                workload_repository,
+                vm_service,
+                api_client,
+                start_port_range,
+                end_port_range,
+                metal_details,
+            } = self;
             let args = AgentServiceArgs {
                 agent_id,
                 api_client: Box::new(api_client),
@@ -330,6 +313,7 @@ mod tests {
                 sync_interval: Duration::from_secs(10),
                 start_port_range,
                 end_port_range,
+                metal_details,
             };
             AgentService::new(args)
         }
@@ -344,6 +328,7 @@ mod tests {
                 api_client: Default::default(),
                 start_port_range: 10000,
                 end_port_range: 20000,
+                metal_details: Default::default(),
             }
         }
     }

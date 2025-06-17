@@ -51,6 +51,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         sync_interval: Duration::from_secs(1),
         start_port_range: 10000,
         end_port_range: 20000,
+        metal_details: Default::default(),
     };
     let agent_service = AgentService::new(args);
 
