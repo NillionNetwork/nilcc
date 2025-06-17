@@ -61,6 +61,7 @@ export const EnvVarsSchema = z.object({
   metricsPort: z.number().int().positive(),
   httpApiPort: z.number().int().positive(),
   metalInstanceApiKey: z.string(),
+  userApiKey: z.string(),
   metalInstanceDnsDomain: z.string(),
   workloadDnsDomain: z.string(),
 });
@@ -77,6 +78,7 @@ declare global {
       APP_METRICS_PORT?: number;
       APP_HTTP_API_PORT: number;
       APP_METAL_INSTANCE_API_KEY: string;
+      APP_USER_API_KEY: string;
       APP_WORKLOAD_DNS_DOMAIN: string;
       APP_METAL_INSTANCE_DNS_DOMAIN: string;
     }
@@ -135,6 +137,7 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     metricsPort: Number(process.env.APP_METRICS_PORT),
     httpApiPort: Number(process.env.APP_HTTP_API_PORT),
     metalInstanceApiKey: process.env.APP_METAL_INSTANCE_API_KEY,
+    userApiKey: process.env.APP_USER_API_KEY,
     workloadDnsDomain: process.env.APP_WORKLOAD_DNS_DOMAIN,
     metalInstanceDnsDomain: process.env.APP_METAL_INSTANCE_DNS_DOMAIN,
   });
