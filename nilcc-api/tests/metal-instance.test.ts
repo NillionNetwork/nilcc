@@ -40,15 +40,16 @@ describe("Metal Instance", () => {
   it("should register a metal instance that haven't been created", async ({
     expect,
     metalInstanceClient,
+    userClient,
   }) => {
-    const getResponse = await metalInstanceClient.get({
+    const getResponse = await userClient.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(getResponse.response.status).equals(404);
 
     const response = await metalInstanceClient.register(myMetalInstance);
     expect(response.status).equals(200);
-    const getResponseAfter = await metalInstanceClient.get({
+    const getResponseAfter = await userClient.getMetalInstance({
       id: myMetalInstance.id,
     });
 
@@ -61,6 +62,7 @@ describe("Metal Instance", () => {
   it("should register a metal instance that already exists, updating it", async ({
     expect,
     metalInstanceClient,
+    userClient,
   }) => {
     const updatedMetalInstance = {
       ...myMetalInstance,
@@ -69,7 +71,7 @@ describe("Metal Instance", () => {
     };
     const response = await metalInstanceClient.register(updatedMetalInstance);
     expect(response.status).equals(200);
-    const getResponse = await metalInstanceClient.get({
+    const getResponse = await userClient.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(getResponse.response.status).equals(200);
@@ -81,9 +83,9 @@ describe("Metal Instance", () => {
   it("should sync the metal instance", async ({
     expect,
     metalInstanceClient,
-    workloadClient,
+    userClient,
   }) => {
-    const createWokloadResponse = await workloadClient.create(
+    const createWokloadResponse = await userClient.createWorkload(
       createWorkloadRequest,
     );
     const createWokload = await createWokloadResponse.parse_body();
@@ -105,7 +107,7 @@ describe("Metal Instance", () => {
       ],
     });
     expect(sync2Response.response.status).equals(200);
-    const workloadAfterSync = await workloadClient.get({
+    const workloadAfterSync = await userClient.getWorkload({
       id: createWokload.id,
     });
     expect(workloadAfterSync.response.status).equals(200);

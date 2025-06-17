@@ -80,8 +80,14 @@ class ParseableResponse<T> {
   }
 }
 
-export class WorkloadClient extends TestClient {
-  async create(
+export class UserClient extends TestClient {
+  override extraHeaders(): Record<string, string> {
+    return {
+      "x-api-key": this.bindings.config.userApiKey,
+    };
+  }
+
+  async createWorkload(
     body: CreateWorkloadRequest,
   ): Promise<ParseableResponse<CreateWorkloadResponse>> {
     const response = await this.request(PathsV1.workload.create, {
@@ -94,7 +100,7 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async get(params: {
+  async getWorkload(params: {
     id: string;
   }): Promise<ParseableResponse<GetWorkloadResponse>> {
     const response = await this.request(
@@ -109,7 +115,7 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async list(): Promise<ParseableResponse<ListWorkloadsResponse>> {
+  async listWorkloads(): Promise<ParseableResponse<ListWorkloadsResponse>> {
     const response = await this.request(PathsV1.workload.list, {
       method: "GET",
     });
@@ -119,40 +125,21 @@ export class WorkloadClient extends TestClient {
     );
   }
 
-  async update(body: UpdateWorkloadRequest): Promise<Response> {
+  async updateWorkload(body: UpdateWorkloadRequest): Promise<Response> {
     return await this.request(PathsV1.workload.update, {
       method: "PUT",
       body,
     });
   }
 
-  async delete(params: { id: string }): Promise<Response> {
+  async deleteWorkload(params: { id: string }): Promise<Response> {
     return this.request(PathsV1.workload.remove.replace(":id", params.id), {
       method: "DELETE",
       params,
     });
   }
-}
 
-export class MetalInstanceClient extends TestClient {
-  async sync(body: SyncMetalInstanceRequest) {
-    const response = await this.request(PathsV1.metalInstance.sync, {
-      method: "POST",
-      body,
-    });
-    return new ParseableResponse<SyncMetalInstanceResponse>(
-      response,
-      SyncMetalInstanceResponse,
-    );
-  }
-
-  override extraHeaders(): Record<string, string> {
-    return {
-      "x-api-key": this.bindings.config.metalInstanceApiKey,
-    };
-  }
-
-  async get(params: { id: string }) {
+  async getMetalInstance(params: { id: string }) {
     const response = await this.request(
       PathsV1.metalInstance.read.replace(":id", params.id),
       {
@@ -162,6 +149,25 @@ export class MetalInstanceClient extends TestClient {
     return new ParseableResponse<GetMetalInstanceResponse>(
       response,
       GetMetalInstanceResponse,
+    );
+  }
+}
+
+export class MetalInstanceClient extends TestClient {
+  override extraHeaders(): Record<string, string> {
+    return {
+      "x-api-key": this.bindings.config.metalInstanceApiKey,
+    };
+  }
+
+  async sync(body: SyncMetalInstanceRequest) {
+    const response = await this.request(PathsV1.metalInstance.sync, {
+      method: "POST",
+      body,
+    });
+    return new ParseableResponse<SyncMetalInstanceResponse>(
+      response,
+      SyncMetalInstanceResponse,
     );
   }
 

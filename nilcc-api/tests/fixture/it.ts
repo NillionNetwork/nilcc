@@ -3,12 +3,12 @@ import * as vitest from "vitest";
 import type { App } from "#/app";
 import type { AppBindings } from "#/env";
 import { buildFixture, type TestFixture } from "./fixture";
-import type { MetalInstanceClient, WorkloadClient } from "./test-client";
+import type { MetalInstanceClient, UserClient } from "./test-client";
 
 export type FixtureContext = {
   app: App;
   bindings: AppBindings;
-  workloadClient: WorkloadClient;
+  userClient: UserClient;
   metalInstanceClient: MetalInstanceClient; // Assuming you have a metal instance client similar to workload client
 };
 
@@ -31,9 +31,9 @@ export function createTestFixtureExtension(): TestFixtureExtension {
       if (!fixture) throw new Error("Fixture is not initialized");
       await use(fixture.bindings);
     },
-    workloadClient: async ({}, use) => {
+    userClient: async ({}, use) => {
       if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.workloadClient);
+      await use(fixture.userClient);
     },
     metalInstanceClient: async ({}, use) => {
       if (!fixture) throw new Error("Fixture is not initialized");

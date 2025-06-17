@@ -5,13 +5,13 @@ import { type Logger, pino } from "pino";
 import { DataSource } from "typeorm";
 import { buildApp } from "#/app";
 import { type AppBindings, type AppEnv, loadBindings } from "#/env";
-import { MetalInstanceClient, WorkloadClient } from "./test-client";
+import { MetalInstanceClient, UserClient } from "./test-client";
 
 export type TestFixture = {
   app: Hono<AppEnv>;
   log: Logger;
   bindings: AppBindings;
-  workloadClient: WorkloadClient;
+  userClient: UserClient;
   metalInstanceClient: MetalInstanceClient;
 };
 
@@ -46,7 +46,7 @@ export async function buildFixture(): Promise<TestFixture> {
   log.info("Creating App");
   const { app } = await buildApp(bindings);
 
-  const workloadClient = new WorkloadClient({
+  const userClient = new UserClient({
     app,
     bindings,
   });
@@ -55,7 +55,7 @@ export async function buildFixture(): Promise<TestFixture> {
     bindings,
   });
   log.info("Test suite ready");
-  return { app, log, bindings, workloadClient, metalInstanceClient };
+  return { app, log, bindings, userClient, metalInstanceClient };
 }
 
 async function createDatabase(dbUri: string, log: Logger): Promise<void> {

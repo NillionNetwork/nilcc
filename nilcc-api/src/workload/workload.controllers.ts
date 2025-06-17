@@ -2,6 +2,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver, validator as zValidator } from "hono-openapi/zod";
 import { StatusCodes } from "http-status-codes";
 import z from "zod";
+import { apiKey } from "#/common/auth";
 import {
   CreateEntityError,
   HttpError,
@@ -48,6 +49,7 @@ export function create(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     zValidator("json", CreateWorkloadRequest),
     responseValidator(bindings, CreateWorkloadResponse),
     transactionMiddleware(bindings.dataSource),
@@ -97,6 +99,7 @@ export function list(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     responseValidator(bindings, CreateWorkloadResponse.array()),
     async (c) => {
       const workloads = await bindings.services.workload.list(bindings);
@@ -126,6 +129,7 @@ export function read(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     paramsValidator(idParamSchema),
     responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
@@ -156,6 +160,7 @@ export function update(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     zValidator("json", UpdateWorkloadRequest),
     async (c) => {
       const payload = c.req.valid("json");
@@ -185,6 +190,7 @@ export function remove(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     paramsValidator(idParamSchema),
     async (c) => {
       const workloadId = c.req.valid("param").id;

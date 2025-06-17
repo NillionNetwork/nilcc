@@ -103,6 +103,7 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     paramsValidator(idParamSchema),
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
@@ -136,6 +137,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
+    apiKey(bindings.config.userApiKey),
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await bindings.services.metalInstance.list(bindings);
