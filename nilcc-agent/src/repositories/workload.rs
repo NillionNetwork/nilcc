@@ -77,7 +77,17 @@ impl From<WorkloadModel> for crate::data_schemas::Workload {
             ..
         } = workload;
         let memory = memory_mb / 1024; // Convert Mb to Gb
-        Self { id, docker_compose, env_vars, service_to_expose, service_port_to_expose, memory, cpu, disk, gpu }
+        Self {
+            id,
+            docker_compose,
+            env_vars,
+            service_to_expose,
+            service_port_to_expose,
+            memory_gb: memory,
+            cpus: cpu,
+            disk_space_gb: disk,
+            gpus: gpu,
+        }
     }
 }
 
@@ -89,10 +99,10 @@ impl WorkloadModel {
             env_vars,
             service_to_expose,
             service_port_to_expose,
-            memory,
-            cpu,
-            disk,
-            gpu,
+            memory_gb: memory,
+            cpus: cpu,
+            disk_space_gb: disk,
+            gpus: gpu,
         } = workload;
         Self {
             id,

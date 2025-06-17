@@ -146,6 +146,7 @@ impl AgentService {
         };
         let now = Instant::now();
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
+        self.validate_resource_allocation(&response.workloads).context("Resource allocation validation failed")?;
         histogram!("api_sync_duration_seconds").record(now.elapsed());
 
         let actions = self.compute_workload_actions(existing_workloads, response.workloads).await?;
@@ -228,6 +229,25 @@ impl AgentService {
             bail!("No free ports were found")
         }
     }
+
+    fn validate_resource_allocation(&self, workloads: &[Workload]) -> Result<()> {
+        let mut cpus: u32 = 0;
+        let mut memory: u64 = 0;
+        for workload in workloads {
+            cpus = cpus.saturating_add(workload.cpus.get() as u32);
+            memory = memory.saturating_add(workload.memory_gb as u64);
+        }
+        let available_cpus = self.metal_details.cpus;
+        if cpus > available_cpus {
+            bail!("too many CPUs are allocated: have {available_cpus}, need {cpus}");
+        }
+
+        let available_memory = self.metal_details.memory_gb;
+        if memory > available_memory {
+            bail!("too much memory is allocated: have {available_memory}GB, need {memory}GB");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -266,6 +286,7 @@ mod tests {
         http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
     };
     use mockall::predicate::eq;
+    use rstest::rstest;
 
     fn make_workload() -> WorkloadModel {
         WorkloadModel {
@@ -404,5 +425,35 @@ mod tests {
 
         service.find_free_ports(&mut used_ports).expect_err("found ports when we shouldn't have");
         assert_eq!(used_ports, (10..=17).collect());
+    }
+
+    #[test]
+    fn valid_resource_allocation() {
+        let workloads: Vec<Workload> = vec![
+            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
+            WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
+        ];
+        let mut builder = ServiceBuilder::default();
+        builder.metal_details.cpus = 3;
+        builder.metal_details.memory_gb = 3;
+
+        let service = builder.build();
+        service.validate_resource_allocation(&workloads).expect("resource allocation failed");
+    }
+
+    #[rstest]
+    #[case::cpu(1, 3)]
+    #[case::memory(3, 2)]
+    fn invalid_resource_allocation(#[case] cpus: u32, #[case] memory_gb: u64) {
+        let workloads: Vec<Workload> = vec![
+            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
+            WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
+        ];
+        let mut builder = ServiceBuilder::default();
+        builder.metal_details.cpus = cpus;
+        builder.metal_details.memory_gb = memory_gb;
+
+        let service = builder.build();
+        service.validate_resource_allocation(&workloads).expect_err("resource allocation succeeded");
     }
 }

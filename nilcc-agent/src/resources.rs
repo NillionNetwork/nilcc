@@ -1,5 +1,5 @@
-use crate::{build_info::get_agent_version, data_schemas::MetalInstanceDetails};
-use anyhow::{bail, Context};
+use crate::{build_info::get_agent_version, config::ReservedResourcesConfig, data_schemas::MetalInstanceDetails};
+use anyhow::{anyhow, bail, Context};
 use sysinfo::{Disks, System};
 use tokio::process::Command;
 use tracing::info;
@@ -11,13 +11,16 @@ pub struct SystemResources;
 
 impl SystemResources {
     // Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-    pub async fn gather() -> anyhow::Result<MetalInstanceDetails> {
+    pub async fn gather(reserved: ReservedResourcesConfig) -> anyhow::Result<MetalInstanceDetails> {
         info!("Gathering metal instance details");
 
         let sys = System::new_all();
 
         let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
-        let memory = sys.total_memory() / (1024 * 1024 * 1024);
+        let memory_gb = sys.total_memory() / (1024 * 1024 * 1024);
+        let memory_gb = memory_gb
+            .checked_sub(reserved.memory_gb)
+            .ok_or_else(|| anyhow!("have {memory_gb}GB memory but need to reserve {}", reserved.memory_gb))?;
         let disks = Disks::new_with_refreshed_list();
         let mut root_disk_bytes = 0;
         for disk in disks.list() {
@@ -25,8 +28,12 @@ impl SystemResources {
                 root_disk_bytes = disk.total_space();
             }
         }
-        let disk = root_disk_bytes / (1024 * 1024 * 1024);
-        let cpu = sys.cpus().len() as u32;
+        let disk_size_gb = root_disk_bytes / (1024 * 1024 * 1024);
+        let cpus = sys.cpus().len() as u32;
+        let cpus = cpus
+            .checked_sub(reserved.cpus)
+            .ok_or_else(|| anyhow!("have {cpus} cpus but need to reserve {}", reserved.cpus))?;
+
         let gpu_group = Self::find_gpus().await?;
 
         let (gpu_model, gpu_count) =
@@ -35,10 +42,10 @@ impl SystemResources {
         let details = MetalInstanceDetails {
             agent_version: get_agent_version().to_string(),
             hostname,
-            memory,
-            disk,
-            cpu,
-            gpu: gpu_count,
+            memory_gb,
+            disk_space_gb: disk_size_gb,
+            cpus,
+            gpus: gpu_count,
             gpu_model,
         };
 
@@ -91,9 +98,21 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn foo() {
-        let resources = SystemResources::gather().await.expect("failed to gather resources");
-        assert!(resources.cpu > 0);
-        assert!(resources.disk > 0);
+    async fn gather() {
+        let resources = SystemResources::gather(Default::default()).await.expect("failed to gather resources");
+        assert!(resources.cpus > 0);
+        assert!(resources.disk_space_gb > 0);
+    }
+
+    #[tokio::test]
+    async fn gather_too_much_reserved_cpu() {
+        let reserved = ReservedResourcesConfig { cpus: 1024, memory_gb: 0 };
+        SystemResources::gather(reserved).await.expect_err("gathering did not fail");
+    }
+
+    #[tokio::test]
+    async fn gather_too_much_reserved_memory() {
+        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 1024 };
+        SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 }

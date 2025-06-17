@@ -117,7 +117,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         .install()
         .context("Failed to start metrics exporter")?;
 
-    let metal_details = SystemResources::gather().await.context("Failed to find resources")?;
+    let metal_details = SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
@@ -170,7 +170,7 @@ async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
             Ok(Box::new(()))
         }
         Command::Info => {
-            let instance_details = SystemResources::gather().await?;
+            let instance_details = SystemResources::gather(Default::default()).await?;
             Ok(Box::new(instance_details))
         }
     }

@@ -35,3 +35,8 @@ sni_proxy:
 
 metrics:
   bind_endpoint: 0.0.0.0:8080
+
+resources:
+  reserved:
+    cpus: 1
+    memory_gb: 2048
