@@ -7,6 +7,7 @@ use std::{
     fmt,
     num::NonZeroU16,
 };
+use strum::{Display, EnumString};
 use uuid::Uuid;
 
 #[derive(FromRow, Clone, PartialEq)]
@@ -23,24 +24,40 @@ pub struct WorkloadModel {
     pub gpus: u16,
     pub metal_http_port: u16,
     pub metal_https_port: u16,
+    pub status: WorkloadModelStatus,
 }
 
 impl fmt::Debug for WorkloadModel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            id,
+            docker_compose,
+            environment_variables,
+            public_container_name,
+            public_container_port,
+            memory_mb,
+            cpus,
+            disk_gb,
+            gpus,
+            metal_http_port,
+            metal_https_port,
+            status,
+        } = self;
         // Hide this one since it can have sensitive data
-        let clean_env_vars: BTreeMap<_, _> = self.environment_variables.keys().map(|key| (key, "...")).collect();
+        let environment_variables: BTreeMap<_, _> = environment_variables.keys().map(|key| (key, "...")).collect();
         f.debug_struct("Workload")
-            .field("id", &self.id)
-            .field("docker_compose", &self.docker_compose)
-            .field("env_vars", &clean_env_vars)
-            .field("public_container_name", &self.public_container_name)
-            .field("public_container_port", &self.public_container_port)
-            .field("memory_mb", &self.memory_mb)
-            .field("cpus", &self.cpus)
-            .field("disk_gb", &self.disk_gb)
-            .field("gpus", &self.gpus)
-            .field("metal_http_port", &self.metal_http_port)
-            .field("metal_https_port", &self.metal_https_port)
+            .field("id", id)
+            .field("docker_compose", docker_compose)
+            .field("env_vars", &environment_variables)
+            .field("public_container_name", public_container_name)
+            .field("public_container_port", public_container_port)
+            .field("memory_mb", memory_mb)
+            .field("cpus", cpus)
+            .field("disk_gb", disk_gb)
+            .field("gpus", gpus)
+            .field("metal_http_port", metal_http_port)
+            .field("metal_https_port", metal_https_port)
+            .field("status", status)
             .finish()
     }
 }
@@ -89,8 +106,16 @@ impl WorkloadModel {
             gpus: gpu,
             metal_http_port,
             metal_https_port,
+            status: Default::default(),
         }
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Display, EnumString, sqlx::Type)]
+pub enum WorkloadModelStatus {
+    #[default]
+    Pending,
+    Running,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -144,9 +169,10 @@ INSERT INTO workloads (
     disk_gb,
     metal_http_port,
     metal_https_port,
+    status,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     docker_compose = $2,
     environment_variables = $3,
@@ -157,7 +183,8 @@ ON CONFLICT (id) DO UPDATE SET
     gpus = $8,
     disk_gb = $9,
     metal_http_port = $10,
-    metal_https_port = $11
+    metal_https_port = $11,
+    status = $12
 ";
         let WorkloadModel {
             id,
@@ -171,6 +198,7 @@ ON CONFLICT (id) DO UPDATE SET
             gpus,
             metal_http_port,
             metal_https_port,
+            status,
         } = workload;
 
         sqlx::query(query)
@@ -185,6 +213,7 @@ ON CONFLICT (id) DO UPDATE SET
             .bind(disk_gb)
             .bind(metal_http_port)
             .bind(metal_https_port)
+            .bind(status.to_string())
             .bind(Utc::now())
             .execute(&self.pool)
             .await?;
@@ -239,6 +268,7 @@ mod tests {
             gpus: 1,
             metal_http_port: 1080,
             metal_https_port: 1443,
+            status: WorkloadModelStatus::Running,
         };
         repo.upsert(workload.clone()).await.expect("failed to insert");
 
@@ -264,6 +294,7 @@ mod tests {
             gpus: 1,
             metal_http_port: 1080,
             metal_https_port: 1443,
+            status: WorkloadModelStatus::Pending,
         };
         let updated = WorkloadModel {
             id: original.id,
@@ -277,6 +308,7 @@ mod tests {
             cpus: 2.try_into().unwrap(),
             metal_http_port: 1080,
             metal_https_port: 1443,
+            status: WorkloadModelStatus::Running,
         };
         repo.upsert(original).await.expect("failed to insert");
         repo.upsert(updated.clone()).await.expect("failed to insert");

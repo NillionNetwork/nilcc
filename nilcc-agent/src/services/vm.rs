@@ -2,8 +2,11 @@ use crate::{
     config::CvmConfig,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
     qemu_client::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
-    repositories::workload::{WorkloadModel, WorkloadRepository},
-    services::disk::{DiskService, DockerComposeHash},
+    repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
+    services::{
+        disk::{DiskService, DockerComposeHash},
+        sni_proxy::SniProxyService,
+    },
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -12,7 +15,7 @@ use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     fs, select,
     sync::mpsc::{channel, Receiver, Sender},
-    time::interval,
+    time::{interval, MissedTickBehavior},
 };
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -30,21 +33,24 @@ pub trait VmService: Send + Sync {
     async fn stop_vm(&self, id: Uuid);
 }
 
+pub struct VmServiceArgs {
+    pub state_path: PathBuf,
+    pub vm_client: Box<dyn VmClient>,
+    pub disk_service: Box<dyn DiskService>,
+    pub workload_repository: Arc<dyn WorkloadRepository>,
+    pub cvm_config: CvmConfig,
+    pub sni_proxy_service: Box<dyn SniProxyService>,
+}
+
 pub struct DefaultVmService {
     worker_sender: Sender<Command>,
 }
 
 impl DefaultVmService {
-    pub async fn new(
-        state_path: PathBuf,
-        vm_client: Box<dyn VmClient>,
-        disk_service: Box<dyn DiskService>,
-        workload_repository: Arc<dyn WorkloadRepository>,
-        cvm_config: CvmConfig,
-    ) -> anyhow::Result<Self> {
-        fs::create_dir_all(&state_path).await.context("Failed to create state path")?;
+    pub async fn new(args: VmServiceArgs) -> anyhow::Result<Self> {
+        fs::create_dir_all(&args.state_path).await.context("Failed to create state path")?;
 
-        let worker_sender = Worker::start(state_path, vm_client, disk_service, workload_repository, cvm_config);
+        let worker_sender = Worker::start(args);
         Ok(Self { worker_sender })
     }
 
@@ -71,21 +77,26 @@ struct Worker {
     vm_client: Box<dyn VmClient>,
     disk_service: Box<dyn DiskService>,
     workload_repository: Arc<dyn WorkloadRepository>,
+    sni_proxy_service: Box<dyn SniProxyService>,
     cvm_config: CvmConfig,
     receiver: Receiver<Command>,
 }
 
 impl Worker {
-    fn start(
-        state_path: PathBuf,
-        vm_client: Box<dyn VmClient>,
-        disk_service: Box<dyn DiskService>,
-        workload_repository: Arc<dyn WorkloadRepository>,
-        cvm_config: CvmConfig,
-    ) -> Sender<Command> {
+    fn start(args: VmServiceArgs) -> Sender<Command> {
         let (sender, receiver) = channel(WORKER_CHANNEL_SIZE);
+        let VmServiceArgs { state_path, vm_client, disk_service, workload_repository, cvm_config, sni_proxy_service } =
+            args;
         tokio::spawn(async move {
-            let worker = Worker { state_path, vm_client, disk_service, workload_repository, cvm_config, receiver };
+            let worker = Worker {
+                state_path,
+                vm_client,
+                disk_service,
+                workload_repository,
+                sni_proxy_service,
+                cvm_config,
+                receiver,
+            };
             worker.run().await;
             warn!("Worker loop exited");
         });
@@ -94,6 +105,8 @@ impl Worker {
 
     async fn run(mut self) {
         let mut ticker = interval(WATCH_INTERVAL);
+        // If we miss a tick, shift the ticks to be aligned with when we called `Interval::tick`.
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             select! {
                 command = self.receiver.recv() => {
@@ -121,14 +134,15 @@ impl Worker {
             Command::SyncVm { workload } => {
                 info!("Need to sync vm {}", workload.id);
                 counter!("vm_commands_executed_total", "command" => "start").increment(1);
-                self.sync_vm(workload).await
+                self.sync_vm(workload).await?;
             }
             Command::StopVm { id } => {
                 info!("Need to stop vm {id}");
                 counter!("vm_commands_executed_total", "command" => "stop").increment(1);
-                self.stop_vm(id).await
+                self.stop_vm(id).await?;
             }
-        }
+        };
+        self.update_sni_proxy_config().await
     }
 
     async fn check_running_vms(&self) -> anyhow::Result<()> {
@@ -164,7 +178,7 @@ impl Worker {
         Ok(())
     }
 
-    async fn sync_vm(&mut self, workload: WorkloadModel) -> anyhow::Result<()> {
+    async fn sync_vm(&mut self, mut workload: WorkloadModel) -> anyhow::Result<()> {
         let id = workload.id;
         let socket_path = self.socket_path(id);
         info!("Trying to stop VM {id} before syncing");
@@ -181,6 +195,9 @@ impl Worker {
         let state_disk = self.create_state_disk(&workload).await?;
         let vm_spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash)?;
         self.vm_client.start_vm(vm_spec, &socket_path).await.context("Failed to start VM")?;
+
+        // Mark it as running and update it
+        workload.status = WorkloadModelStatus::Running;
         self.workload_repository.upsert(workload).await.context("Failed to upsert workload")?;
         Ok(())
     }
@@ -269,6 +286,12 @@ impl Worker {
         };
         Ok(spec)
     }
+
+    async fn update_sni_proxy_config(&self) -> anyhow::Result<()> {
+        info!("Updating SNI proxy configuration");
+        let workloads = self.workload_repository.list().await?;
+        self.sni_proxy_service.update_config(workloads).await.context("Failed to update SNI proxy configuration")
+    }
 }
 
 enum Command {
@@ -292,7 +315,9 @@ impl fmt::Display for KernelArgs<'_> {
 mod tests {
     use super::*;
     use crate::{
-        qemu_client::MockVmClient, repositories::workload::MockWorkloadRepository, services::disk::MockDiskService,
+        qemu_client::MockVmClient,
+        repositories::workload::MockWorkloadRepository,
+        services::{disk::MockDiskService, sni_proxy::MockSniProxyService},
     };
     use mockall::predicate::eq;
     use tempfile::TempDir;
@@ -310,6 +335,7 @@ mod tests {
             gpus: Default::default(),
             metal_http_port: 1080,
             metal_https_port: 1443,
+            status: Default::default(),
         }
     }
 
@@ -324,18 +350,20 @@ mod tests {
         vm_client: MockVmClient,
         disk_service: MockDiskService,
         workload_repository: MockWorkloadRepository,
+        sni_proxy_service: MockSniProxyService,
         cvm_config: CvmConfig,
     }
 
     impl WorkerBuilder {
         fn build(self) -> WorkerCtx {
-            let Self { state_path, vm_client, disk_service, workload_repository, cvm_config } = self;
+            let Self { state_path, vm_client, disk_service, workload_repository, sni_proxy_service, cvm_config } = self;
             WorkerCtx {
                 worker: Worker {
                     state_path: state_path.path().into(),
                     vm_client: Box::new(vm_client),
                     disk_service: Box::new(disk_service),
                     workload_repository: Arc::new(workload_repository),
+                    sni_proxy_service: Box::new(sni_proxy_service),
                     cvm_config,
                     receiver: channel(1).1,
                 },
@@ -351,6 +379,7 @@ mod tests {
                 vm_client: Default::default(),
                 disk_service: Default::default(),
                 workload_repository: Default::default(),
+                sni_proxy_service: Default::default(),
                 cvm_config: CvmConfig {
                     initrd: "/initrd".into(),
                     kernel: "/kernel".into(),
@@ -457,5 +486,25 @@ mod tests {
 
         // Expect to delete them
         builder.workload_repository.expect_delete().with(eq(stopped_id)).return_once(move |_| Ok(()));
+    }
+
+    #[tokio::test]
+    async fn stop_vm_command() {
+        let id = Uuid::new_v4();
+        let mut builder = WorkerBuilder::default();
+        let path = builder.state_path.path().join(format!("{id}.sock"));
+        let workloads = vec![make_workload(), make_workload()];
+        builder
+            .sni_proxy_service
+            .expect_update_config()
+            .with(eq(workloads.clone()))
+            .once()
+            .return_once(move |_| Ok(()));
+        builder.workload_repository.expect_list().return_once(move || Ok(workloads));
+        builder.vm_client.expect_stop_vm().with(eq(path), eq(true)).once().return_once(move |_, _| Ok(()));
+        builder.workload_repository.expect_delete().with(eq(id)).once().return_once(move |_| Ok(()));
+
+        let mut ctx = builder.build();
+        ctx.worker.handle_command(Command::StopVm { id }).await.expect("failed to handle command");
     }
 }

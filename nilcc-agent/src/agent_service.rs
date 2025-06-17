@@ -3,8 +3,8 @@ use crate::{
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
     gpu,
     http_client::NilccApiClient,
-    repositories::workload::{WorkloadModel, WorkloadRepository},
-    services::{sni_proxy::SniProxyService, vm::VmService},
+    repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
+    services::vm::VmService,
 };
 use anyhow::{bail, Context, Result};
 use metrics::{gauge, histogram};
@@ -32,9 +32,6 @@ pub struct AgentServiceArgs {
     /// The VM service.
     pub vm_service: Box<dyn VmService>,
 
-    /// The SNI proxy service.
-    pub sni_proxy_service: Box<dyn SniProxyService>,
-
     /// The interval to use for sync requests.
     pub sync_interval: Duration,
 
@@ -50,7 +47,6 @@ pub struct AgentService {
     api_client: Box<dyn NilccApiClient>,
     workload_repository: Arc<dyn WorkloadRepository>,
     vm_service: Box<dyn VmService>,
-    sni_proxy_service: Box<dyn SniProxyService>,
     sync_interval: Duration,
     start_port_range: u16,
     end_port_range: u16,
@@ -64,20 +60,10 @@ impl AgentService {
             workload_repository,
             vm_service,
             sync_interval,
-            sni_proxy_service,
             start_port_range,
             end_port_range,
         } = args;
-        Self {
-            agent_id,
-            api_client,
-            workload_repository,
-            vm_service,
-            sync_interval,
-            sni_proxy_service,
-            start_port_range,
-            end_port_range,
-        }
+        Self { agent_id, api_client, workload_repository, vm_service, sync_interval, start_port_range, end_port_range }
     }
 
     /// Starts the agent service: registers the agent and begins periodic syncing.
@@ -158,8 +144,7 @@ impl AgentService {
             return Ok(());
         }
         info!("Need to perform {} workload actions", actions.len());
-        self.apply_actions(actions).await?;
-        self.update_sni_proxy().await
+        self.apply_actions(actions).await
     }
 
     async fn compute_workload_actions(
@@ -208,6 +193,9 @@ impl AgentService {
         for action in actions {
             match action {
                 WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
+                    // Store this since we've committed to running it
+                    let committed_workload = WorkloadModel { status: WorkloadModelStatus::Pending, ..workload.clone() };
+                    self.workload_repository.upsert(committed_workload).await?;
                     self.vm_service.sync_vm(workload).await;
                 }
                 WorkloadAction::Stop(id) => {
@@ -229,13 +217,6 @@ impl AgentService {
         } else {
             bail!("No free ports were found")
         }
-    }
-
-    async fn update_sni_proxy(&self) -> Result<()> {
-        info!("Updating SNI proxy configuration");
-        let workloads = self.workload_repository.list().await?;
-
-        self.sni_proxy_service.update_config(workloads).await.context("Failed to update SNI proxy configuration")
     }
 }
 
@@ -308,9 +289,7 @@ pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
 mod tests {
     use super::*;
     use crate::{
-        http_client::MockNilccApiClient,
-        repositories::workload::MockWorkloadRepository,
-        services::{sni_proxy::MockSniProxyService, vm::MockVmService},
+        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
     };
     use mockall::predicate::eq;
 
@@ -327,6 +306,7 @@ mod tests {
             gpus: Default::default(),
             metal_http_port: 0,
             metal_https_port: 0,
+            status: Default::default(),
         }
     }
 
@@ -346,7 +326,6 @@ mod tests {
                 agent_id,
                 api_client: Box::new(api_client),
                 workload_repository: Arc::new(workload_repository),
-                sni_proxy_service: Box::new(MockSniProxyService::new()),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
                 start_port_range,
@@ -406,12 +385,21 @@ mod tests {
             WorkloadAction::Update(update_workload.clone()),
             WorkloadAction::Stop(stop_id),
         ];
-        builder.workload_repository.expect_delete().with(eq(stop_id)).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(start_workload.clone())).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(update_workload.clone())).return_once(move |_| Ok(()));
-        builder.vm_service.expect_sync_vm().with(eq(start_workload)).return_once(|_| ());
-        builder.vm_service.expect_sync_vm().with(eq(update_workload)).return_once(|_| ());
-        builder.vm_service.expect_stop_vm().with(eq(stop_id)).return_once(|_| ());
+        builder
+            .workload_repository
+            .expect_upsert()
+            .with(eq(start_workload.clone()))
+            .once()
+            .return_once(move |_| Ok(()));
+        builder
+            .workload_repository
+            .expect_upsert()
+            .with(eq(update_workload.clone()))
+            .once()
+            .return_once(move |_| Ok(()));
+        builder.vm_service.expect_sync_vm().with(eq(start_workload)).once().return_once(|_| ());
+        builder.vm_service.expect_sync_vm().with(eq(update_workload)).once().return_once(|_| ());
+        builder.vm_service.expect_stop_vm().with(eq(stop_id)).once().return_once(|_| ());
 
         let service = builder.build();
         service.apply_actions(actions).await.expect("failed to apply actions");
