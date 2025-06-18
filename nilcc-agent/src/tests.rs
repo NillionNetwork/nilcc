@@ -2,7 +2,7 @@ use crate::{
     agent_service::{AgentService, AgentServiceArgs},
     http_client::RestNilccApiClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
-    services::{sni_proxy::MockSniProxyService, vm::MockVmService},
+    services::vm::MockVmService,
 };
 use anyhow::Context;
 use std::{sync::Arc, time::Duration};
@@ -43,16 +43,15 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
     let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let vm_service = Box::new(MockVmService::default());
-    let sni_proxy_service = Box::new(MockSniProxyService::new());
     let args = AgentServiceArgs {
         agent_id,
         api_client,
         workload_repository,
         vm_service,
-        sni_proxy_service,
         sync_interval: Duration::from_secs(1),
         start_port_range: 10000,
         end_port_range: 20000,
+        metal_details: Default::default(),
     };
     let agent_service = AgentService::new(args);
 

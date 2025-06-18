@@ -30,6 +30,9 @@ pub struct AgentConfig {
 
     /// The metrics configuration.
     pub metrics: MetricsConfig,
+
+    /// The resource configuration.
+    pub resources: ResourcesConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -121,6 +124,23 @@ pub struct SniProxyConfigTimeouts {
 pub struct MetricsConfig {
     /// The endpoint where metrics are exposed.
     pub bind_endpoint: SocketAddr,
+}
+
+/// The resources configuration.
+#[derive(Deserialize, Debug)]
+pub struct ResourcesConfig {
+    /// The reserved resources.
+    pub reserved: ReservedResourcesConfig,
+}
+
+/// The reserved resources configuration.
+#[derive(Deserialize, Debug, Default)]
+pub struct ReservedResourcesConfig {
+    /// The number of reserved CPUs.
+    pub cpus: u32,
+
+    /// The reserved memory in GBs.
+    pub memory_gb: u64,
 }
 
 fn default_agent_sync_interval() -> Duration {

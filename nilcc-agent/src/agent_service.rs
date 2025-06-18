@@ -1,10 +1,8 @@
 use crate::{
-    build_info::get_agent_version,
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
-    gpu,
     http_client::NilccApiClient,
-    repositories::workload::{WorkloadModel, WorkloadRepository},
-    services::{sni_proxy::SniProxyService, vm::VmService},
+    repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
+    services::vm::VmService,
 };
 use anyhow::{bail, Context, Result};
 use metrics::{gauge, histogram};
@@ -13,7 +11,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sysinfo::{Disks, System};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -32,9 +29,6 @@ pub struct AgentServiceArgs {
     /// The VM service.
     pub vm_service: Box<dyn VmService>,
 
-    /// The SNI proxy service.
-    pub sni_proxy_service: Box<dyn SniProxyService>,
-
     /// The interval to use for sync requests.
     pub sync_interval: Duration,
 
@@ -43,6 +37,9 @@ pub struct AgentServiceArgs {
 
     /// The end port range for workloads.
     pub end_port_range: u16,
+
+    /// The details for this metal instance.
+    pub metal_details: MetalInstanceDetails,
 }
 
 pub struct AgentService {
@@ -50,10 +47,10 @@ pub struct AgentService {
     api_client: Box<dyn NilccApiClient>,
     workload_repository: Arc<dyn WorkloadRepository>,
     vm_service: Box<dyn VmService>,
-    sni_proxy_service: Box<dyn SniProxyService>,
     sync_interval: Duration,
     start_port_range: u16,
     end_port_range: u16,
+    metal_details: MetalInstanceDetails,
 }
 
 impl AgentService {
@@ -64,9 +61,9 @@ impl AgentService {
             workload_repository,
             vm_service,
             sync_interval,
-            sni_proxy_service,
             start_port_range,
             end_port_range,
+            metal_details,
         } = args;
         Self {
             agent_id,
@@ -74,9 +71,9 @@ impl AgentService {
             workload_repository,
             vm_service,
             sync_interval,
-            sni_proxy_service,
             start_port_range,
             end_port_range,
+            metal_details,
         }
     }
 
@@ -97,8 +94,7 @@ impl AgentService {
     async fn perform_registration(&mut self) -> Result<()> {
         info!("Attempting to register agent...");
 
-        let details = gather_metal_instance_details().await?;
-        let instance = MetalInstance { id: self.agent_id, details };
+        let instance = MetalInstance { id: self.agent_id, details: self.metal_details.clone() };
         info!("Metal instance: {instance:?}");
 
         self.api_client.register(instance).await.inspect_err(|e| {
@@ -150,6 +146,7 @@ impl AgentService {
         };
         let now = Instant::now();
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
+        self.validate_resource_allocation(&response.workloads).context("Resource allocation validation failed")?;
         histogram!("api_sync_duration_seconds").record(now.elapsed());
 
         let actions = self.compute_workload_actions(existing_workloads, response.workloads).await?;
@@ -158,8 +155,7 @@ impl AgentService {
             return Ok(());
         }
         info!("Need to perform {} workload actions", actions.len());
-        self.apply_actions(actions).await?;
-        self.update_sni_proxy().await
+        self.apply_actions(actions).await
     }
 
     async fn compute_workload_actions(
@@ -208,6 +204,9 @@ impl AgentService {
         for action in actions {
             match action {
                 WorkloadAction::Start(workload) | WorkloadAction::Update(workload) => {
+                    // Store this since we've committed to running it
+                    let committed_workload = WorkloadModel { status: WorkloadModelStatus::Pending, ..workload.clone() };
+                    self.workload_repository.upsert(committed_workload).await?;
                     self.vm_service.sync_vm(workload).await;
                 }
                 WorkloadAction::Stop(id) => {
@@ -231,11 +230,23 @@ impl AgentService {
         }
     }
 
-    async fn update_sni_proxy(&self) -> Result<()> {
-        info!("Updating SNI proxy configuration");
-        let workloads = self.workload_repository.list().await?;
+    fn validate_resource_allocation(&self, workloads: &[Workload]) -> Result<()> {
+        let mut cpus: u32 = 0;
+        let mut memory: u64 = 0;
+        for workload in workloads {
+            cpus = cpus.saturating_add(workload.cpus.get() as u32);
+            memory = memory.saturating_add(workload.memory_gb as u64);
+        }
+        let available_cpus = self.metal_details.cpus;
+        if cpus > available_cpus {
+            bail!("too many CPUs are allocated: have {available_cpus}, need {cpus}");
+        }
 
-        self.sni_proxy_service.update_config(workloads).await.context("Failed to update SNI proxy configuration")
+        let available_memory = self.metal_details.memory_gb;
+        if memory > available_memory {
+            bail!("too much memory is allocated: have {available_memory}GB, need {memory}GB");
+        }
+        Ok(())
     }
 }
 
@@ -268,51 +279,14 @@ impl Drop for AgentServiceHandle {
     }
 }
 
-// Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-pub async fn gather_metal_instance_details() -> Result<MetalInstanceDetails> {
-    info!("Gathering metal instance details...");
-
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
-    let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
-    let memory = sys.total_memory() / (1024 * 1024 * 1024);
-    let disks = Disks::new_with_refreshed_list();
-    let mut root_disk_bytes = 0;
-    for disk in disks.list() {
-        if disk.mount_point().as_os_str() == "/" {
-            root_disk_bytes = disk.total_space();
-        }
-    }
-    let disk = root_disk_bytes / (1024 * 1024 * 1024);
-    let cpu = sys.cpus().len() as u32;
-    let gpu_group = gpu::find_gpus().await?;
-
-    let (gpu_model, gpu_count) =
-        gpu_group.map(|group| (Some(group.model.clone()), Some(group.addresses.len() as u32))).unwrap_or_default();
-
-    let details = MetalInstanceDetails {
-        agent_version: get_agent_version().to_string(),
-        hostname,
-        memory,
-        disk,
-        cpu,
-        gpu: gpu_count,
-        gpu_model,
-    };
-
-    Ok(details)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        http_client::MockNilccApiClient,
-        repositories::workload::MockWorkloadRepository,
-        services::{sni_proxy::MockSniProxyService, vm::MockVmService},
+        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
     };
     use mockall::predicate::eq;
+    use rstest::rstest;
 
     fn make_workload() -> WorkloadModel {
         WorkloadModel {
@@ -327,6 +301,7 @@ mod tests {
             gpus: Default::default(),
             metal_http_port: 0,
             metal_https_port: 0,
+            status: Default::default(),
         }
     }
 
@@ -337,20 +312,29 @@ mod tests {
         vm_service: MockVmService,
         start_port_range: u16,
         end_port_range: u16,
+        metal_details: MetalInstanceDetails,
     }
 
     impl ServiceBuilder {
         fn build(self) -> AgentService {
-            let Self { agent_id, workload_repository, vm_service, api_client, start_port_range, end_port_range } = self;
+            let Self {
+                agent_id,
+                workload_repository,
+                vm_service,
+                api_client,
+                start_port_range,
+                end_port_range,
+                metal_details,
+            } = self;
             let args = AgentServiceArgs {
                 agent_id,
                 api_client: Box::new(api_client),
                 workload_repository: Arc::new(workload_repository),
-                sni_proxy_service: Box::new(MockSniProxyService::new()),
                 vm_service: Box::new(vm_service),
                 sync_interval: Duration::from_secs(10),
                 start_port_range,
                 end_port_range,
+                metal_details,
             };
             AgentService::new(args)
         }
@@ -365,6 +349,7 @@ mod tests {
                 api_client: Default::default(),
                 start_port_range: 10000,
                 end_port_range: 20000,
+                metal_details: Default::default(),
             }
         }
     }
@@ -406,12 +391,21 @@ mod tests {
             WorkloadAction::Update(update_workload.clone()),
             WorkloadAction::Stop(stop_id),
         ];
-        builder.workload_repository.expect_delete().with(eq(stop_id)).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(start_workload.clone())).return_once(move |_| Ok(()));
-        builder.workload_repository.expect_upsert().with(eq(update_workload.clone())).return_once(move |_| Ok(()));
-        builder.vm_service.expect_sync_vm().with(eq(start_workload)).return_once(|_| ());
-        builder.vm_service.expect_sync_vm().with(eq(update_workload)).return_once(|_| ());
-        builder.vm_service.expect_stop_vm().with(eq(stop_id)).return_once(|_| ());
+        builder
+            .workload_repository
+            .expect_upsert()
+            .with(eq(start_workload.clone()))
+            .once()
+            .return_once(move |_| Ok(()));
+        builder
+            .workload_repository
+            .expect_upsert()
+            .with(eq(update_workload.clone()))
+            .once()
+            .return_once(move |_| Ok(()));
+        builder.vm_service.expect_sync_vm().with(eq(start_workload)).once().return_once(|_| ());
+        builder.vm_service.expect_sync_vm().with(eq(update_workload)).once().return_once(|_| ());
+        builder.vm_service.expect_stop_vm().with(eq(stop_id)).once().return_once(|_| ());
 
         let service = builder.build();
         service.apply_actions(actions).await.expect("failed to apply actions");
@@ -431,5 +425,35 @@ mod tests {
 
         service.find_free_ports(&mut used_ports).expect_err("found ports when we shouldn't have");
         assert_eq!(used_ports, (10..=17).collect());
+    }
+
+    #[test]
+    fn valid_resource_allocation() {
+        let workloads: Vec<Workload> = vec![
+            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
+            WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
+        ];
+        let mut builder = ServiceBuilder::default();
+        builder.metal_details.cpus = 3;
+        builder.metal_details.memory_gb = 3;
+
+        let service = builder.build();
+        service.validate_resource_allocation(&workloads).expect("resource allocation failed");
+    }
+
+    #[rstest]
+    #[case::cpu(1, 3)]
+    #[case::memory(3, 2)]
+    fn invalid_resource_allocation(#[case] cpus: u32, #[case] memory_gb: u64) {
+        let workloads: Vec<Workload> = vec![
+            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
+            WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
+        ];
+        let mut builder = ServiceBuilder::default();
+        builder.metal_details.cpus = cpus;
+        builder.metal_details.memory_gb = memory_gb;
+
+        let service = builder.build();
+        service.validate_resource_allocation(&workloads).expect_err("resource allocation succeeded");
     }
 }

@@ -12,6 +12,7 @@ CREATE TABLE workloads (
   disk_gb INT NOT NULL,
   metal_http_port INT NOT NULL,
   metal_https_port INT NOT NULL,
+  status VARCHAR(64) NOT NULL, 
   created_at DATETIME WITH TIMEZONE NOT NULL,
   updated_at DATETIME WITH TIMEZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

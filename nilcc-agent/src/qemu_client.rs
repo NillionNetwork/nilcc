@@ -1,4 +1,3 @@
-use crate::gpu;
 use async_trait::async_trait;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
@@ -20,6 +19,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::debug;
+
+use crate::resources::SystemResources;
 
 type QmpReadStreamHalf = QmpStreamTokio<ReadHalf<UnixStream>>;
 type QmpWriteStreamHalf = QmpStreamTokio<WriteHalf<UnixStream>>;
@@ -268,7 +269,7 @@ impl QemuClient {
 
         // --- GPU passthrough ---
         if spec.gpu_enabled {
-            let gpu_group = gpu::find_gpus()
+            let gpu_group = SystemResources::find_gpus()
                 .await
                 .map_err(|e| QemuClientError::Gpu(e.to_string()))?
                 .ok_or_else(|| QemuClientError::Gpu("No GPU found".to_string()))?;

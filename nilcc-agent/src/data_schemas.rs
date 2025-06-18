@@ -9,12 +9,29 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MetalInstanceDetails {
+    /// A string identifying the agent's version.
     pub agent_version: String,
+
+    /// The machine's hostname.
     pub hostname: String,
-    pub memory: u64,
-    pub disk: u64,
-    pub cpu: u32,
-    pub gpu: Option<u32>,
+
+    /// The amount of memory in GBs.
+    #[serde(rename = "memory")]
+    pub memory_gb: u64,
+
+    /// The amount of disk space, in GBs.
+    #[serde(rename = "disk")]
+    pub disk_space_gb: u64,
+
+    /// The number of CPUs
+    #[serde(rename = "cpu")]
+    pub cpus: u32,
+
+    /// The number of GPUs.
+    #[serde(rename = "gpu")]
+    pub gpus: Option<u32>,
+
+    /// The GPU model.
     pub gpu_model: Option<String>,
 }
 
@@ -61,26 +78,45 @@ pub struct Workload {
     pub(crate) env_vars: HashMap<String, String>,
     pub(crate) service_to_expose: String,
     pub(crate) service_port_to_expose: u16,
-    pub(crate) memory: u32,
-    pub(crate) cpu: NonZeroU16,
-    pub(crate) disk: NonZeroU16,
-    pub(crate) gpu: u16,
+
+    #[serde(rename = "memory")]
+    pub(crate) memory_gb: u32,
+
+    #[serde(rename = "cpu")]
+    pub(crate) cpus: NonZeroU16,
+
+    #[serde(rename = "disk")]
+    pub(crate) disk_space_gb: NonZeroU16,
+
+    #[serde(rename = "gpu")]
+    pub(crate) gpus: u16,
 }
 
 impl fmt::Debug for Workload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            id,
+            docker_compose,
+            env_vars,
+            service_to_expose,
+            service_port_to_expose,
+            memory_gb,
+            cpus,
+            disk_space_gb,
+            gpus,
+        } = self;
         // Hide this one since it can have sensitive data
-        let clean_env_vars: BTreeMap<_, _> = self.env_vars.keys().map(|key| (key, "...")).collect();
+        let env_vars: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
         f.debug_struct("Workload")
-            .field("id", &self.id)
-            .field("docker_compose", &self.docker_compose)
-            .field("env_vars", &clean_env_vars)
-            .field("service_to_expose", &self.service_to_expose)
-            .field("service_port_to_expose", &self.service_port_to_expose)
-            .field("memory", &self.memory)
-            .field("cpu", &self.cpu)
-            .field("disk", &self.disk)
-            .field("gpu", &self.gpu)
+            .field("id", id)
+            .field("docker_compose", docker_compose)
+            .field("env_vars", &env_vars)
+            .field("service_to_expose", service_to_expose)
+            .field("service_port_to_expose", service_port_to_expose)
+            .field("memory_gb", memory_gb)
+            .field("cpus", cpus)
+            .field("disk_space_gb", disk_space_gb)
+            .field("gpus", gpus)
             .finish()
     }
 }
