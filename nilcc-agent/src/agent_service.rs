@@ -7,10 +7,11 @@ use crate::{
     services::{sni_proxy::SniProxyService, vm::VmService},
 };
 use anyhow::{bail, Context, Result};
+use metrics::{gauge, histogram};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use sysinfo::{Disks, System};
 use tokio::sync::watch;
@@ -147,7 +148,10 @@ impl AgentService {
                 .map(|w| SyncWorkload { id: w.id, status: SyncWorkloadStatus::Running })
                 .collect(),
         };
+        let now = Instant::now();
         let response = self.api_client.sync(self.agent_id, sync_request).await.context("Failed to sync")?;
+        histogram!("api_sync_duration_seconds").record(now.elapsed());
+
         let actions = self.compute_workload_actions(existing_workloads, response.workloads).await?;
         if actions.is_empty() {
             info!("No actions need to be executed");
@@ -194,6 +198,9 @@ impl AgentService {
             info!("Need to stop workload {workload_id}");
             actions.push(WorkloadAction::Stop(workload_id));
         }
+        let total_ports = self.end_port_range.saturating_sub(self.start_port_range);
+        gauge!("sni_proxy_ports_total", "status" => "total").set(total_ports);
+        gauge!("sni_proxy_ports_total", "status" => "used").set(used_ports.len() as u16);
         Ok(actions)
     }
 
