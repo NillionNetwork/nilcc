@@ -14,3 +14,13 @@ First build [qemu](../qemu/README.md) and the [ubuntu iso](../autoinstall_ubuntu
 ```bash
 ./build.sh gpu
 ```
+
+### Running
+
+Run `launch_vm.sh` to run a confidential VM. By default the VM will not have a tty attached. This behavior can be 
+changed by setting the `NILCC_DEBUG` environment variable to 1. e.g.
+
+
+```bash
+NILCC_DEBUG=1 ./launch_vm.sh <args...>
+```
