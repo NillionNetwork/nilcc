@@ -2,6 +2,7 @@ use crate::{
     agent_service::{AgentService, AgentServiceArgs},
     http_client::RestNilccApiClient,
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
+    resources::SystemResources,
     services::vm::MockVmService,
 };
 use anyhow::Context;
@@ -51,7 +52,7 @@ async fn test_agent_registration_with_mock_server() -> anyhow::Result<()> {
         sync_interval: Duration::from_secs(1),
         start_port_range: 10000,
         end_port_range: 20000,
-        metal_details: Default::default(),
+        system_resources: SystemResources::gather(Default::default()).await.expect("failed to find system resources"),
     };
     let agent_service = AgentService::new(args);
 

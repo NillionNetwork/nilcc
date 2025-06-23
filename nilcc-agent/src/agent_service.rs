@@ -1,10 +1,12 @@
 use crate::{
+    build_info::get_agent_version,
     data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
     http_client::NilccApiClient,
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
+    resources::{GpuAddress, SystemResources},
     services::vm::VmService,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use metrics::{gauge, histogram};
 use std::{
     collections::{HashMap, HashSet},
@@ -38,8 +40,8 @@ pub struct AgentServiceArgs {
     /// The end port range for workloads.
     pub end_port_range: u16,
 
-    /// The details for this metal instance.
-    pub metal_details: MetalInstanceDetails,
+    /// The system resources.
+    pub system_resources: SystemResources,
 }
 
 pub struct AgentService {
@@ -50,7 +52,7 @@ pub struct AgentService {
     sync_interval: Duration,
     start_port_range: u16,
     end_port_range: u16,
-    metal_details: MetalInstanceDetails,
+    system_resources: SystemResources,
 }
 
 impl AgentService {
@@ -63,7 +65,7 @@ impl AgentService {
             sync_interval,
             start_port_range,
             end_port_range,
-            metal_details,
+            system_resources,
         } = args;
         Self {
             agent_id,
@@ -73,7 +75,7 @@ impl AgentService {
             sync_interval,
             start_port_range,
             end_port_range,
-            metal_details,
+            system_resources,
         }
     }
 
@@ -94,7 +96,21 @@ impl AgentService {
     async fn perform_registration(&mut self) -> Result<()> {
         info!("Attempting to register agent...");
 
-        let instance = MetalInstance { id: self.agent_id, details: self.metal_details.clone() };
+        let instance = MetalInstance {
+            id: self.agent_id,
+            details: MetalInstanceDetails {
+                agent_version: get_agent_version().to_string(),
+                hostname: self.system_resources.hostname.clone(),
+                memory_gb: self.system_resources.memory_gb,
+                os_reserved_memory_gb: self.system_resources.reserved_memory_gb,
+                disk_space_gb: self.system_resources.disk_space_gb,
+                os_reserved_disk_space_gb: self.system_resources.reserved_disk_space_gb,
+                cpus: self.system_resources.cpus,
+                os_reserved_cpus: self.system_resources.reserved_cpus,
+                gpus: self.system_resources.gpus.as_ref().map(|g| g.addresses.len() as u32),
+                gpu_model: self.system_resources.gpus.as_ref().map(|g| g.model.clone()),
+            },
+        };
         info!("Metal instance: {instance:?}");
 
         self.api_client.register(instance).await.inspect_err(|e| {
@@ -165,6 +181,7 @@ impl AgentService {
     ) -> Result<Vec<WorkloadAction>> {
         let mut used_ports: HashSet<_> =
             existing.iter().flat_map(|w| [w.metal_http_port, w.metal_https_port]).collect();
+        let mut used_gpus: HashSet<_> = existing.iter().flat_map(|w| w.gpus.iter().cloned()).collect();
         let mut existing: HashMap<_, _> = existing.into_iter().map(|w| (w.id, w)).collect();
         let mut actions = Vec::new();
         for workload in expected {
@@ -173,10 +190,20 @@ impl AgentService {
                 Some(existing) => {
                     // If it exists and is different, we need to update it
                     let (metal_http_port, metal_https_port) = (existing.metal_http_port, existing.metal_https_port);
-                    if Workload::from(existing) != workload {
+                    if Workload::from(existing.clone()) != workload {
+                        let gpus = match existing.gpus.len() != workload.gpus as usize {
+                            true => {
+                                info!("GPU count for workload {workload_id} changed, need to re-assign them");
+                                for gpu in &existing.gpus {
+                                    used_gpus.remove(gpu);
+                                }
+                                self.find_free_gpus(&mut used_gpus, workload.gpus as usize)?
+                            }
+                            false => existing.gpus,
+                        };
                         info!("Need to update workload {workload_id}");
                         let new_workload_model =
-                            WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
+                            WorkloadModel::from_schema(workload, metal_http_port, metal_https_port, gpus);
                         actions.push(WorkloadAction::Update(new_workload_model));
                     }
                 }
@@ -184,7 +211,8 @@ impl AgentService {
                     // It doesn't exist, it needs to be started
                     info!("Need to start workload {workload_id}");
                     let (metal_http_port, metal_https_port) = self.find_free_ports(&mut used_ports)?;
-                    let workload_model = WorkloadModel::from_schema(workload, metal_http_port, metal_https_port);
+                    let gpus = self.find_free_gpus(&mut used_gpus, workload.gpus as usize)?;
+                    let workload_model = WorkloadModel::from_schema(workload, metal_http_port, metal_https_port, gpus);
                     actions.push(WorkloadAction::Start(workload_model));
                 }
             };
@@ -230,22 +258,55 @@ impl AgentService {
         }
     }
 
+    fn find_free_gpus(&self, used_gpus: &mut HashSet<GpuAddress>, count: usize) -> Result<Vec<GpuAddress>> {
+        if count == 0 {
+            return Ok(Default::default());
+        }
+        let gpus = self.system_resources.gpus.as_ref().ok_or_else(|| anyhow!("No GPUs in metal instance"))?;
+        let mut assigned_gpus = HashSet::new();
+        for address in &gpus.addresses {
+            if used_gpus.contains(address) {
+                continue;
+            }
+            assigned_gpus.insert(address.clone());
+            if assigned_gpus.len() == count {
+                break;
+            }
+        }
+        if assigned_gpus.len() != count {
+            bail!("Not enough free GPUs available to be assigned to workload");
+        }
+        used_gpus.extend(assigned_gpus.iter().cloned());
+
+        let mut assigned_gpus: Vec<_> = assigned_gpus.into_iter().collect();
+        assigned_gpus.sort();
+        Ok(assigned_gpus)
+    }
+
     fn validate_resource_allocation(&self, workloads: &[Workload]) -> Result<()> {
         let mut cpus: u32 = 0;
+        let mut gpus: usize = 0;
         let mut memory: u64 = 0;
         for workload in workloads {
             cpus = cpus.saturating_add(workload.cpus.get() as u32);
             memory = memory.saturating_add(workload.memory_gb as u64);
+            gpus = gpus.saturating_add(workload.gpus as usize);
         }
-        let available_cpus = self.metal_details.cpus;
+        let available_cpus = self.system_resources.cpus;
         if cpus > available_cpus {
-            bail!("too many CPUs are allocated: have {available_cpus}, need {cpus}");
+            bail!("Too many CPUs are allocated: have {available_cpus}, need {cpus}");
         }
 
-        let available_memory = self.metal_details.memory_gb;
-        if memory > available_memory {
-            bail!("too much memory is allocated: have {available_memory}GB, need {memory}GB");
+        let available_gpus = self.system_resources.gpus.as_ref().map(|g| g.addresses.len()).unwrap_or_default();
+        if gpus > available_gpus {
+            bail!("Too many GPUs allocated: have {available_gpus}, need {gpus}");
         }
+
+        let available_memory = self.system_resources.memory_gb;
+        if memory > available_memory {
+            bail!("Too much memory is allocated: have {available_memory}GB, need {memory}GB");
+        }
+
         Ok(())
     }
 }
@@ -283,7 +344,8 @@ impl Drop for AgentServiceHandle {
 mod tests {
     use super::*;
     use crate::{
-        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, services::vm::MockVmService,
+        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, resources::Gpus,
+        services::vm::MockVmService,
     };
     use mockall::predicate::eq;
     use rstest::rstest;
@@ -312,7 +374,7 @@ mod tests {
         vm_service: MockVmService,
         start_port_range: u16,
         end_port_range: u16,
-        metal_details: MetalInstanceDetails,
+        system_resources: SystemResources,
     }
 
     impl ServiceBuilder {
@@ -324,7 +386,7 @@ mod tests {
                 api_client,
                 start_port_range,
                 end_port_range,
-                metal_details,
+                system_resources,
             } = self;
             let args = AgentServiceArgs {
                 agent_id,
@@ -334,7 +396,7 @@ mod tests {
                 sync_interval: Duration::from_secs(10),
                 start_port_range,
                 end_port_range,
-                metal_details,
+                system_resources,
             };
             AgentService::new(args)
         }
@@ -349,7 +411,16 @@ mod tests {
                 api_client: Default::default(),
                 start_port_range: 10000,
                 end_port_range: 20000,
-                metal_details: Default::default(),
+                system_resources: SystemResources {
+                    hostname: "foo".into(),
+                    memory_gb: 2,
+                    reserved_memory_gb: 1,
+                    disk_space_gb: 100,
+                    reserved_disk_space_gb: 20,
+                    cpus: 4,
+                    reserved_cpus: 1,
+                    gpus: None,
+                },
             }
         }
     }
@@ -419,39 +490,82 @@ mod tests {
 
         let mut used_ports = HashSet::from([11, 15]);
         let service = builder.build();
-        assert_eq!((10, 12), service.find_free_ports(&mut used_ports).unwrap());
-        assert_eq!((13, 14), service.find_free_ports(&mut used_ports).unwrap());
-        assert_eq!((16, 17), service.find_free_ports(&mut used_ports).unwrap());
+        assert_eq!(service.find_free_ports(&mut used_ports).unwrap(), (10, 12));
+        assert_eq!(service.find_free_ports(&mut used_ports).unwrap(), (13, 14));
+        assert_eq!(service.find_free_ports(&mut used_ports).unwrap(), (16, 17));
 
         service.find_free_ports(&mut used_ports).expect_err("found ports when we shouldn't have");
         assert_eq!(used_ports, (10..=17).collect());
     }
 
     #[test]
+    fn free_gpus() {
+        let mut builder = ServiceBuilder::default();
+        builder.system_resources.gpus = Some(Gpus {
+            model: "H100".into(),
+            // We have addresses 'a' through 'f'
+            addresses: ('a'..='f').map(|address| GpuAddress(address.to_string())).collect(),
+        });
+
+        let mut used_gpus = HashSet::from(["b".into()]);
+        let service = builder.build();
+        assert_eq!(service.find_free_gpus(&mut used_gpus, 2).unwrap(), &["a".into(), "c".into()]);
+        assert_eq!(service.find_free_gpus(&mut used_gpus, 1).unwrap(), &["d".into()]);
+        assert_eq!(service.find_free_gpus(&mut used_gpus, 1).unwrap(), &["e".into()]);
+
+        // Can't allocate f and another one
+        service.find_free_gpus(&mut used_gpus, 2).expect_err("should not have enough GPUs");
+
+        // But we should still be able to allocate F alone
+        assert_eq!(service.find_free_gpus(&mut used_gpus, 1).unwrap(), &["f".into()]);
+
+        // Now we have nothing left
+        service.find_free_gpus(&mut used_gpus, 1).expect_err("should not have enough GPUs");
+    }
+
+    #[test]
     fn valid_resource_allocation() {
         let workloads: Vec<Workload> = vec![
-            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
-            WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
+            WorkloadModel {
+                cpus: 1.try_into().unwrap(),
+                memory_mb: 1024,
+                gpus: vec!["addr1".into()],
+                ..make_workload()
+            }
+            .into(),
+            WorkloadModel {
+                cpus: 2.try_into().unwrap(),
+                memory_mb: 2048,
+                gpus: vec!["addr2".into(), "addr3".into()],
+                ..make_workload()
+            }
+            .into(),
         ];
         let mut builder = ServiceBuilder::default();
-        builder.metal_details.cpus = 3;
-        builder.metal_details.memory_gb = 3;
+        builder.system_resources.cpus = 3;
+        builder.system_resources.memory_gb = 3;
+        builder.system_resources.gpus =
+            Some(Gpus { model: "H100".into(), addresses: vec!["addr1".into(), "addr2".into(), "addr3".into()] });
 
         let service = builder.build();
         service.validate_resource_allocation(&workloads).expect("resource allocation failed");
     }
 
     #[rstest]
-    #[case::cpu(1, 3)]
-    #[case::memory(3, 2)]
-    fn invalid_resource_allocation(#[case] cpus: u32, #[case] memory_gb: u64) {
+    #[case::cpu(1, 3, 1)]
+    #[case::memory(3, 2, 1)]
+    #[case::gpus(3, 2, 2)]
+    fn invalid_resource_allocation(#[case] cpus: u32, #[case] memory_gb: u64, #[case] gpu: u32) {
         let workloads: Vec<Workload> = vec![
-            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, ..make_workload() }.into(),
+            WorkloadModel { cpus: 1.try_into().unwrap(), memory_mb: 1024, gpus: vec!["a".into()], ..make_workload() }
+                .into(),
             WorkloadModel { cpus: 2.try_into().unwrap(), memory_mb: 2048, ..make_workload() }.into(),
         ];
         let mut builder = ServiceBuilder::default();
-        builder.metal_details.cpus = cpus;
-        builder.metal_details.memory_gb = memory_gb;
+        builder.system_resources.cpus = cpus;
+        builder.system_resources.memory_gb = memory_gb;
+        builder.system_resources.gpus =
+            Some(Gpus { model: "H100".into(), addresses: (0..gpu).map(|i| GpuAddress(format!("{i}"))).collect() });
 
         let service = builder.build();
         service.validate_resource_allocation(&workloads).expect_err("resource allocation succeeded");
