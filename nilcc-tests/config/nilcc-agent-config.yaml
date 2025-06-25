@@ -15,11 +15,17 @@ db:
 
 cvm:
   initrd: /tmp/artifacts/initramfs.cpio
-  kernel: /tmp/artifacts/vmlinuz
   bios: /tmp/artifacts/OVMF.fd
-  base_disk: /tmp/artifacts/disk.qcow2
-  verity_disk: /tmp/artifacts/verity-hash-dev.raw
-  verity_root_hash: "80d9c99845b2295110259d18684d0daf4720c8837558146e4cc50a4b0a44a18e"
+  cpu:
+    kernel: /tmp/artifacts/vmlinuz
+    base_disk: /tmp/artifacts/disk.qcow2
+    verity_disk: /tmp/artifacts/verity-hash-dev.raw
+    verity_root_hash: /proc/version
+  gpu:
+    kernel: /tmp/artifacts/vmlinuz-gpu
+    base_disk: /tmp/artifacts/disk-gpu.qcow2
+    verity_disk: /tmp/artifacts/verity-hash-dev-gpu.raw
+    verity_root_hash: /proc/version
 
 sni_proxy:
   dns_subdomain: "localhost"

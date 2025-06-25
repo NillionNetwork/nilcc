@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use anyhow::Context;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use uuid::Uuid;
 
@@ -37,11 +38,20 @@ pub struct CvmConfig {
     /// The path to the initrd file.
     pub initrd: PathBuf,
 
-    /// The path to the kernel file.
-    pub kernel: PathBuf,
-
     /// The path to the bios file.
     pub bios: PathBuf,
+
+    /// The disk, kernel and verity files for the cpu cvm.
+    pub cpu: CvmFiles,
+
+    /// The disk, kernel and verity files for the gpu cvm.
+    pub gpu: CvmFiles,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CvmFiles {
+    /// The path to the kernel file.
+    pub kernel: PathBuf,
 
     /// The path to the base disk.
     pub base_disk: PathBuf,
@@ -49,7 +59,8 @@ pub struct CvmConfig {
     /// The path to the verity disk.
     pub verity_disk: PathBuf,
 
-    /// The verity root hash.
+    /// The path to the verity root hash.
+    #[serde(deserialize_with = "read_file_as_string")]
     pub verity_root_hash: String,
 }
 
@@ -145,4 +156,14 @@ pub struct ReservedResourcesConfig {
 
 fn default_agent_sync_interval() -> Duration {
     Duration::from_secs(10)
+}
+
+pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let path = String::deserialize(deserializer)?;
+    std::fs::read_to_string(&path)
+        .context(format!("Reading verity_root_hash file {path}"))
+        .map_err(serde::de::Error::custom)
 }

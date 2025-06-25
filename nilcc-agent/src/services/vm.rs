@@ -1,3 +1,4 @@
+use crate::config::CvmFiles;
 use crate::{
     config::CvmConfig,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
@@ -262,16 +263,16 @@ impl Worker {
         state_disk_path: PathBuf,
         docker_compose_hash: DockerComposeHash,
     ) -> anyhow::Result<VmSpec> {
-        let kernel_args = KernelArgs {
-            filesystem_root_hash: &self.cvm_config.verity_root_hash,
-            docker_compose_hash: &docker_compose_hash.0,
-        };
+        let CvmFiles { base_disk, kernel, verity_root_hash, verity_disk } =
+            if workload.gpus > 0 { &self.cvm_config.gpu } else { &self.cvm_config.cpu };
+        let kernel_args =
+            KernelArgs { filesystem_root_hash: verity_root_hash, docker_compose_hash: &docker_compose_hash.0 };
         let spec = VmSpec {
             cpu: workload.cpus.into(),
             ram_mib: workload.memory_mb,
             hard_disks: vec![
-                HardDiskSpec { path: self.cvm_config.base_disk.clone(), format: HardDiskFormat::Qcow2 },
-                HardDiskSpec { path: self.cvm_config.verity_disk.clone(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: base_disk.clone(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: verity_disk.clone(), format: HardDiskFormat::Raw },
                 HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some(iso_path),
@@ -279,7 +280,7 @@ impl Worker {
             port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some(self.cvm_config.bios.clone()),
             initrd_path: Some(self.cvm_config.initrd.clone()),
-            kernel_path: Some(self.cvm_config.kernel.clone()),
+            kernel_path: Some(kernel.clone()),
             kernel_args: Some(kernel_args.to_string()),
             display_gtk: false,
             enable_cvm: true,
@@ -382,11 +383,19 @@ mod tests {
                 sni_proxy_service: Default::default(),
                 cvm_config: CvmConfig {
                     initrd: "/initrd".into(),
-                    kernel: "/kernel".into(),
                     bios: "/bios".into(),
-                    base_disk: "/base_disk".into(),
-                    verity_disk: "/verity_disk".into(),
-                    verity_root_hash: "root-hash".into(),
+                    cpu: CvmFiles {
+                        base_disk: "/base_disk".into(),
+                        kernel: "/kernel".into(),
+                        verity_disk: "/verity_disk".into(),
+                        verity_root_hash: "root-hash".into(),
+                    },
+                    gpu: CvmFiles {
+                        base_disk: "/base_disk_gpu".into(),
+                        kernel: "/kernel_gpu".into(),
+                        verity_disk: "/verity_disk_gpu".into(),
+                        verity_root_hash: "root-hash-gpu".into(),
+                    },
                 },
             }
         }
@@ -434,7 +443,7 @@ mod tests {
         let docker_compose_hash = "deadbeef";
         let workload = WorkloadModel { memory_mb: 1024, cpus: 2.try_into().unwrap(), gpus: 0, ..make_workload() };
         let iso_path = PathBuf::from("/tmp/vm.iso");
-        let filesystem_root_hash = &builder.cvm_config.verity_root_hash;
+        let filesystem_root_hash = &builder.cvm_config.cpu.verity_root_hash;
         let kernel_args = KernelArgs { docker_compose_hash, filesystem_root_hash }.to_string();
         let state_disk_path = PathBuf::from("/tmp/vm.raw");
 
