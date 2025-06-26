@@ -119,6 +119,8 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let system_resources =
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
+    system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
+
     let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
     debug!("sqlite db url: {}", config.db.url);
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
