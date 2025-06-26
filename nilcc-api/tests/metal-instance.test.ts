@@ -25,8 +25,13 @@ describe("Metal Instance", () => {
     name: "my-cool-workload",
     description: "This is a test workload",
     tags: ["test", "workload"],
-    dockerCompose:
-      "version: '3'\nservices:\n  app:\n    image: nginx\n    ports:\n      - '80:80'",
+    dockerCompose: `
+services:
+  app:
+    image: nginx
+    ports:
+      - '80'
+`,
     envVars: {
       MY_SECRET: "42",
     },
