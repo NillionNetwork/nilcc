@@ -1,5 +1,6 @@
-use crate::{build_info::get_agent_version, config::ReservedResourcesConfig, data_schemas::MetalInstanceDetails};
+use crate::config::ReservedResourcesConfig;
 use anyhow::{bail, Context};
+use serde::{Deserialize, Serialize};
 use sysinfo::{Disks, System};
 use tokio::process::Command;
 use tracing::info;
@@ -7,11 +8,21 @@ use tracing::info;
 const SUPPORTED_GPU_MODEL: &str = "H100";
 const NVIDIA_GPU_VENDOR_ID: &str = "10de";
 
-pub struct SystemResources;
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemResources {
+    pub(crate) hostname: String,
+    pub(crate) memory_gb: u64,
+    pub(crate) reserved_memory_gb: u64,
+    pub(crate) disk_space_gb: u64,
+    pub(crate) reserved_disk_space_gb: u64,
+    pub(crate) cpus: u32,
+    pub(crate) reserved_cpus: u32,
+    pub(crate) gpus: Option<Gpus>,
+}
 
 impl SystemResources {
     // Gather system details for the agent's metal instance. Gpu for now is optional and details are supplied by the config.
-    pub async fn gather(reserved: ReservedResourcesConfig) -> anyhow::Result<MetalInstanceDetails> {
+    pub async fn gather(reserved: ReservedResourcesConfig) -> anyhow::Result<Self> {
         info!("Gathering metal instance details");
 
         let sys = System::new_all();
@@ -40,29 +51,21 @@ impl SystemResources {
             bail!("Reserved CPUs ({}) exceed total CPUs ({cpus})", reserved.cpus);
         }
 
-        let gpu_group = Self::find_gpus().await?;
-
-        let (gpu_model, gpu_count) =
-            gpu_group.map(|group| (Some(group.model.clone()), Some(group.addresses.len() as u32))).unwrap_or_default();
-
-        let details = MetalInstanceDetails {
-            agent_version: get_agent_version().to_string(),
+        let gpus = Self::find_gpus().await?;
+        Ok(Self {
             hostname,
             memory_gb,
-            os_reserved_memory_gb: reserved.memory_gb,
+            reserved_memory_gb: reserved.memory_gb,
             disk_space_gb: disk_size_gb,
-            os_reserved_disk_space_gb: reserved.disk_space_gb,
+            reserved_disk_space_gb: reserved.disk_space_gb,
             cpus,
-            os_reserved_cpus: reserved.cpus,
-            gpus: gpu_count,
-            gpu_model,
-        };
-
-        Ok(details)
+            reserved_cpus: reserved.cpus,
+            gpus,
+        })
     }
 
     /// Finds supported NVIDIA GPUs
-    pub(crate) async fn find_gpus() -> anyhow::Result<Option<GpuGroup>> {
+    pub(crate) async fn find_gpus() -> anyhow::Result<Option<Gpus>> {
         let output = Command::new("bash").arg("-c").arg(format!("lspci -d {NVIDIA_GPU_VENDOR_ID}:")).output().await?;
 
         if !output.status.success() {
@@ -80,7 +83,7 @@ impl SystemResources {
         for line in lines {
             if line.contains("H100") {
                 if let Some(bdf) = line.split_whitespace().next() {
-                    addresses.push(bdf.to_string());
+                    addresses.push(GpuAddress(bdf.to_string()));
                 } else {
                     bail!(format!("Failed to parse BDF address from line: {line}"));
                 }
@@ -93,13 +96,24 @@ impl SystemResources {
 
         addresses.sort();
 
-        Ok(Some(GpuGroup { model: SUPPORTED_GPU_MODEL.to_string(), addresses }))
+        Ok(Some(Gpus { model: SUPPORTED_GPU_MODEL.to_string(), addresses }))
     }
 }
 
-pub(crate) struct GpuGroup {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[repr(transparent)]
+pub struct GpuAddress(pub(crate) String);
+
+impl From<&'_ str> for GpuAddress {
+    fn from(address: &str) -> Self {
+        Self(address.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Gpus {
     pub(crate) model: String,
-    pub(crate) addresses: Vec<String>,
+    pub(crate) addresses: Vec<GpuAddress>,
 }
 
 #[cfg(test)]

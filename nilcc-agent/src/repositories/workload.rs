@@ -1,4 +1,4 @@
-use crate::repositories::sqlite::SqliteDb;
+use crate::{repositories::sqlite::SqliteDb, resources::GpuAddress};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::{prelude::FromRow, SqlitePool};
@@ -20,8 +20,9 @@ pub struct WorkloadModel {
     pub public_container_port: u16,
     pub memory_mb: u32,
     pub cpus: NonZeroU16,
+    #[sqlx(json)]
+    pub gpus: Vec<GpuAddress>,
     pub disk_gb: NonZeroU16,
-    pub gpus: u16,
     pub metal_http_port: u16,
     pub metal_https_port: u16,
     pub status: WorkloadModelStatus,
@@ -73,7 +74,7 @@ impl From<WorkloadModel> for crate::data_schemas::Workload {
             memory_mb,
             cpus: cpu,
             disk_gb: disk,
-            gpus: gpu,
+            gpus,
             ..
         } = workload;
         let memory = memory_mb / 1024; // Convert Mb to Gb
@@ -86,13 +87,18 @@ impl From<WorkloadModel> for crate::data_schemas::Workload {
             memory_gb: memory,
             cpus: cpu,
             disk_space_gb: disk,
-            gpus: gpu,
+            gpus: gpus.len() as u16,
         }
     }
 }
 
 impl WorkloadModel {
-    pub fn from_schema(workload: crate::data_schemas::Workload, metal_http_port: u16, metal_https_port: u16) -> Self {
+    pub fn from_schema(
+        workload: crate::data_schemas::Workload,
+        metal_http_port: u16,
+        metal_https_port: u16,
+        gpus: Vec<GpuAddress>,
+    ) -> Self {
         let crate::data_schemas::Workload {
             id,
             docker_compose,
@@ -102,7 +108,7 @@ impl WorkloadModel {
             memory_gb: memory,
             cpus: cpu,
             disk_space_gb: disk,
-            gpus: gpu,
+            ..
         } = workload;
         Self {
             id,
@@ -113,7 +119,7 @@ impl WorkloadModel {
             memory_mb: memory * 1024, // Convert Gb to Mb
             cpus: cpu,
             disk_gb: disk,
-            gpus: gpu,
+            gpus,
             metal_http_port,
             metal_https_port,
             status: Default::default(),
@@ -219,7 +225,7 @@ ON CONFLICT (id) DO UPDATE SET
             .bind(public_container_port)
             .bind(memory_mb)
             .bind(cpus)
-            .bind(gpus)
+            .bind(sqlx::types::Json(gpus))
             .bind(disk_gb)
             .bind(metal_http_port)
             .bind(metal_https_port)
@@ -275,7 +281,7 @@ mod tests {
             memory_mb: 1024,
             cpus: 1.try_into().unwrap(),
             disk_gb: 10.try_into().unwrap(),
-            gpus: 1,
+            gpus: vec![GpuAddress("aa:bb".into())],
             metal_http_port: 1080,
             metal_https_port: 1443,
             status: WorkloadModelStatus::Running,
@@ -301,7 +307,7 @@ mod tests {
             memory_mb: 1024,
             cpus: 1.try_into().unwrap(),
             disk_gb: 10.try_into().unwrap(),
-            gpus: 1,
+            gpus: vec![GpuAddress("aa:bb".into())],
             metal_http_port: 1080,
             metal_https_port: 1443,
             status: WorkloadModelStatus::Pending,
@@ -313,7 +319,7 @@ mod tests {
             public_container_name: "container-2".into(),
             public_container_port: 443,
             memory_mb: 2048,
-            gpus: 2.try_into().unwrap(),
+            gpus: vec![GpuAddress("aa:bb".into()), GpuAddress("cc:dd".into())],
             disk_gb: 20.try_into().unwrap(),
             cpus: 2.try_into().unwrap(),
             metal_http_port: 1080,

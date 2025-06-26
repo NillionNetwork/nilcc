@@ -1,3 +1,4 @@
+use crate::resources::GpuAddress;
 use async_trait::async_trait;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
@@ -19,8 +20,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::debug;
-
-use crate::resources::SystemResources;
 
 type QmpReadStreamHalf = QmpStreamTokio<ReadHalf<UnixStream>>;
 type QmpWriteStreamHalf = QmpStreamTokio<WriteHalf<UnixStream>>;
@@ -72,8 +71,8 @@ pub struct VmSpec {
     /// Optional ISO path to attach as CD-ROM.
     pub cdrom_iso_path: Option<PathBuf>,
 
-    /// If true, add a VFIO GPU passthrough device (`-device vfio-pci,…`).
-    pub gpu_enabled: bool,
+    /// The GPU addresses to use.
+    pub gpus: Vec<GpuAddress>,
 
     /// Vec of (HOST, GUEST) ports to forward.
     pub port_forwarding: Vec<(u16, u16)>,
@@ -268,29 +267,14 @@ impl QemuClient {
         }
 
         // --- GPU passthrough ---
-        if spec.gpu_enabled {
-            let gpu_group = SystemResources::find_gpus()
-                .await
-                .map_err(|e| QemuClientError::Gpu(e.to_string()))?
-                .ok_or_else(|| QemuClientError::Gpu("No GPU found".to_string()))?;
-
-            // TODO: implement handling of multiple GPUs
-            if gpu_group.addresses.len() > 1 {
-                return Err(QemuClientError::Gpu(
-                    "Multiple GPUs found, currently only one GPU per metal instance is supported".to_string(),
-                ));
-            }
-
-            let gpu = gpu_group
-                .addresses
-                .first()
-                .ok_or_else(|| QemuClientError::Gpu("No supported GPU found".to_string()))?;
-
+        for (index, gpu) in spec.gpus.iter().enumerate() {
+            let gpu = &gpu.0;
+            let id = format!("gpu{}", index + 1);
             args.extend([
                 "-device".into(),
-                "pcie-root-port,id=pci.1,bus=pcie.0".into(),
+                format!("pcie-root-port,id={id},bus=pcie.0"),
                 "-device".into(),
-                format!("vfio-pci,host={gpu},bus=pci.1"),
+                format!("vfio-pci,host={gpu},bus={id}"),
             ]);
         }
 
@@ -419,7 +403,7 @@ mod tests {
                 HardDiskSpec { path: "/tmp/2.raw".into(), format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some("/tmp/cd.iso".into()),
-            gpu_enabled: false,
+            gpus: vec![GpuAddress("A".into()), GpuAddress("B".into())],
             port_forwarding: vec![(8080, 80)],
             bios_path: Some("/tmp/bios".into()),
             initrd_path: Some("/tmp/initrd".into()),
@@ -492,11 +476,20 @@ mod tests {
             "-device",
             "scsi-cd,bus=scsi2.0,drive=disk2",
             // Network
-            "-device".into(),
-            "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=".into(),
+            "-device",
+            "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=",
             // Port forward
             "-netdev",
             "user,id=vmnic,hostfwd=tcp::8080-:80",
+            // GPUs
+            "-device",
+            "pcie-root-port,id=gpu1,bus=pcie.0",
+            "-device",
+            "vfio-pci,host=A,bus=gpu1",
+            "-device",
+            "pcie-root-port,id=gpu2,bus=pcie.0",
+            "-device",
+            "vfio-pci,host=B,bus=gpu2",
         ];
         assert_eq!(args, expected);
     }
@@ -523,7 +516,7 @@ mod tests {
             ram_mib: 512,
             hard_disks: vec![HardDiskSpec { path: hard_disk_path, format: hard_disk_format }],
             cdrom_iso_path: None,
-            gpu_enabled: false,
+            gpus: Vec::new(),
             port_forwarding: vec![],
             bios_path: None,
             initrd_path: None,

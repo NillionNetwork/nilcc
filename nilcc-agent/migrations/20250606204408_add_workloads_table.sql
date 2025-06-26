@@ -8,7 +8,7 @@ CREATE TABLE workloads (
   public_container_port INT NOT NULL,
   memory_mb INT NOT NULL,
   cpus INT NOT NULL,
-  gpus INT NOT NULL,
+  gpus TEXT NOT NULL,
   disk_gb INT NOT NULL,
   metal_http_port INT NOT NULL,
   metal_https_port INT NOT NULL,

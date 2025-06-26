@@ -167,7 +167,7 @@ impl Worker {
                 }
             }
             total_cpus = total_cpus.saturating_add(workload.cpus.into());
-            total_gpus = total_gpus.saturating_add(workload.gpus);
+            total_gpus = total_gpus.saturating_add(workload.gpus.len() as u16);
             total_memory = total_memory.saturating_add(workload.memory_mb);
         }
         info!("{running}/{expected} machines are running");
@@ -276,7 +276,7 @@ impl Worker {
                 HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some(iso_path),
-            gpu_enabled: false,
+            gpus: workload.gpus.clone(),
             port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some(self.cvm_config.bios.clone()),
             initrd_path: Some(self.cvm_config.initrd.clone()),
@@ -441,7 +441,12 @@ mod tests {
     fn vm_spec() {
         let builder = WorkerBuilder::default();
         let docker_compose_hash = "deadbeef";
-        let workload = WorkloadModel { memory_mb: 1024, cpus: 2.try_into().unwrap(), gpus: 0, ..make_workload() };
+        let workload = WorkloadModel {
+            memory_mb: 1024,
+            cpus: 2.try_into().unwrap(),
+            gpus: vec!["addr".into()],
+            ..make_workload()
+        };
         let iso_path = PathBuf::from("/tmp/vm.iso");
         let filesystem_root_hash = &builder.cvm_config.cpu.verity_root_hash;
         let kernel_args = KernelArgs { docker_compose_hash, filesystem_root_hash }.to_string();
@@ -456,7 +461,7 @@ mod tests {
                 HardDiskSpec { path: state_disk_path.clone(), format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some(iso_path.clone()),
-            gpu_enabled: false,
+            gpus: vec!["addr".into()],
             port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some("/bios".into()),
             initrd_path: Some("/initrd".into()),
