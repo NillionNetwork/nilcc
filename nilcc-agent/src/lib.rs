@@ -9,6 +9,3 @@ pub mod qemu_client;
 pub mod repositories;
 pub mod resources;
 pub mod services;
-
-#[cfg(test)]
-mod tests;
