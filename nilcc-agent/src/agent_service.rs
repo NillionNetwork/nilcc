@@ -1,10 +1,10 @@
 use crate::{
-    build_info::get_agent_version,
-    data_schemas::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
-    http_client::NilccApiClient,
+    clients::nilcc_api::NilccApiClient,
+    models::{MetalInstance, MetalInstanceDetails, SyncRequest, SyncWorkload, SyncWorkloadStatus, Workload},
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
     resources::{GpuAddress, SystemResources},
     services::vm::VmService,
+    version::agent_version,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use metrics::{gauge, histogram};
@@ -99,7 +99,7 @@ impl AgentService {
         let instance = MetalInstance {
             id: self.agent_id,
             details: MetalInstanceDetails {
-                agent_version: get_agent_version().to_string(),
+                agent_version: agent_version().to_string(),
                 hostname: self.system_resources.hostname.clone(),
                 memory_gb: self.system_resources.memory_gb,
                 os_reserved_memory_gb: self.system_resources.reserved_memory_gb,
@@ -344,7 +344,7 @@ impl Drop for AgentServiceHandle {
 mod tests {
     use super::*;
     use crate::{
-        http_client::MockNilccApiClient, repositories::workload::MockWorkloadRepository, resources::Gpus,
+        clients::nilcc_api::MockNilccApiClient, repositories::workload::MockWorkloadRepository, resources::Gpus,
         services::vm::MockVmService,
     };
     use mockall::predicate::eq;
