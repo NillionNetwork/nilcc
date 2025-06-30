@@ -63,7 +63,7 @@ impl fmt::Debug for WorkloadModel {
     }
 }
 
-impl From<WorkloadModel> for crate::data_schemas::Workload {
+impl From<WorkloadModel> for crate::models::Workload {
     fn from(workload: WorkloadModel) -> Self {
         let WorkloadModel {
             id,
@@ -94,12 +94,12 @@ impl From<WorkloadModel> for crate::data_schemas::Workload {
 
 impl WorkloadModel {
     pub fn from_schema(
-        workload: crate::data_schemas::Workload,
+        workload: crate::models::Workload,
         metal_http_port: u16,
         metal_https_port: u16,
         gpus: Vec<GpuAddress>,
     ) -> Self {
-        let crate::data_schemas::Workload {
+        let crate::models::Workload {
             id,
             docker_compose,
             env_vars,

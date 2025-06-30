@@ -3,12 +3,10 @@ use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     agent_service::{AgentService, AgentServiceArgs},
-    build_info,
+    clients::nilcc_api::HttpNilccApiClient,
+    clients::qemu::QemuClient,
     config::{AgentConfig, ApiConfig},
-    http_client::RestNilccApiClient,
-    iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoMetadata, IsoSpec},
-    output::{serialize_error, serialize_output, SerializeAsAny},
-    qemu_client::QemuClient,
+    iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
     resources::SystemResources,
     services::{
@@ -16,13 +14,13 @@ use nilcc_agent::{
         sni_proxy::HaProxySniProxyService,
         vm::{DefaultVmService, VmServiceArgs},
     },
+    version,
 };
-use serde::Serialize;
-use std::{fs, ops::Deref, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 use tracing::debug;
 
 #[derive(Parser)]
-#[clap(author, version = build_info::get_agent_version(), about = "nilCC Agent CLI")]
+#[clap(author, version = version::agent_version(), about = "nilCC Agent CLI")]
 struct Cli {
     /// The command to be ran.
     #[command(subcommand)]
@@ -35,15 +33,15 @@ enum Command {
     #[clap(subcommand)]
     Iso(IsoCommand),
 
-    /// Run the agent in daemon mode and connect to nilCC API.
+    /// Run the agent in daemon mode and connect to the nilcc API.
     Daemon {
         /// Path to the agent configuration file
         #[clap(long, short, default_value = "nilcc-agent-config.yaml")]
         config: PathBuf,
     },
 
-    /// Show metal instance information
-    Info,
+    /// Display system resources.
+    Resources,
 }
 
 #[derive(Subcommand)]
@@ -75,14 +73,7 @@ enum IsoCommand {
     },
 }
 
-/// JSON wrapper for success responses
-#[derive(Serialize)]
-struct ActionOutput<T: Serialize> {
-    status: String,
-    details: T,
-}
-
-async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata>> {
+async fn run_iso_command(command: IsoCommand) -> Result<()> {
     match command {
         IsoCommand::Create { container, port, hostname, output, docker_compose_path, environment_variables } => {
             let compose = std::fs::read_to_string(docker_compose_path).context("reading docker compose")?;
@@ -91,8 +82,8 @@ async fn run_iso_command(command: IsoCommand) -> Result<ActionOutput<IsoMetadata
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
                 environment_variables,
             };
-            let details = IsoMaker.create_application_iso(&output, spec).await.context("creating ISO")?;
-            Ok(ActionOutput { status: "created".into(), details })
+            IsoMaker.create_application_iso(&output, spec).await.context("creating ISO")?;
+            Ok(())
         }
     }
 }
@@ -121,8 +112,9 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
-    let api_client = Box::new(RestNilccApiClient::new(endpoint, key)?);
+    let api_client = Box::new(HttpNilccApiClient::new(endpoint, key)?);
     debug!("sqlite db url: {}", config.db.url);
+
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
     let disk_service = DefaultDiskService::new(config.qemu.img_bin);
@@ -164,18 +156,20 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     Ok(())
 }
 
-async fn run(cli: Cli) -> anyhow::Result<Box<dyn SerializeAsAny>> {
+async fn run(cli: Cli) -> anyhow::Result<()> {
     let Cli { command } = cli;
     match command {
-        Command::Iso(command) => Ok(Box::new(run_iso_command(command).await?)),
+        Command::Iso(command) => run_iso_command(command).await,
         Command::Daemon { config } => {
             let agent_config = load_config(config).context("Loading agent configuration")?;
             run_daemon(agent_config).await?;
-            Ok(Box::new(()))
+            Ok(())
         }
-        Command::Info => {
-            let instance_details = SystemResources::gather(Default::default()).await?;
-            Ok(Box::new(instance_details))
+        Command::Resources => {
+            let resources = SystemResources::gather(Default::default()).await?;
+            let resources = serde_json::to_string_pretty(&resources).expect("failed to serialize");
+            println!("{resources}");
+            Ok(())
         }
     }
 }
@@ -185,12 +179,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let cli = Cli::parse();
-    match run(cli).await {
-        Ok(val) => println!("{}", serialize_output(val.deref()).unwrap()),
-        Err(e) => {
-            eprintln!("{}", serialize_error(&e));
-            std::process::exit(1);
-        }
+    if let Err(e) = run(cli).await {
+        eprintln!("Error running CLI: {e:#?}");
+        std::process::exit(1);
     }
 
     Ok(())

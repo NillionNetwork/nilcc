@@ -1,6 +1,6 @@
 use crate::{
+    clients::qemu::HardDiskFormat,
     iso::{IsoMaker, IsoSpec},
-    qemu_client::HardDiskFormat,
 };
 use anyhow::{bail, Context};
 use async_trait::async_trait;

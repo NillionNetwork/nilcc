@@ -1,8 +1,8 @@
 use crate::config::CvmFiles;
 use crate::{
+    clients::qemu::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
     config::CvmConfig,
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
-    qemu_client::{HardDiskFormat, HardDiskSpec, QemuClientError, VmClient, VmSpec},
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository},
     services::{
         disk::{DiskService, DockerComposeHash},
@@ -316,7 +316,7 @@ impl fmt::Display for KernelArgs<'_> {
 mod tests {
     use super::*;
     use crate::{
-        qemu_client::MockVmClient,
+        clients::qemu::MockVmClient,
         repositories::workload::MockWorkloadRepository,
         services::{disk::MockDiskService, sni_proxy::MockSniProxyService},
     };

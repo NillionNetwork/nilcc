@@ -17,6 +17,6 @@ static AGENT_VERSION: Lazy<String> = Lazy::new(|| {
 
 /// Returns the agent version in the format: PKG_VERSION+git.GIT_COMMIT_HASH.build.YYYYMMDDTHHMMSSZ
 /// Example: 0.1.0+git.9cd0b27.build.20250604T161556Z
-pub fn get_agent_version() -> &'static str {
+pub fn agent_version() -> &'static str {
     &AGENT_VERSION
 }

@@ -1,4 +1,4 @@
-use crate::data_schemas::{MetalInstance, SyncRequest, SyncResponse};
+use crate::models::{MetalInstance, SyncRequest, SyncResponse};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder, Response as ReqwestResponse};
@@ -15,13 +15,13 @@ pub trait NilccApiClient: Send + Sync {
     async fn sync(&self, agent_id: Uuid, payload: SyncRequest) -> anyhow::Result<SyncResponse>;
 }
 
-pub struct RestNilccApiClient {
+pub struct HttpNilccApiClient {
     http_client: Client,
     api_base_url: String,
     api_key: String,
 }
 
-impl RestNilccApiClient {
+impl HttpNilccApiClient {
     /// Creates a new instance with the specified API base URL.
     pub fn new(api_base_url: String, api_key: String) -> anyhow::Result<Self> {
         let http_client = Client::builder()
@@ -56,7 +56,7 @@ impl RestNilccApiClient {
 }
 
 #[async_trait]
-impl NilccApiClient for RestNilccApiClient {
+impl NilccApiClient for HttpNilccApiClient {
     async fn register(&self, payload: MetalInstance) -> anyhow::Result<()> {
         let endpoint_suffix = "/api/v1/metal-instances/~/register";
         let full_url = format!("{}{endpoint_suffix}", self.api_base_url,);
