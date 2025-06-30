@@ -6,7 +6,7 @@ export const CreateWorkloadRequest = z
     name: z.string().min(1, "Name is required"),
     description: z.string().optional(),
     tags: z.array(z.string()).optional(),
-    dockerCompose: z.string().min(1, "Docker Compose is required"),
+    dockerCompose: z.string(),
     envVars: z.record(z.string(), z.string()).optional(),
     serviceToExpose: z.string().min(1, "Service to expose is required"),
     servicePortToExpose: z.number().int().positive(),

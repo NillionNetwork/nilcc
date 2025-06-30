@@ -138,6 +138,10 @@ export class InstancesNotAvailable extends AppError {
   tag = "InstancesNotAvailable";
 }
 
+export class InvalidDockerCompose extends AppError {
+  tag = "InvalidDockerCompose";
+}
+
 export class HttpError extends AppError {
   tag = "HttpError";
   statusCode: ContentfulStatusCode;

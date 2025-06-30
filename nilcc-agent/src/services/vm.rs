@@ -264,7 +264,7 @@ impl Worker {
         docker_compose_hash: DockerComposeHash,
     ) -> anyhow::Result<VmSpec> {
         let CvmFiles { base_disk, kernel, verity_root_hash, verity_disk } =
-            if workload.gpus > 0 { &self.cvm_config.gpu } else { &self.cvm_config.cpu };
+            if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
         let kernel_args =
             KernelArgs { filesystem_root_hash: verity_root_hash, docker_compose_hash: &docker_compose_hash.0 };
         let spec = VmSpec {
@@ -448,7 +448,7 @@ mod tests {
             ..make_workload()
         };
         let iso_path = PathBuf::from("/tmp/vm.iso");
-        let filesystem_root_hash = &builder.cvm_config.cpu.verity_root_hash;
+        let filesystem_root_hash = &builder.cvm_config.gpu.verity_root_hash;
         let kernel_args = KernelArgs { docker_compose_hash, filesystem_root_hash }.to_string();
         let state_disk_path = PathBuf::from("/tmp/vm.raw");
 
@@ -456,8 +456,8 @@ mod tests {
             cpu: 2,
             ram_mib: 1024,
             hard_disks: vec![
-                HardDiskSpec { path: "/base_disk".into(), format: HardDiskFormat::Qcow2 },
-                HardDiskSpec { path: "/verity_disk".into(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: "/base_disk_gpu".into(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: "/verity_disk_gpu".into(), format: HardDiskFormat::Raw },
                 HardDiskSpec { path: state_disk_path.clone(), format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some(iso_path.clone()),
@@ -465,7 +465,7 @@ mod tests {
             port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
             bios_path: Some("/bios".into()),
             initrd_path: Some("/initrd".into()),
-            kernel_path: Some("/kernel".into()),
+            kernel_path: Some("/kernel_gpu".into()),
             kernel_args: Some(kernel_args),
             display_gtk: false,
             enable_cvm: true,

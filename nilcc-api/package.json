@@ -8,6 +8,7 @@
     "start": "tsx src/main.ts",
     "test": "vitest --run tests/",
     "migrate": "tsx bin/migrate.ts",
+    "fetch-compose-schema": "tsx bin/fetch-compose-schema.ts",
     "fmt": "biome format .",
     "compile": "tsc"
   },
@@ -33,6 +34,7 @@
     "@hono/node-server": "^1.14.2",
     "@hono/prometheus": "^1.0.1",
     "@hono/zod-validator": "^0.4.3",
+    "ajv": "^8.17.1",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
     "effect": "^3.15.2",
@@ -45,6 +47,7 @@
     "reflect-metadata": "^0.2.2",
     "temporal-polyfill": "^0.3.0",
     "typeorm": "^0.3.24",
+    "yaml": "^2.8.0",
     "zod": "^3.25.13",
     "zod-openapi": "^4.2.4",
     "zod-validation-error": "^3.4.1"

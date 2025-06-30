@@ -390,7 +390,6 @@ mod tests {
         QemuClient::new(Path::new("qemu-system-x86_64"))
     }
 
-    #[test_with::no_env(GITHUB_ACTIONS)]
     #[tokio::test]
     #[traced_test]
     async fn build_cmd_contains_resources() {

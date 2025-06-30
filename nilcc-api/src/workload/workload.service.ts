@@ -8,6 +8,7 @@ import {
   RemoveEntityError,
   UpdateEntityError,
 } from "#/common/errors";
+import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type {
   CreateWorkloadRequest,
@@ -33,6 +34,9 @@ export class WorkloadService {
     workload: CreateWorkloadRequest,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
+    const validator = new DockerComposeValidator();
+    validator.validate(workload.dockerCompose, workload.serviceToExpose);
+
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(
         {
