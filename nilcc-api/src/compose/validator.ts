@@ -11,7 +11,7 @@ const PORT_REGEX =
 
 const ContainerName = z
   .string()
-  .refine((name) => RESERVED_CONTAINERS.indexOf(name) === -1);
+  .refine((name) => !RESERVED_CONTAINERS.includes(name));
 
 const Port = z.union([
   // A single port.
@@ -20,7 +20,7 @@ const Port = z.union([
     .transform(Number)
     .pipe(z.number())
     .refine(
-      (port) => RESERVED_PORTS.indexOf(port) === -1,
+      (port) => !RESERVED_PORTS.includes(port),
       (port) => ({ message: `port ${port} is reserved` }),
     ),
 

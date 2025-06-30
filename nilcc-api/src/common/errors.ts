@@ -139,7 +139,7 @@ export class InstancesNotAvailable extends AppError {
 }
 
 export class InvalidDockerCompose extends AppError {
-  tag = "InvalidDockerCompose ";
+  tag = "InvalidDockerCompose";
 }
 
 export class HttpError extends AppError {
