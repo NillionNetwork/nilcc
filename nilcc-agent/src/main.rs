@@ -16,13 +16,14 @@ use nilcc_agent::{
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
+    workers::scheduler::VmScheduler,
 };
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::{net::TcpListener, signal};
 use tracing::{debug, info};
 
 #[derive(Parser)]
-#[clap(author, version = version::agent_version(), about = "nilCC Agent CLI")]
+#[clap(author, version = version::agent_version(), about = "nilcc agent")]
 struct Cli {
     /// The command to be ran.
     #[command(subcommand)]
@@ -119,8 +120,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
-    let disk_service = DefaultDiskService::new(config.qemu.img_bin);
-    let qemu_client = QemuClient::new(config.qemu.system_bin);
+    let qemu_client = QemuClient::new(config.qemu.system_bin.clone());
     let sni_proxy_service = Box::new(HaProxySniProxyService::new(
         config.sni_proxy.config_file_path,
         config.sni_proxy.ha_proxy_config_reload_command,
@@ -129,20 +129,23 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         config.sni_proxy.max_connections,
     ));
     let vm_service = DefaultVmService::new(VmServiceArgs {
-        state_path: config.vm_store,
+        state_path: config.vm_store.clone(),
         vm_client: Box::new(qemu_client),
-        disk_service: Box::new(disk_service),
         workload_repository: workload_repository.clone(),
-        cvm_config: config.cvm,
         sni_proxy_service,
     })
     .await
     .context("Failed to create vm service")?;
 
+    let scheduler = VmScheduler::spawn(Arc::new(QemuClient::new(config.qemu.system_bin)));
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
+        state_path: config.vm_store,
+        scheduler,
         repository: Box::new(SqliteWorkloadRepository::new(db)),
+        disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
+        cvm_config: config.cvm,
     })
     .await
     .context("Creating workload service")?;

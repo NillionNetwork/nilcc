@@ -1,12 +1,18 @@
 use crate::{
+    clients::qemu::{HardDiskFormat, HardDiskSpec, VmSpec},
+    config::{CvmConfig, CvmFiles},
+    iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository, WorkloadRepositoryError},
     resources::{GpuAddress, SystemResources},
     routes::workloads::create::CreateWorkloadRequest,
+    services::disk::{DiskService, DockerComposeHash},
+    workers::scheduler::VmSchedulerHandle,
 };
 use async_trait::async_trait;
-use std::{collections::BTreeSet, ops::Range};
+use std::{collections::BTreeSet, fmt, ops::Range, path::PathBuf};
 use strum::EnumDiscriminants;
 use tokio::sync::Mutex;
+use tracing::info;
 use uuid::Uuid;
 
 #[cfg_attr(test, mockall::automock)]
@@ -39,9 +45,13 @@ impl From<WorkloadRepositoryError> for CreateWorkloadError {
 }
 
 pub struct WorkloadServiceArgs {
+    pub state_path: PathBuf,
+    pub disk_service: Box<dyn DiskService>,
+    pub scheduler: Box<dyn VmSchedulerHandle>,
     pub repository: Box<dyn WorkloadRepository>,
     pub resources: SystemResources,
     pub open_ports: Range<u16>,
+    pub cvm_config: CvmConfig,
 }
 
 struct AvailableResources {
@@ -74,13 +84,18 @@ pub enum CreateServiceError {
 }
 
 pub struct DefaultWorkloadService {
+    state_path: PathBuf,
     repository: Box<dyn WorkloadRepository>,
+    scheduler: Box<dyn VmSchedulerHandle>,
+    disk_service: Box<dyn DiskService>,
     resources: Mutex<AvailableResources>,
+    cvm_config: CvmConfig,
 }
 
 impl DefaultWorkloadService {
     pub async fn new(args: WorkloadServiceArgs) -> Result<Self, CreateServiceError> {
-        let WorkloadServiceArgs { repository, resources, open_ports } = args;
+        let WorkloadServiceArgs { state_path, disk_service, scheduler, repository, resources, open_ports, cvm_config } =
+            args;
         let workloads = repository.list().await?;
         let mut gpus: BTreeSet<_> = resources.gpus.iter().flat_map(|g| g.addresses.iter().cloned()).collect();
         let mut ports: BTreeSet<_> = open_ports.collect();
@@ -111,7 +126,7 @@ impl DefaultWorkloadService {
         let gpus = gpus.into_iter().collect();
         let ports = ports.into_iter().collect();
         let resources = AvailableResources { cpus, gpus, ports, memory_gb, disk_space_gb }.into();
-        Ok(Self { repository, resources })
+        Ok(Self { state_path, scheduler, disk_service, repository, resources, cvm_config })
     }
 
     fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> WorkloadModel {
@@ -144,6 +159,74 @@ impl DefaultWorkloadService {
             status: WorkloadModelStatus::Scheduled,
         }
     }
+
+    fn create_vm_spec(
+        &self,
+        workload: &WorkloadModel,
+        iso_path: PathBuf,
+        state_disk_path: PathBuf,
+        docker_compose_hash: DockerComposeHash,
+    ) -> VmSpec {
+        let CvmFiles { base_disk, kernel, verity_root_hash, verity_disk } =
+            if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
+        let kernel_args =
+            KernelArgs { filesystem_root_hash: verity_root_hash, docker_compose_hash: &docker_compose_hash.0 };
+        VmSpec {
+            cpu: workload.cpus.into(),
+            ram_mib: workload.memory_mb,
+            hard_disks: vec![
+                HardDiskSpec { path: base_disk.clone(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: verity_disk.clone(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw },
+            ],
+            cdrom_iso_path: Some(iso_path),
+            gpus: workload.gpus.clone(),
+            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
+            bios_path: Some(self.cvm_config.bios.clone()),
+            initrd_path: Some(self.cvm_config.initrd.clone()),
+            kernel_path: Some(kernel.clone()),
+            kernel_args: Some(kernel_args.to_string()),
+            display_gtk: false,
+            enable_cvm: true,
+        }
+    }
+
+    async fn create_state_disk(&self, workload: &WorkloadModel) -> Result<PathBuf, CreateWorkloadError> {
+        let disk_name = format!("{}.raw", workload.id);
+        let disk_path = self.state_path.join(disk_name);
+        self.disk_service
+            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_gb.into())
+            .await
+            .map_err(|e| CreateWorkloadError::Internal(format!("failed to create state disk: {e}")))?;
+        Ok(disk_path)
+    }
+
+    async fn create_application_iso(
+        &self,
+        workload: &WorkloadModel,
+    ) -> Result<(PathBuf, DockerComposeHash), CreateWorkloadError> {
+        let iso_name = format!("{}.iso", workload.id);
+        let iso_path = self.state_path.join(iso_name);
+        let environment_variables =
+            workload.environment_variables.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
+        let spec = IsoSpec {
+            docker_compose_yaml: workload.docker_compose.clone(),
+            metadata: ApplicationMetadata {
+                hostname: "UNKNOWN".into(),
+                api: ContainerMetadata {
+                    container: workload.public_container_name.clone(),
+                    port: workload.public_container_port,
+                },
+            },
+            environment_variables,
+        };
+        let docker_compose_hash = self
+            .disk_service
+            .create_application_iso(&iso_path, spec)
+            .await
+            .map_err(|e| CreateWorkloadError::Internal(format!("failed to create ISO: {e}")))?;
+        Ok((iso_path, docker_compose_hash))
+    }
 }
 
 #[async_trait]
@@ -170,8 +253,19 @@ impl WorkloadService for DefaultWorkloadService {
             return Err(CreateWorkloadError::InsufficientResources("open ports"));
         }
         let workload = self.build_workload(request, &resources);
+        let id = workload.id;
+        info!("Storing workload {id} in database");
         // TODO: this should be a create, change once everything is migrated to new api
-        self.repository.upsert(workload).await?;
+        self.repository.upsert(workload.clone()).await?;
+
+        info!("Creating disks for VM {id}");
+        let (iso_path, docker_compose_hash) = self.create_application_iso(&workload).await?;
+        let state_disk = self.create_state_disk(&workload).await?;
+        let spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash);
+
+        info!("Scheduling VM {id}");
+        let socket_path = self.state_path.join(format!("{}.sock", workload.id));
+        self.scheduler.start_vm(workload.id, spec, socket_path).await;
 
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
@@ -182,19 +276,38 @@ impl WorkloadService for DefaultWorkloadService {
     }
 }
 
+struct KernelArgs<'a> {
+    docker_compose_hash: &'a str,
+    filesystem_root_hash: &'a str,
+}
+
+impl fmt::Display for KernelArgs<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { docker_compose_hash, filesystem_root_hash } = self;
+        write!(f, "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{repositories::workload::MockWorkloadRepository, resources::Gpus};
+    use crate::{
+        repositories::workload::MockWorkloadRepository, resources::Gpus, services::disk::MockDiskService,
+        workers::scheduler::MockVmSchedulerHandle,
+    };
     use mockall::predicate::eq;
     use rstest::rstest;
     use uuid::Uuid;
 
     struct Builder {
+        scheduler: MockVmSchedulerHandle,
         repository: MockWorkloadRepository,
+        disk_service: MockDiskService,
         resources: SystemResources,
         open_ports: Range<u16>,
         existing_workloads: Vec<WorkloadModel>,
+        cvm_config: CvmConfig,
+        state_path: PathBuf,
     }
 
     impl Builder {
@@ -207,9 +320,26 @@ mod tests {
         }
 
         async fn try_build(self) -> Result<DefaultWorkloadService, CreateServiceError> {
-            let Self { mut repository, resources, open_ports, existing_workloads } = self;
+            let Self {
+                scheduler,
+                mut repository,
+                disk_service,
+                resources,
+                open_ports,
+                existing_workloads,
+                cvm_config,
+                state_path,
+            } = self;
             repository.expect_list().return_once(move || Ok(existing_workloads));
-            let args = WorkloadServiceArgs { repository: Box::new(repository), resources, open_ports };
+            let args = WorkloadServiceArgs {
+                scheduler: Box::new(scheduler),
+                repository: Box::new(repository),
+                disk_service: Box::new(disk_service),
+                resources,
+                open_ports,
+                cvm_config,
+                state_path,
+            };
             DefaultWorkloadService::new(args).await
         }
     }
@@ -217,7 +347,9 @@ mod tests {
     impl Default for Builder {
         fn default() -> Self {
             Self {
+                scheduler: Default::default(),
                 repository: Default::default(),
+                disk_service: Default::default(),
                 resources: SystemResources {
                     hostname: "foo".into(),
                     memory_gb: 16,
@@ -230,6 +362,23 @@ mod tests {
                 },
                 open_ports: 100..200,
                 existing_workloads: Default::default(),
+                cvm_config: CvmConfig {
+                    initrd: "/initrd".into(),
+                    bios: "/bios".into(),
+                    cpu: CvmFiles {
+                        base_disk: "/cpu/base-disk".into(),
+                        kernel: "/cpu/kernel".into(),
+                        verity_disk: "/cpu/verity-disk".into(),
+                        verity_root_hash: "cpu-root-hash".into(),
+                    },
+                    gpu: CvmFiles {
+                        base_disk: "/gpu/base-disk".into(),
+                        kernel: "/gpu/kernel".into(),
+                        verity_disk: "/gpu/verity-disk".into(),
+                        verity_root_hash: "gpu-root-hash".into(),
+                    },
+                },
+                state_path: PathBuf::from("/tmp"),
             }
         }
     }
@@ -356,15 +505,59 @@ mod tests {
             metal_https_port: 101,
             status: WorkloadModelStatus::Scheduled,
         };
-
         let mut builder = Builder::default();
+        let docker_compose_hash = "deadbeef";
+        let id = workload.id;
+        let base_path = builder.state_path.display();
+        let iso_path = PathBuf::from(format!("{base_path}/{id}.iso"));
+        let state_disk_path = PathBuf::from(format!("{base_path}/{id}.raw"));
+        let socket_path = PathBuf::from(format!("{base_path}/{id}.sock"));
+        let kernel_args = KernelArgs {
+            docker_compose_hash: docker_compose_hash,
+            filesystem_root_hash: &builder.cvm_config.gpu.verity_root_hash,
+        }
+        .to_string();
+        let spec = VmSpec {
+            cpu: 1,
+            ram_mib: 1024,
+            hard_disks: vec![
+                HardDiskSpec { path: "/gpu/base-disk".into(), format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: "/gpu/verity-disk".into(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: state_disk_path.clone(), format: HardDiskFormat::Raw },
+            ],
+            cdrom_iso_path: Some(iso_path.clone()),
+            gpus: vec!["addr1".into()],
+            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
+            bios_path: Some("/bios".into()),
+            initrd_path: Some("/initrd".into()),
+            kernel_path: Some("/gpu/kernel".into()),
+            kernel_args: Some(kernel_args),
+            display_gtk: false,
+            enable_cvm: true,
+        };
+
         let expected_cpus = builder.resources.available_cpus() - request.cpus.get() as u32;
         let expected_memory = builder.resources.available_memory_gb() - request.memory_gb as u64;
         let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb.get() as u64;
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder.repository.expect_upsert().with(eq(workload)).return_once(|_| Ok(()));
+        builder.repository.expect_upsert().with(eq(workload.clone())).once().return_once(|_| Ok(()));
+        builder
+            .disk_service
+            .expect_create_application_iso()
+            .return_once(move |_, _| Ok(DockerComposeHash(docker_compose_hash.into())));
+        builder
+            .disk_service
+            .expect_create_disk()
+            .with(eq(state_disk_path), eq(HardDiskFormat::Raw), eq(1))
+            .return_once(move |_, _, _| Ok(()));
+        builder
+            .scheduler
+            .expect_start_vm()
+            .with(eq(workload.id), eq(spec), eq(socket_path))
+            .once()
+            .return_once(|_, _, _| ());
 
         let service = builder.build().await;
         service.create_workload(request).await.expect("failed to create");
