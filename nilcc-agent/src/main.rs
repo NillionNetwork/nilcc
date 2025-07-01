@@ -3,21 +3,23 @@ use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     agent_service::{AgentService, AgentServiceArgs},
-    clients::nilcc_api::HttpNilccApiClient,
-    clients::qemu::QemuClient,
-    config::{AgentConfig, ApiConfig},
+    clients::{nilcc_api::HttpNilccApiClient, qemu::QemuClient},
+    config::{AgentConfig, ControllerConfig},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
     repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
     resources::SystemResources,
+    routes::{build_router, AppState, Services},
     services::{
         disk::DefaultDiskService,
         sni_proxy::HaProxySniProxyService,
         vm::{DefaultVmService, VmServiceArgs},
+        workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
 };
 use std::{fs, path::PathBuf, sync::Arc};
-use tracing::debug;
+use tokio::{net::TcpListener, signal};
+use tracing::{debug, info};
 
 #[derive(Parser)]
 #[clap(author, version = version::agent_version(), about = "nilCC Agent CLI")]
@@ -101,7 +103,7 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 }
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
-    let ApiConfig { endpoint, key, sync_interval } = config.api;
+    let ControllerConfig { endpoint, key, sync_interval } = config.controller;
 
     PrometheusBuilder::default()
         .with_http_listener(config.metrics.bind_endpoint)
@@ -116,7 +118,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     debug!("sqlite db url: {}", config.db.url);
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
-    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db));
+    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
     let disk_service = DefaultDiskService::new(config.qemu.img_bin);
     let qemu_client = QemuClient::new(config.qemu.system_bin);
     let sni_proxy_service = Box::new(HaProxySniProxyService::new(
@@ -137,6 +139,18 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     .await
     .context("Failed to create vm service")?;
 
+    let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
+        repository: Box::new(SqliteWorkloadRepository::new(db)),
+        resources: system_resources.clone(),
+        open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
+    })
+    .await
+    .context("Creating workload service")?;
+    let state = AppState { services: Services { workload: Arc::new(workload_service) } };
+    let router = build_router(state);
+    let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
+    let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
+
     let args = AgentServiceArgs {
         agent_id: config.agent_id,
         api_client,
@@ -152,8 +166,26 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let _handle = agent_service.run().await.context("AgentService failed to start and register")?;
     debug!("AgentService is running.");
 
-    tokio::signal::ctrl_c().await?;
-    Ok(())
+    server.await.context("Failed to serve")
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("Received shutdown signal");
 }
 
 async fn run(cli: Cli) -> anyhow::Result<()> {

@@ -67,6 +67,18 @@ impl SystemResources {
         })
     }
 
+    pub(crate) fn available_cpus(&self) -> u32 {
+        self.cpus.saturating_sub(self.reserved_cpus)
+    }
+
+    pub(crate) fn available_memory_gb(&self) -> u64 {
+        self.memory_gb.saturating_sub(self.reserved_memory_gb)
+    }
+
+    pub(crate) fn available_disk_space_gb(&self) -> u64 {
+        self.disk_space_gb.saturating_sub(self.reserved_disk_space_gb)
+    }
+
     pub async fn create_gpu_vfio_devices(&self) -> anyhow::Result<()> {
         let Some(gpus) = &self.gpus else {
             return Ok(());
@@ -116,7 +128,7 @@ impl SystemResources {
 
         addresses.sort();
 
-        Ok(Some(Gpus { model: H100_MODEL.to_string(), addresses }))
+        Ok(Some(Gpus::new(H100_MODEL, addresses)))
     }
 
     fn parse_device_id(lspci_output: &str) -> anyhow::Result<String> {
@@ -168,6 +180,12 @@ impl fmt::Display for GpuAddress {
 pub(crate) struct Gpus {
     pub(crate) model: String,
     pub(crate) addresses: Vec<GpuAddress>,
+}
+
+impl Gpus {
+    pub(crate) fn new<S: Into<String>, I: Into<Vec<GpuAddress>>>(model: S, addresses: I) -> Self {
+        Self { model: model.into(), addresses: addresses.into() }
+    }
 }
 
 #[cfg(test)]

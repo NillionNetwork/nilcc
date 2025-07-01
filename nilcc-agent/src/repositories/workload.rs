@@ -132,6 +132,7 @@ pub enum WorkloadModelStatus {
     #[default]
     Pending,
     Running,
+    Scheduled,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -155,8 +156,20 @@ pub enum WorkloadRepositoryError {
     #[error("workload not found")]
     WorkloadNotFound,
 
+    #[error("workload already exists")]
+    DuplicateWorkload,
+
     #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for WorkloadRepositoryError {
+    fn from(e: sqlx::Error) -> Self {
+        match e {
+            sqlx::Error::Database(e) if e.is_unique_violation() => Self::DuplicateWorkload,
+            _ => Self::Database(e),
+        }
+    }
 }
 
 pub struct SqliteWorkloadRepository {

@@ -1,0 +1,379 @@
+use crate::{
+    repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository, WorkloadRepositoryError},
+    resources::{GpuAddress, SystemResources},
+    routes::workloads::create::CreateWorkloadRequest,
+};
+use async_trait::async_trait;
+use std::{collections::BTreeSet, ops::Range};
+use strum::EnumDiscriminants;
+use tokio::sync::Mutex;
+use uuid::Uuid;
+
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait WorkloadService: Send + Sync {
+    async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
+}
+
+#[derive(Debug, thiserror::Error, EnumDiscriminants)]
+pub enum CreateWorkloadError {
+    #[error("not enough {0} avalable")]
+    InsufficientResources(&'static str),
+
+    #[error("internal: {0}")]
+    Internal(String),
+
+    #[error("workload already exists")]
+    AlreadyExists,
+}
+
+impl From<WorkloadRepositoryError> for CreateWorkloadError {
+    fn from(e: WorkloadRepositoryError) -> Self {
+        match e {
+            WorkloadRepositoryError::DuplicateWorkload => Self::AlreadyExists,
+            WorkloadRepositoryError::WorkloadNotFound | WorkloadRepositoryError::Database(_) => {
+                Self::Internal(e.to_string())
+            }
+        }
+    }
+}
+
+pub struct WorkloadServiceArgs {
+    pub repository: Box<dyn WorkloadRepository>,
+    pub resources: SystemResources,
+    pub open_ports: Range<u16>,
+}
+
+struct AvailableResources {
+    cpus: u32,
+    gpus: Vec<GpuAddress>,
+    memory_gb: u64,
+    disk_space_gb: u64,
+    ports: Vec<u16>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreateServiceError {
+    #[error("too many vCPUs allocated")]
+    OvercommittedCpus,
+
+    #[error("too much memory allocated")]
+    OvercommittedMemory,
+
+    #[error("too much disk space allocated")]
+    OvercommittedDiskSpace,
+
+    #[error("workload {0} uses GPU {1} but it is not part of the detected resources")]
+    CommittedGpuMissing(Uuid, GpuAddress),
+
+    #[error("allocated port {0} is out of the public range")]
+    PortOutOfRange(u16),
+
+    #[error("database: {0}")]
+    Database(#[from] WorkloadRepositoryError),
+}
+
+pub struct DefaultWorkloadService {
+    repository: Box<dyn WorkloadRepository>,
+    resources: Mutex<AvailableResources>,
+}
+
+impl DefaultWorkloadService {
+    pub async fn new(args: WorkloadServiceArgs) -> Result<Self, CreateServiceError> {
+        let WorkloadServiceArgs { repository, resources, open_ports } = args;
+        let workloads = repository.list().await?;
+        let mut gpus: BTreeSet<_> = resources.gpus.iter().flat_map(|g| g.addresses.iter().cloned()).collect();
+        let mut ports: BTreeSet<_> = open_ports.collect();
+        let mut cpus = resources.available_cpus();
+        let mut memory_gb = resources.available_memory_gb();
+        let mut disk_space_gb = resources.available_disk_space_gb();
+        for workload in workloads {
+            let workload_id = workload.id;
+            for gpu in workload.gpus {
+                if !gpus.remove(&gpu) {
+                    return Err(CreateServiceError::CommittedGpuMissing(workload_id, gpu));
+                }
+            }
+            for port in [workload.metal_http_port, workload.metal_https_port] {
+                if !ports.remove(&port) {
+                    return Err(CreateServiceError::PortOutOfRange(port));
+                }
+            }
+            cpus = cpus.checked_sub(workload.cpus.get() as u32).ok_or(CreateServiceError::OvercommittedCpus)?;
+            // TODO conversions....
+            memory_gb = memory_gb
+                .checked_sub((workload.memory_mb / 1024) as u64)
+                .ok_or(CreateServiceError::OvercommittedMemory)?;
+            disk_space_gb = disk_space_gb
+                .checked_sub(workload.disk_gb.get() as u64)
+                .ok_or(CreateServiceError::OvercommittedDiskSpace)?;
+        }
+        let gpus = gpus.into_iter().collect();
+        let ports = ports.into_iter().collect();
+        let resources = AvailableResources { cpus, gpus, ports, memory_gb, disk_space_gb }.into();
+        Ok(Self { repository, resources })
+    }
+
+    fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> WorkloadModel {
+        let CreateWorkloadRequest {
+            id,
+            docker_compose,
+            env_vars,
+            public_container_name,
+            public_container_port,
+            memory_gb,
+            cpus,
+            gpus,
+            disk_space_gb,
+        } = request;
+        let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
+        let ports: Vec<u16> = resources.ports.iter().take(2).copied().collect();
+
+        WorkloadModel {
+            id,
+            docker_compose,
+            environment_variables: env_vars,
+            public_container_name,
+            public_container_port,
+            memory_mb: memory_gb * 1024,
+            cpus,
+            gpus,
+            disk_gb: disk_space_gb,
+            metal_http_port: ports[0],
+            metal_https_port: ports[1],
+            status: WorkloadModelStatus::Scheduled,
+        }
+    }
+}
+
+#[async_trait]
+impl WorkloadService for DefaultWorkloadService {
+    async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
+        let mut resources = self.resources.lock().await;
+        let cpus = request.cpus.get() as u32;
+        let gpus = request.gpus as usize;
+        let memory_gb = request.memory_gb as u64;
+        let disk_space_gb = request.disk_space_gb.get() as u64;
+        if resources.cpus < cpus {
+            return Err(CreateWorkloadError::InsufficientResources("CPUs"));
+        }
+        if resources.gpus.len() < gpus {
+            return Err(CreateWorkloadError::InsufficientResources("GPUs"));
+        }
+        if resources.memory_gb < memory_gb {
+            return Err(CreateWorkloadError::InsufficientResources("memory"));
+        }
+        if resources.disk_space_gb < disk_space_gb {
+            return Err(CreateWorkloadError::InsufficientResources("disk space"));
+        }
+        if resources.ports.len() < 2 {
+            return Err(CreateWorkloadError::InsufficientResources("open ports"));
+        }
+        let workload = self.build_workload(request, &resources);
+        // TODO: this should be a create, change once everything is migrated to new api
+        self.repository.upsert(workload).await?;
+
+        resources.cpus -= cpus;
+        resources.gpus.drain(0..gpus);
+        resources.ports.drain(0..2);
+        resources.memory_gb -= memory_gb;
+        resources.disk_space_gb -= disk_space_gb;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{repositories::workload::MockWorkloadRepository, resources::Gpus};
+    use mockall::predicate::eq;
+    use rstest::rstest;
+    use uuid::Uuid;
+
+    struct Builder {
+        repository: MockWorkloadRepository,
+        resources: SystemResources,
+        open_ports: Range<u16>,
+        existing_workloads: Vec<WorkloadModel>,
+    }
+
+    impl Builder {
+        async fn build(self) -> DefaultWorkloadService {
+            self.try_build().await.expect("failed to build")
+        }
+
+        async fn build_invalid(self) -> CreateServiceError {
+            self.try_build().await.map(|_| ()).expect_err("build succeeded")
+        }
+
+        async fn try_build(self) -> Result<DefaultWorkloadService, CreateServiceError> {
+            let Self { mut repository, resources, open_ports, existing_workloads } = self;
+            repository.expect_list().return_once(move || Ok(existing_workloads));
+            let args = WorkloadServiceArgs { repository: Box::new(repository), resources, open_ports };
+            DefaultWorkloadService::new(args).await
+        }
+    }
+
+    impl Default for Builder {
+        fn default() -> Self {
+            Self {
+                repository: Default::default(),
+                resources: SystemResources {
+                    hostname: "foo".into(),
+                    memory_gb: 16,
+                    reserved_memory_gb: 2,
+                    disk_space_gb: 100,
+                    reserved_disk_space_gb: 2,
+                    cpus: 8,
+                    reserved_cpus: 2,
+                    gpus: None,
+                },
+                open_ports: 100..200,
+                existing_workloads: Default::default(),
+            }
+        }
+    }
+
+    fn make_workload() -> WorkloadModel {
+        WorkloadModel {
+            id: Uuid::new_v4(),
+            docker_compose: Default::default(),
+            environment_variables: Default::default(),
+            public_container_name: Default::default(),
+            public_container_port: Default::default(),
+            memory_mb: Default::default(),
+            cpus: 1.try_into().unwrap(),
+            disk_gb: 1.try_into().unwrap(),
+            gpus: Default::default(),
+            metal_http_port: 150,
+            metal_https_port: 151,
+            status: Default::default(),
+        }
+    }
+
+    #[rstest]
+    #[case::cpu(
+        WorkloadModel { cpus: 2.try_into().unwrap(), ..make_workload() },
+        CreateServiceError::OvercommittedCpus
+    )]
+    #[case::memory(
+        WorkloadModel { memory_mb: 2048.try_into().unwrap(), ..make_workload() },
+        CreateServiceError::OvercommittedMemory
+    )]
+    #[case::disk_space(
+        WorkloadModel { disk_gb: 2048.try_into().unwrap(), ..make_workload() },
+        CreateServiceError::OvercommittedDiskSpace
+    )]
+    #[case::gpus(
+        WorkloadModel { id: Uuid::nil(), gpus: vec!["addr1".into(), "addr2".into()], ..make_workload() },
+        CreateServiceError::CommittedGpuMissing(Uuid::nil(), "addr2".into())
+    )]
+    #[case::http_port(
+        WorkloadModel { metal_http_port: 50, ..make_workload() },
+        CreateServiceError::PortOutOfRange(50)
+    )]
+    #[case::https_port(
+        WorkloadModel { metal_https_port: 50, ..make_workload() },
+        CreateServiceError::PortOutOfRange(50)
+    )]
+    #[tokio::test]
+    async fn startup_overcommitted(#[case] workload: WorkloadModel, #[case] error: CreateServiceError) {
+        let mut builder = Builder::default();
+        builder.resources.cpus = 2;
+        builder.resources.reserved_cpus = 1;
+        builder.resources.memory_gb = 2;
+        builder.resources.reserved_memory_gb = 1;
+        builder.resources.disk_space_gb = 2;
+        builder.resources.reserved_disk_space_gb = 1;
+        builder.resources.gpus = Some(Gpus::new("H100", &["addr1".into()]));
+        builder.open_ports = 100..200;
+        builder.existing_workloads = vec![workload];
+        assert_eq!(builder.build_invalid().await.to_string(), error.to_string());
+    }
+
+    #[tokio::test]
+    async fn tally_used_resources() {
+        let mut builder = Builder::default();
+        builder.resources.cpus = 4;
+        builder.resources.reserved_cpus = 1;
+        builder.resources.memory_gb = 8;
+        builder.resources.reserved_memory_gb = 2;
+        builder.resources.disk_space_gb = 100;
+        builder.resources.reserved_disk_space_gb = 20;
+        builder.resources.gpus = Some(Gpus::new("H100", &["addr1".into(), "addr2".into()]));
+        builder.open_ports = 1000..2000;
+
+        let workload = WorkloadModel {
+            cpus: 1.try_into().unwrap(),
+            memory_mb: 1024,
+            disk_gb: 10.try_into().unwrap(),
+            gpus: vec!["addr1".into()],
+            metal_http_port: 1000,
+            metal_https_port: 1001,
+            ..make_workload()
+        };
+        builder.existing_workloads = vec![workload];
+
+        let service = builder.build().await;
+        let resources = service.resources.lock().await;
+        // 4 total, 1 reserved, 1 used
+        assert_eq!(resources.cpus, 2);
+
+        // 8 total, 2 reserved, 1 used
+        assert_eq!(resources.memory_gb, 5);
+
+        // 100 total, 20 reserved, 10 used
+        assert_eq!(resources.disk_space_gb, 70);
+
+        // 2 total, 1 used
+        assert_eq!(resources.gpus, vec!["addr2".into()]);
+    }
+
+    #[tokio::test]
+    async fn create_success() {
+        let request = CreateWorkloadRequest {
+            id: Uuid::new_v4(),
+            docker_compose: "compose".into(),
+            env_vars: Default::default(),
+            public_container_name: "api".into(),
+            public_container_port: 80,
+            memory_gb: 1,
+            cpus: 1.try_into().unwrap(),
+            gpus: 1,
+            disk_space_gb: 1.try_into().unwrap(),
+        };
+        let workload = WorkloadModel {
+            id: request.id,
+            docker_compose: request.docker_compose.clone(),
+            environment_variables: request.env_vars.clone(),
+            public_container_name: request.public_container_name.clone(),
+            public_container_port: request.public_container_port,
+            memory_mb: request.memory_gb * 1024,
+            cpus: request.cpus,
+            gpus: vec!["addr1".into()],
+            disk_gb: request.disk_space_gb,
+            metal_http_port: 100,
+            metal_https_port: 101,
+            status: WorkloadModelStatus::Scheduled,
+        };
+
+        let mut builder = Builder::default();
+        let expected_cpus = builder.resources.available_cpus() - request.cpus.get() as u32;
+        let expected_memory = builder.resources.available_memory_gb() - request.memory_gb as u64;
+        let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb.get() as u64;
+
+        builder.open_ports = 100..200;
+        builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
+        builder.repository.expect_upsert().with(eq(workload)).return_once(|_| Ok(()));
+
+        let service = builder.build().await;
+        service.create_workload(request).await.expect("failed to create");
+
+        // Make sure the allocated resources are successfully tracked.
+        let resources = service.resources.lock().await;
+        assert_eq!(resources.cpus, expected_cpus);
+        assert_eq!(resources.memory_gb, expected_memory);
+        assert_eq!(resources.disk_space_gb, expected_disk_space);
+        assert_eq!(resources.gpus, vec![]);
+    }
+}
