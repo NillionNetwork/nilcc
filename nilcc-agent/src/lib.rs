@@ -5,5 +5,6 @@ pub mod iso;
 pub mod models;
 pub mod repositories;
 pub mod resources;
+pub mod routes;
 pub mod services;
 pub mod version;

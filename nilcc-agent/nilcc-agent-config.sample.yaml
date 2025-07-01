@@ -6,6 +6,9 @@ qemu:
   img_bin: qemu-img
 
 api:
+  bind_endpoint: "127.0.0.1:50055"
+
+controller:
   endpoint: "http://127.0.0.1:50051"
   key: test
   sync_interval: 10s

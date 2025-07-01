@@ -6,6 +6,9 @@ qemu:
   img_bin: qemu-img
 
 api:
+  bind_endpoint: "127.0.0.1:50055"
+
+controller:
   endpoint: "http://127.0.0.1:8081"
   key: your-metal-instance-api-key
   sync_interval: 10s
