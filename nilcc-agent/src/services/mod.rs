@@ -1,4 +1,3 @@
 pub mod disk;
-pub mod sni_proxy;
-pub mod vm;
+pub mod proxy;
 pub mod workload;

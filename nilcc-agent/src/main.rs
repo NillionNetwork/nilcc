@@ -6,13 +6,15 @@ use nilcc_agent::{
     clients::{nilcc_api::HttpNilccApiClient, qemu::QemuClient},
     config::{AgentConfig, ControllerConfig},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
-    repositories::{sqlite::SqliteDb, workload::SqliteWorkloadRepository},
+    repositories::{
+        sqlite::SqliteDb,
+        workload::{SqliteWorkloadRepository, WorkloadRepository},
+    },
     resources::SystemResources,
     routes::{build_router, AppState, Services},
     services::{
         disk::DefaultDiskService,
-        sni_proxy::HaProxySniProxyService,
-        vm::{DefaultVmService, VmServiceArgs},
+        proxy::HaProxyProxyService,
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
@@ -104,7 +106,7 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 }
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
-    let ControllerConfig { endpoint, key, sync_interval } = config.controller;
+    let ControllerConfig { endpoint, key } = config.controller;
 
     PrometheusBuilder::default()
         .with_http_listener(config.metrics.bind_endpoint)
@@ -120,22 +122,16 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
-    let qemu_client = QemuClient::new(config.qemu.system_bin.clone());
-    let sni_proxy_service = Box::new(HaProxySniProxyService::new(
+    let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
+    let proxied_vms = existing_workloads.iter().map(Into::into).collect();
+    let proxy_service = HaProxyProxyService::new(
         config.sni_proxy.config_file_path,
         config.sni_proxy.ha_proxy_config_reload_command,
         config.sni_proxy.timeouts,
         config.sni_proxy.dns_subdomain,
         config.sni_proxy.max_connections,
-    ));
-    let vm_service = DefaultVmService::new(VmServiceArgs {
-        state_path: config.vm_store.clone(),
-        vm_client: Box::new(qemu_client),
-        workload_repository: workload_repository.clone(),
-        sni_proxy_service,
-    })
-    .await
-    .context("Failed to create vm service")?;
+        proxied_vms,
+    );
 
     let scheduler = VmScheduler::spawn(Arc::new(QemuClient::new(config.qemu.system_bin)));
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
@@ -146,6 +142,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
         cvm_config: config.cvm,
+        proxy_service: Box::new(proxy_service),
     })
     .await
     .context("Creating workload service")?;
@@ -154,19 +151,10 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
     let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
 
-    let args = AgentServiceArgs {
-        agent_id: config.agent_id,
-        api_client,
-        vm_service: Box::new(vm_service),
-        workload_repository,
-        sync_interval,
-        start_port_range: config.sni_proxy.start_port_range,
-        end_port_range: config.sni_proxy.end_port_range,
-        system_resources,
-    };
+    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, system_resources };
     let agent_service = AgentService::new(args);
 
-    let _handle = agent_service.run().await.context("AgentService failed to start and register")?;
+    agent_service.register().await.context("AgentService failed to register")?;
     debug!("AgentService is running.");
 
     server.await.context("Failed to serve")
