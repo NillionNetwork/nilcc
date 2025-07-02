@@ -2,8 +2,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
-    agent_service::{AgentService, AgentServiceArgs},
-    clients::{nilcc_api::HttpNilccApiClient, qemu::QemuClient},
+    clients::{
+        nilcc_api::{HttpNilccApiClient, NilccApiClient},
+        qemu::QemuClient,
+    },
     config::{AgentConfig, ControllerConfig},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
     repositories::{
@@ -117,8 +119,13 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
-    let api_client = Box::new(HttpNilccApiClient::new(endpoint, key)?);
-    debug!("sqlite db url: {}", config.db.url);
+    info!("Setting up dependencies");
+    let api_client = Box::new(HttpNilccApiClient::new(nilcc_agent::clients::nilcc_api::NilccApiClientArgs {
+        api_base_url: endpoint,
+        api_key: key,
+        agent_id: config.agent_id,
+    })?);
+    api_client.register(&system_resources).await.context("Failed to register")?;
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
@@ -150,11 +157,6 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let router = build_router(state);
     let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
     let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
-
-    let args = AgentServiceArgs { agent_id: config.agent_id, api_client, system_resources };
-    let agent_service = AgentService::new(args);
-
-    agent_service.register().await.context("AgentService failed to register")?;
     debug!("AgentService is running.");
 
     server.await.context("Failed to serve")

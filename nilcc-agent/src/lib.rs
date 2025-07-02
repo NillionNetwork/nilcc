@@ -1,4 +1,3 @@
-pub mod agent_service;
 pub mod clients;
 pub mod config;
 pub mod iso;
