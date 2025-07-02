@@ -44,7 +44,7 @@ describe("Agent Connectivity", () => {
     }
 
     // TODO: Implement a proper check for the agent registration
-    expect(agentStdOut).toContain("Registration complete");
+    expect(agentStdOut).toContain("Listening to requests on ");
     expect(agentErrorOutput).toBe("");
   });
 });

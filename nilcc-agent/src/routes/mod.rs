@@ -24,8 +24,13 @@ pub struct AppState {
 }
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .nest("/api/v1", Router::new().route("/workloads/create", post(workloads::create::handler)).with_state(state))
+    Router::new().nest(
+        "/api/v1",
+        Router::new()
+            .route("/workloads/create", post(workloads::create::handler))
+            .route("/workloads/delete", post(workloads::delete::handler))
+            .with_state(state),
+    )
 }
 
 /// An error when handling a request.

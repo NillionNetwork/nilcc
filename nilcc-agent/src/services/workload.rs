@@ -22,6 +22,7 @@ use uuid::Uuid;
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
+    async fn delete_workload(&self, id: Uuid);
 }
 
 #[derive(Debug, thiserror::Error, EnumDiscriminants)]
@@ -284,7 +285,7 @@ impl WorkloadService for DefaultWorkloadService {
         info!("Scheduling VM {id}");
         let socket_path = self.state_path.join(format!("{}.sock", workload.id));
         self.scheduler.start_vm(workload.id, spec, socket_path).await;
-        self.proxy_service.add_proxied_vm((&workload).into()).await;
+        self.proxy_service.start_vm_proxy((&workload).into()).await;
 
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
@@ -292,6 +293,11 @@ impl WorkloadService for DefaultWorkloadService {
         resources.memory_gb -= memory_gb;
         resources.disk_space_gb -= disk_space_gb;
         Ok(())
+    }
+
+    async fn delete_workload(&self, id: Uuid) {
+        self.proxy_service.stop_vm_proxy(id).await;
+        self.scheduler.stop_vm(id).await;
     }
 }
 
@@ -588,7 +594,7 @@ mod tests {
             .return_once(|_, _, _| ());
         builder
             .proxy_service
-            .expect_add_proxied_vm()
+            .expect_start_vm_proxy()
             .with(eq(ProxiedVm { id: workload.id, http_port: 100, https_port: 101 }))
             .return_once(move |_| ());
 

@@ -157,7 +157,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let router = build_router(state);
     let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
     let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
-    debug!("AgentService is running.");
+    info!("Listening to requests on {}", config.api.bind_endpoint);
 
     server.await.context("Failed to serve")
 }
