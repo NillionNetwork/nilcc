@@ -1,9 +1,10 @@
-use crate::models::{MetalInstance, MetalInstanceDetails};
 use crate::resources::SystemResources;
 use crate::version::agent_version;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use reqwest::{Client, Method, RequestBuilder as ReqwestRequestBuilder};
+use axum::http::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::{Client, Method};
+use serde::Serialize;
 use uuid::Uuid;
 
 #[cfg_attr(test, mockall::automock)]
@@ -11,6 +12,17 @@ use uuid::Uuid;
 pub trait NilccApiClient: Send + Sync {
     /// Register an agent.
     async fn register(&self, resources: &SystemResources) -> anyhow::Result<()>;
+
+    /// Report an event that occurred for a VM.
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()>;
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum VmEvent {
+    Started,
+    Stopped,
+    FailedToStart { error: String },
 }
 
 pub struct NilccApiClientArgs {
@@ -20,9 +32,8 @@ pub struct NilccApiClientArgs {
 }
 
 pub struct HttpNilccApiClient {
-    http_client: Client,
+    client: Client,
     api_base_url: String,
-    api_key: String,
     agent_id: Uuid,
 }
 
@@ -30,15 +41,36 @@ impl HttpNilccApiClient {
     /// Creates a new instance with the specified API base URL.
     pub fn new(args: NilccApiClientArgs) -> anyhow::Result<Self> {
         let NilccApiClientArgs { api_base_url, api_key, agent_id } = args;
-        let http_client = Client::builder()
+        let mut headers = HeaderMap::new();
+        let mut api_key = HeaderValue::from_str(&api_key).context("Invalid API key")?;
+        api_key.set_sensitive(true);
+        headers.insert(HeaderName::from_static("x-api-key"), api_key);
+
+        let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .default_headers(headers)
             .build()
             .context("Failed to build reqwest client")?;
-        Ok(Self { http_client, api_base_url, api_key, agent_id })
+        Ok(Self { client, api_base_url, agent_id })
     }
 
-    fn prepare_request(&self, method: Method, url: String) -> ReqwestRequestBuilder {
-        self.http_client.request(method, &url).header("x-api-key", &self.api_key)
+    async fn send_request<T>(&self, method: Method, url: String, payload: &T) -> anyhow::Result<()>
+    where
+        T: Serialize,
+    {
+        let response = self
+            .client
+            .request(method, url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to send registration request")?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            bail!("Request failed: status={}, error={}", response.status(), response.text().await.unwrap_or_default());
+        }
     }
 
     fn make_url(&self, endpoint: &str) -> String {
@@ -51,37 +83,66 @@ impl HttpNilccApiClient {
 impl NilccApiClient for HttpNilccApiClient {
     async fn register(&self, resources: &SystemResources) -> anyhow::Result<()> {
         let url = self.make_url("/api/v1/metal-instances/~/register");
-        let payload = MetalInstance {
+        let payload = RegisterRequest {
             id: self.agent_id,
-            details: MetalInstanceDetails {
-                agent_version: agent_version().to_string(),
-                hostname: resources.hostname.clone(),
-                memory_gb: resources.memory_gb,
-                os_reserved_memory_gb: resources.reserved_memory_gb,
-                disk_space_gb: resources.disk_space_gb,
-                os_reserved_disk_space_gb: resources.reserved_disk_space_gb,
-                cpus: resources.cpus,
-                os_reserved_cpus: resources.reserved_cpus,
-                gpus: resources.gpus.as_ref().map(|g| g.addresses.len() as u32),
-                gpu_model: resources.gpus.as_ref().map(|g| g.model.clone()),
-            },
+            agent_version: agent_version().to_string(),
+            hostname: resources.hostname.clone(),
+            memory_gb: resources.memory_gb,
+            os_reserved_memory_gb: resources.reserved_memory_gb,
+            disk_space_gb: resources.disk_space_gb,
+            os_reserved_disk_space_gb: resources.reserved_disk_space_gb,
+            cpus: resources.cpus,
+            os_reserved_cpus: resources.reserved_cpus,
+            gpus: resources.gpus.as_ref().map(|g| g.addresses.len() as u32),
+            gpu_model: resources.gpus.as_ref().map(|g| g.model.clone()),
         };
-
-        let response = self
-            .prepare_request(Method::POST, url)
-            .json(&payload)
-            .send()
-            .await
-            .context("Failed to send registration request")?;
-
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            bail!(
-                "Failed to register agent: status={}, error={}",
-                response.status(),
-                response.text().await.unwrap_or_default()
-            );
-        }
+        self.send_request(Method::POST, url, &payload).await.context("Failed to register agent")
     }
+
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
+        let url = self.make_url("/api/v1/metal-instances/~/events/submit");
+        let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
+        self.send_request(Method::POST, url, &payload).await.context("Failed to submit event")
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterRequest {
+    id: Uuid,
+
+    agent_version: String,
+
+    hostname: String,
+
+    #[serde(rename = "totalMemory")]
+    memory_gb: u64,
+
+    #[serde(rename = "osReservedMemory")]
+    os_reserved_memory_gb: u64,
+
+    #[serde(rename = "totalDisk")]
+    disk_space_gb: u64,
+
+    #[serde(rename = "osReservedDisk")]
+    os_reserved_disk_space_gb: u64,
+
+    #[serde(rename = "totalCpus")]
+    cpus: u32,
+
+    os_reserved_cpus: u32,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gpus: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gpu_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VmEventRequest {
+    agent_id: Uuid,
+    workload_id: Uuid,
+    event: VmEvent,
 }
