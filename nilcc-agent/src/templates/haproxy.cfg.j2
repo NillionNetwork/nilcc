@@ -18,8 +18,8 @@ frontend http_frontend
     option httplog
 
     # Route based on HTTP Host header
-    {%- for workload in workloads %}
-    use_backend workload-http-{{ workload.id }} if { hdr(host) -i {{ workload.domain }} }
+    {%- for backend in backends %}
+    use_backend backend-http-{{ backend.id }} if { hdr(host) -i {{ backend.domain }} }
     {%- endfor %}
 
 # Frontend for HTTPS traffic (port 443)
@@ -33,18 +33,18 @@ frontend https_frontend
     tcp-request content accept if { req_ssl_hello_type 1 }
 
     # Route based on SNI
-    {%- for workload in workloads %}
-    use_backend workload-https-{{ workload.id }} if { req.ssl_sni -i {{ workload.domain }} }
+    {%- for backend in backends %}
+    use_backend backend-https-{{ backend.id }} if { req.ssl_sni -i {{ backend.domain }} }
     {%- endfor %}
 
 # Backend servers
-{%- for workload in workloads %}
-backend workload-http-{{ workload.id }}
+{%- for backend in backends %}
+backend backend-http-{{ backend.id }}
     mode tcp
     balance roundrobin
-    server cvm {{ workload.http_address }} check
-backend workload-https-{{ workload.id }}
+    server cvm {{ backend.http_address }} check
+backend backend-https-{{ backend.id }}
     mode tcp
     balance roundrobin
-    server cvm {{ workload.https_address }} check
+    server cvm {{ backend.https_address }} check
 {% endfor %}

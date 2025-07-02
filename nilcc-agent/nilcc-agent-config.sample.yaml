@@ -11,7 +11,6 @@ api:
 controller:
   endpoint: "http://127.0.0.1:50051"
   key: test
-  sync_interval: 10s
 
 db:
   url: sqlite:///tmp/db.sqlite

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{net::SocketAddr, path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -83,10 +83,6 @@ pub struct ControllerConfig {
 
     /// nilcc API key.
     pub key: String,
-
-    /// Interval for periodic synchronization task.
-    #[serde(with = "humantime_serde", default = "default_agent_sync_interval")]
-    pub sync_interval: Duration,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -161,10 +157,6 @@ pub struct ReservedResourcesConfig {
 
     /// The reserved disk space in GBs.
     pub disk_space_gb: u64,
-}
-
-fn default_agent_sync_interval() -> Duration {
-    Duration::from_secs(10)
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>

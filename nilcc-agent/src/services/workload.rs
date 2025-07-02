@@ -5,13 +5,16 @@ use crate::{
     repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository, WorkloadRepositoryError},
     resources::{GpuAddress, SystemResources},
     routes::workloads::create::CreateWorkloadRequest,
-    services::disk::{DiskService, DockerComposeHash},
+    services::{
+        disk::{DiskService, DockerComposeHash},
+        proxy::ProxyService,
+    },
     workers::scheduler::VmSchedulerHandle,
 };
 use async_trait::async_trait;
-use std::{collections::BTreeSet, fmt, ops::Range, path::PathBuf};
+use std::{collections::BTreeSet, fmt, io, ops::Range, path::PathBuf};
 use strum::EnumDiscriminants;
-use tokio::sync::Mutex;
+use tokio::{fs, sync::Mutex};
 use tracing::info;
 use uuid::Uuid;
 
@@ -49,6 +52,7 @@ pub struct WorkloadServiceArgs {
     pub disk_service: Box<dyn DiskService>,
     pub scheduler: Box<dyn VmSchedulerHandle>,
     pub repository: Box<dyn WorkloadRepository>,
+    pub proxy_service: Box<dyn ProxyService>,
     pub resources: SystemResources,
     pub open_ports: Range<u16>,
     pub cvm_config: CvmConfig,
@@ -79,6 +83,9 @@ pub enum CreateServiceError {
     #[error("allocated port {0} is out of the public range")]
     PortOutOfRange(u16),
 
+    #[error("failed to create state directory: {0}")]
+    StateDirectory(io::Error),
+
     #[error("database: {0}")]
     Database(#[from] WorkloadRepositoryError),
 }
@@ -88,14 +95,25 @@ pub struct DefaultWorkloadService {
     repository: Box<dyn WorkloadRepository>,
     scheduler: Box<dyn VmSchedulerHandle>,
     disk_service: Box<dyn DiskService>,
+    proxy_service: Box<dyn ProxyService>,
     resources: Mutex<AvailableResources>,
     cvm_config: CvmConfig,
 }
 
 impl DefaultWorkloadService {
     pub async fn new(args: WorkloadServiceArgs) -> Result<Self, CreateServiceError> {
-        let WorkloadServiceArgs { state_path, disk_service, scheduler, repository, resources, open_ports, cvm_config } =
-            args;
+        let WorkloadServiceArgs {
+            state_path,
+            disk_service,
+            scheduler,
+            repository,
+            proxy_service,
+            resources,
+            open_ports,
+            cvm_config,
+        } = args;
+        fs::create_dir_all(&state_path).await.map_err(CreateServiceError::StateDirectory)?;
+
         let workloads = repository.list().await?;
         let mut gpus: BTreeSet<_> = resources.gpus.iter().flat_map(|g| g.addresses.iter().cloned()).collect();
         let mut ports: BTreeSet<_> = open_ports.collect();
@@ -126,7 +144,7 @@ impl DefaultWorkloadService {
         let gpus = gpus.into_iter().collect();
         let ports = ports.into_iter().collect();
         let resources = AvailableResources { cpus, gpus, ports, memory_gb, disk_space_gb }.into();
-        Ok(Self { state_path, scheduler, disk_service, repository, resources, cvm_config })
+        Ok(Self { state_path, scheduler, disk_service, repository, proxy_service, resources, cvm_config })
     }
 
     fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> WorkloadModel {
@@ -266,6 +284,7 @@ impl WorkloadService for DefaultWorkloadService {
         info!("Scheduling VM {id}");
         let socket_path = self.state_path.join(format!("{}.sock", workload.id));
         self.scheduler.start_vm(workload.id, spec, socket_path).await;
+        self.proxy_service.add_proxied_vm((&workload).into()).await;
 
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
@@ -292,7 +311,12 @@ impl fmt::Display for KernelArgs<'_> {
 mod tests {
     use super::*;
     use crate::{
-        repositories::workload::MockWorkloadRepository, resources::Gpus, services::disk::MockDiskService,
+        repositories::workload::MockWorkloadRepository,
+        resources::Gpus,
+        services::{
+            disk::MockDiskService,
+            proxy::{MockProxyService, ProxiedVm},
+        },
         workers::scheduler::MockVmSchedulerHandle,
     };
     use mockall::predicate::eq;
@@ -303,6 +327,7 @@ mod tests {
         scheduler: MockVmSchedulerHandle,
         repository: MockWorkloadRepository,
         disk_service: MockDiskService,
+        proxy_service: MockProxyService,
         resources: SystemResources,
         open_ports: Range<u16>,
         existing_workloads: Vec<WorkloadModel>,
@@ -324,6 +349,7 @@ mod tests {
                 scheduler,
                 mut repository,
                 disk_service,
+                proxy_service,
                 resources,
                 open_ports,
                 existing_workloads,
@@ -335,6 +361,7 @@ mod tests {
                 scheduler: Box::new(scheduler),
                 repository: Box::new(repository),
                 disk_service: Box::new(disk_service),
+                proxy_service: Box::new(proxy_service),
                 resources,
                 open_ports,
                 cvm_config,
@@ -350,6 +377,7 @@ mod tests {
                 scheduler: Default::default(),
                 repository: Default::default(),
                 disk_service: Default::default(),
+                proxy_service: Default::default(),
                 resources: SystemResources {
                     hostname: "foo".into(),
                     memory_gb: 16,
@@ -558,6 +586,11 @@ mod tests {
             .with(eq(workload.id), eq(spec), eq(socket_path))
             .once()
             .return_once(|_, _, _| ());
+        builder
+            .proxy_service
+            .expect_add_proxied_vm()
+            .with(eq(ProxiedVm { id: workload.id, http_port: 100, https_port: 101 }))
+            .return_once(move |_| ());
 
         let service = builder.build().await;
         service.create_workload(request).await.expect("failed to create");
