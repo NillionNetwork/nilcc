@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize)]
 pub struct AgentConfig {
     /// Directory where VM folders live
     pub vm_store: PathBuf,
@@ -36,7 +36,7 @@ pub struct AgentConfig {
     pub resources: ResourcesConfig,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CvmConfig {
     /// The path to the initrd file.
     pub initrd: PathBuf,
@@ -51,7 +51,7 @@ pub struct CvmConfig {
     pub gpu: CvmFiles,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CvmFiles {
     /// The path to the kernel file.
     pub kernel: PathBuf,
@@ -67,7 +67,7 @@ pub struct CvmFiles {
     pub verity_root_hash: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct QemuConfig {
     /// Path to the qemu-system binary
     pub system_bin: PathBuf,
@@ -76,7 +76,7 @@ pub struct QemuConfig {
     pub img_bin: PathBuf,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ControllerConfig {
     /// nilcc API endpoint to connect to.
     pub endpoint: String,
@@ -89,19 +89,19 @@ pub struct ControllerConfig {
     pub sync_interval: Duration,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ApiConfig {
     /// The endpoint to bind to.
     pub bind_endpoint: SocketAddr,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DbConfig {
     /// The database URL.
     pub url: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SniProxyConfig {
     /// The DNS subdomain where workloads will be accessible.
     pub dns_subdomain: String,
@@ -125,7 +125,7 @@ pub struct SniProxyConfig {
     pub max_connections: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SniProxyConfigTimeouts {
     /// Timeout for connection establishment in ms.
     pub connect: u64,
@@ -137,21 +137,21 @@ pub struct SniProxyConfigTimeouts {
     pub client: u64,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct MetricsConfig {
     /// The endpoint where metrics are exposed.
     pub bind_endpoint: SocketAddr,
 }
 
 /// The resources configuration.
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ResourcesConfig {
     /// The reserved resources.
     pub reserved: ReservedResourcesConfig,
 }
 
 /// The reserved resources configuration.
-#[derive(Deserialize, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ReservedResourcesConfig {
     /// The number of reserved CPUs.
     pub cpus: u32,

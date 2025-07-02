@@ -8,3 +8,4 @@ pub mod resources;
 pub mod routes;
 pub mod services;
 pub mod version;
+pub mod workers;
