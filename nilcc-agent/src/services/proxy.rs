@@ -27,8 +27,11 @@ impl From<&WorkloadModel> for ProxiedVm {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait ProxyService: Send + Sync {
-    /// Add a new proxied VM.
-    async fn add_proxied_vm(&self, vm: ProxiedVm);
+    /// Start proxying a VM.
+    async fn start_vm_proxy(&self, vm: ProxiedVm);
+
+    /// Stop proxying a VM.
+    async fn stop_vm_proxy(&self, id: Uuid);
 }
 
 pub struct HaProxyProxyService {
@@ -108,12 +111,17 @@ impl HaProxyProxyService {
 
 #[async_trait]
 impl ProxyService for HaProxyProxyService {
-    async fn add_proxied_vm(&self, vm: ProxiedVm) {
+    async fn start_vm_proxy(&self, vm: ProxiedVm) {
         let mut proxied_vms = self.proxied_vms.lock().await;
         proxied_vms.insert(vm.id, vm);
         if let Err(e) = self.persist_config(proxied_vms.values()).await {
             error!("Failed to persist configuration: {e}");
         }
+    }
+
+    async fn stop_vm_proxy(&self, id: Uuid) {
+        let mut proxied_vms = self.proxied_vms.lock().await;
+        proxied_vms.remove(&id);
     }
 }
 

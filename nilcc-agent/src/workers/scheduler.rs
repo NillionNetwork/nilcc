@@ -43,6 +43,7 @@ impl VmScheduler {
     async fn handle_command(&mut self, command: SchedulerCommand) -> anyhow::Result<()> {
         match command {
             SchedulerCommand::StartVm { id, spec, socket_path } => self.start_vm(id, spec, socket_path).await,
+            SchedulerCommand::StopVm { id } => self.stop_vm(id).await,
         }
     }
 
@@ -50,9 +51,21 @@ impl VmScheduler {
         match self.workers.get(&id) {
             Some(_) => bail!("VM {id} is already being ran"),
             None => {
-                let worker = VmWorker::spawn(self.vm_client.clone(), spec, socket_path);
+                let worker = VmWorker::spawn(id, self.vm_client.clone(), spec, socket_path);
                 self.workers.insert(id, worker);
                 Ok(())
+            }
+        }
+    }
+
+    async fn stop_vm(&mut self, id: Uuid) -> anyhow::Result<()> {
+        match self.workers.remove(&id) {
+            Some(worker) => {
+                worker.stop_vm().await;
+                Ok(())
+            }
+            None => {
+                bail!("VM {id} is not being managed by any worker")
             }
         }
     }
@@ -62,6 +75,8 @@ impl VmScheduler {
 #[async_trait]
 pub trait VmSchedulerHandle: Send + Sync {
     async fn start_vm(&self, id: Uuid, spec: VmSpec, socket_path: PathBuf);
+
+    async fn stop_vm(&self, id: Uuid);
 }
 
 pub(crate) struct DefaultVmSchedulerHandle {
@@ -82,9 +97,16 @@ impl VmSchedulerHandle for DefaultVmSchedulerHandle {
         let command = SchedulerCommand::StartVm { id, spec, socket_path };
         self.send_command(command).await;
     }
+
+    async fn stop_vm(&self, id: Uuid) {
+        let command = SchedulerCommand::StopVm { id };
+        self.send_command(command).await;
+    }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, EnumDiscriminants)]
 pub(crate) enum SchedulerCommand {
     StartVm { id: Uuid, spec: VmSpec, socket_path: PathBuf },
+    StopVm { id: Uuid },
 }
