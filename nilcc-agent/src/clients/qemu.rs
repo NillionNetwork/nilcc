@@ -104,12 +104,6 @@ pub enum QemuClientError {
     #[error("QMP Error: {0}")]
     Qmp(String),
 
-    #[error("VM not found")]
-    VmNotFound,
-
-    #[error("VM already exists")]
-    VmAlreadyExists,
-
     #[error("VM already running")]
     VmAlreadyRunning,
 

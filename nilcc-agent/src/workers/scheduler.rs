@@ -1,5 +1,8 @@
 use crate::{
-    clients::qemu::{VmClient, VmSpec},
+    clients::{
+        nilcc_api::NilccApiClient,
+        qemu::{VmClient, VmSpec},
+    },
     workers::vm::{VmWorker, VmWorkerHandle},
 };
 use anyhow::bail;
@@ -15,14 +18,18 @@ const CHANNEL_SIZE: usize = 1024;
 pub struct VmScheduler {
     receiver: Receiver<SchedulerCommand>,
     vm_client: Arc<dyn VmClient>,
+    nilcc_api_client: Arc<dyn NilccApiClient>,
     workers: HashMap<Uuid, VmWorkerHandle>,
 }
 
 impl VmScheduler {
-    pub fn spawn(qemu_client: Arc<dyn VmClient>) -> Box<dyn VmSchedulerHandle> {
+    pub fn spawn(
+        vm_client: Arc<dyn VmClient>,
+        nilcc_api_client: Arc<dyn NilccApiClient>,
+    ) -> Box<dyn VmSchedulerHandle> {
         let (sender, receiver) = channel(CHANNEL_SIZE);
         tokio::spawn(async move {
-            let this = VmScheduler { receiver, vm_client: qemu_client, workers: Default::default() };
+            let this = VmScheduler { receiver, vm_client, nilcc_api_client, workers: Default::default() };
             this.run().await
         });
         Box::new(DefaultVmSchedulerHandle { sender })
@@ -51,7 +58,8 @@ impl VmScheduler {
         match self.workers.get(&id) {
             Some(_) => bail!("VM {id} is already being ran"),
             None => {
-                let worker = VmWorker::spawn(id, self.vm_client.clone(), spec, socket_path);
+                let worker =
+                    VmWorker::spawn(id, self.vm_client.clone(), self.nilcc_api_client.clone(), spec, socket_path);
                 self.workers.insert(id, worker);
                 Ok(())
             }

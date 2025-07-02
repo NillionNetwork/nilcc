@@ -120,7 +120,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
     info!("Setting up dependencies");
-    let api_client = Box::new(HttpNilccApiClient::new(nilcc_agent::clients::nilcc_api::NilccApiClientArgs {
+    let api_client = Arc::new(HttpNilccApiClient::new(nilcc_agent::clients::nilcc_api::NilccApiClientArgs {
         api_base_url: endpoint,
         api_key: key,
         agent_id: config.agent_id,
@@ -140,7 +140,8 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         proxied_vms,
     );
 
-    let scheduler = VmScheduler::spawn(Arc::new(QemuClient::new(config.qemu.system_bin)));
+    let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
+    let scheduler = VmScheduler::spawn(vm_client, api_client);
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
         state_path: config.vm_store,
         scheduler,
