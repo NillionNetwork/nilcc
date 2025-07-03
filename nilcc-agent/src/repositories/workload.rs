@@ -5,47 +5,44 @@ use sqlx::{prelude::FromRow, SqlitePool};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
-    num::NonZeroU16,
 };
 use strum::{Display, EnumString};
 use uuid::Uuid;
 
 #[derive(FromRow, Clone, PartialEq)]
-pub struct WorkloadModel {
+pub struct Workload {
     pub id: Uuid,
     pub docker_compose: String,
     #[sqlx(json)]
-    pub environment_variables: HashMap<String, String>,
+    pub env_vars: HashMap<String, String>,
     pub public_container_name: String,
     pub public_container_port: u16,
     pub memory_mb: u32,
-    pub cpus: NonZeroU16,
+    pub cpus: u32,
     #[sqlx(json)]
     pub gpus: Vec<GpuAddress>,
-    pub disk_gb: NonZeroU16,
-    pub metal_http_port: u16,
-    pub metal_https_port: u16,
-    pub status: WorkloadModelStatus,
+    pub disk_space_gb: u32,
+    pub proxy_http_port: u16,
+    pub proxy_https_port: u16,
 }
 
-impl fmt::Debug for WorkloadModel {
+impl fmt::Debug for Workload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self {
             id,
             docker_compose,
-            environment_variables,
+            env_vars,
             public_container_name,
             public_container_port,
             memory_mb,
             cpus,
-            disk_gb,
+            disk_space_gb,
             gpus,
-            metal_http_port,
-            metal_https_port,
-            status,
+            proxy_http_port,
+            proxy_https_port,
         } = self;
         // Hide this one since it can have sensitive data
-        let environment_variables: BTreeMap<_, _> = environment_variables.keys().map(|key| (key, "...")).collect();
+        let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
         f.debug_struct("Workload")
             .field("id", id)
             .field("docker_compose", docker_compose)
@@ -54,11 +51,10 @@ impl fmt::Debug for WorkloadModel {
             .field("public_container_port", public_container_port)
             .field("memory_mb", memory_mb)
             .field("cpus", cpus)
-            .field("disk_gb", disk_gb)
+            .field("disk_space_gb", disk_space_gb)
             .field("gpus", gpus)
-            .field("metal_http_port", metal_http_port)
-            .field("metal_https_port", metal_https_port)
-            .field("status", status)
+            .field("proxy_http_port", proxy_http_port)
+            .field("proxy_https_port", proxy_https_port)
             .finish()
     }
 }
@@ -75,13 +71,13 @@ pub enum WorkloadModelStatus {
 #[async_trait]
 pub trait WorkloadRepository: Send + Sync {
     /// Create a workload.
-    async fn upsert(&self, workload: WorkloadModel) -> Result<(), WorkloadRepositoryError>;
+    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
 
     /// Find the details for a workload.
-    async fn find(&self, id: Uuid) -> Result<WorkloadModel, WorkloadRepositoryError>;
+    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
 
     /// List all workflows.
-    async fn list(&self) -> Result<Vec<WorkloadModel>, WorkloadRepositoryError>;
+    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError>;
 
     /// Delete a workload.
     async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
@@ -120,74 +116,59 @@ impl SqliteWorkloadRepository {
 
 #[async_trait]
 impl WorkloadRepository for SqliteWorkloadRepository {
-    async fn upsert(&self, workload: WorkloadModel) -> Result<(), WorkloadRepositoryError> {
+    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
         let query = r"
 INSERT INTO workloads (
     id,
     docker_compose,
-    environment_variables,
+    env_vars,
     public_container_name,
     public_container_port,
     memory_mb,
     cpus,
     gpus,
-    disk_gb,
-    metal_http_port,
-    metal_https_port,
-    status,
+    disk_space_gb,
+    proxy_http_port,
+    proxy_https_port,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-ON CONFLICT (id) DO UPDATE SET
-    docker_compose = $2,
-    environment_variables = $3,
-    public_container_name = $4,
-    public_container_port = $5,
-    memory_mb = $6,
-    cpus = $7,
-    gpus = $8,
-    disk_gb = $9,
-    metal_http_port = $10,
-    metal_https_port = $11,
-    status = $12
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ";
-        let WorkloadModel {
+        let Workload {
             id,
             docker_compose,
-            environment_variables,
+            env_vars,
             public_container_name,
             public_container_port,
             memory_mb,
             cpus,
-            disk_gb,
+            disk_space_gb,
             gpus,
-            metal_http_port,
-            metal_https_port,
-            status,
+            proxy_http_port,
+            proxy_https_port,
         } = workload;
 
         sqlx::query(query)
             .bind(id)
             .bind(docker_compose)
-            .bind(sqlx::types::Json(environment_variables))
+            .bind(sqlx::types::Json(env_vars))
             .bind(public_container_name)
             .bind(public_container_port)
             .bind(memory_mb)
             .bind(cpus)
             .bind(sqlx::types::Json(gpus))
-            .bind(disk_gb)
-            .bind(metal_http_port)
-            .bind(metal_https_port)
-            .bind(status.to_string())
+            .bind(disk_space_gb)
+            .bind(proxy_http_port)
+            .bind(proxy_https_port)
             .bind(Utc::now())
             .execute(&self.pool)
             .await?;
         Ok(())
     }
 
-    async fn find(&self, id: Uuid) -> Result<WorkloadModel, WorkloadRepositoryError> {
+    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads WHERE id = ?";
-        let workload: WorkloadModel = sqlx::query_as(query)
+        let workload: Workload = sqlx::query_as(query)
             .bind(id)
             .fetch_optional(&self.pool)
             .await?
@@ -195,9 +176,9 @@ ON CONFLICT (id) DO UPDATE SET
         Ok(workload)
     }
 
-    async fn list(&self) -> Result<Vec<WorkloadModel>, WorkloadRepositoryError> {
+    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads";
-        let workloads: Vec<WorkloadModel> = sqlx::query_as(query).fetch_all(&self.pool).await?;
+        let workloads: Vec<Workload> = sqlx::query_as(query).fetch_all(&self.pool).await?;
         Ok(workloads)
     }
 
@@ -221,64 +202,25 @@ mod tests {
     #[tokio::test]
     async fn lookup() {
         let repo = make_repo().await;
-        let workload = WorkloadModel {
+        let workload = Workload {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),
-            environment_variables: HashMap::from([("FOO".into(), "value".into())]),
+            env_vars: HashMap::from([("FOO".into(), "value".into())]),
             public_container_name: "container-1".into(),
             public_container_port: 80,
             memory_mb: 1024,
             cpus: 1.try_into().unwrap(),
-            disk_gb: 10.try_into().unwrap(),
+            disk_space_gb: 10.try_into().unwrap(),
             gpus: vec![GpuAddress("aa:bb".into())],
-            metal_http_port: 1080,
-            metal_https_port: 1443,
-            status: WorkloadModelStatus::Running,
+            proxy_http_port: 1080,
+            proxy_https_port: 1443,
         };
-        repo.upsert(workload.clone()).await.expect("failed to insert");
+        repo.create(workload.clone()).await.expect("failed to insert");
 
         let found = repo.find(workload.id).await.expect("failed to find");
         assert_eq!(found, workload);
 
         let found = repo.list().await.expect("failed to find");
         assert_eq!(found, &[workload]);
-    }
-
-    #[tokio::test]
-    async fn update() {
-        let repo = make_repo().await;
-        let original = WorkloadModel {
-            id: Uuid::new_v4(),
-            docker_compose: "hi".into(),
-            environment_variables: HashMap::from([("FOO".into(), "value".into())]),
-            public_container_name: "container-1".into(),
-            public_container_port: 80,
-            memory_mb: 1024,
-            cpus: 1.try_into().unwrap(),
-            disk_gb: 10.try_into().unwrap(),
-            gpus: vec![GpuAddress("aa:bb".into())],
-            metal_http_port: 1080,
-            metal_https_port: 1443,
-            status: WorkloadModelStatus::Pending,
-        };
-        let updated = WorkloadModel {
-            id: original.id,
-            docker_compose: "bye".into(),
-            environment_variables: HashMap::default(),
-            public_container_name: "container-2".into(),
-            public_container_port: 443,
-            memory_mb: 2048,
-            gpus: vec![GpuAddress("aa:bb".into()), GpuAddress("cc:dd".into())],
-            disk_gb: 20.try_into().unwrap(),
-            cpus: 2.try_into().unwrap(),
-            metal_http_port: 1080,
-            metal_https_port: 1443,
-            status: WorkloadModelStatus::Running,
-        };
-        repo.upsert(original).await.expect("failed to insert");
-        repo.upsert(updated.clone()).await.expect("failed to insert");
-
-        let found = repo.find(updated.id).await.expect("failed to find");
-        assert_eq!(found, updated);
     }
 }

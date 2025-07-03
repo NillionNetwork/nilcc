@@ -47,4 +47,4 @@ metrics:
 resources:
   reserved:
     cpus: 1
-    memory_gb: 2
+    memory_mb: 1024

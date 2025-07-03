@@ -153,10 +153,10 @@ pub struct ReservedResourcesConfig {
     pub cpus: u32,
 
     /// The reserved memory in GBs.
-    pub memory_gb: u64,
+    pub memory_mb: u32,
 
     /// The reserved disk space in GBs.
-    pub disk_space_gb: u64,
+    pub disk_space_gb: u32,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
