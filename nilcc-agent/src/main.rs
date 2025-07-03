@@ -136,7 +136,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let proxied_vms = existing_workloads.iter().map(Into::into).collect();
     let proxy_service = HaProxyProxyService::new(
         config.sni_proxy.config_file_path,
-        config.sni_proxy.ha_proxy_config_reload_command,
+        config.sni_proxy.master_socket_path,
         config.sni_proxy.timeouts,
         config.sni_proxy.dns_subdomain,
         config.sni_proxy.max_connections,
