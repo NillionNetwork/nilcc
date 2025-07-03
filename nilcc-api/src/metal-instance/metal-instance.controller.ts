@@ -11,8 +11,6 @@ import {
   GetMetalInstanceResponse,
   ListMetalInstancesResponse,
   RegisterMetalInstanceRequest,
-  SyncMetalInstanceRequest,
-  SyncMetalInstanceResponse,
 } from "#/metal-instance/metal-instance.dto";
 import { metalInstanceMapper } from "#/metal-instance/metal-instance.mapper";
 
@@ -46,39 +44,6 @@ export function register(options: ControllerOptions) {
         c.get("txQueryRunner"),
       );
       return c.body(null);
-    },
-  );
-}
-
-export function sync(options: ControllerOptions) {
-  const { app, bindings } = options;
-  app.post(
-    PathsV1.metalInstance.sync,
-    describeRoute({
-      tags: ["Metal-Instance"],
-      summary:
-        "Sync a Metal Instance State receiving current state and answering with desired state",
-      description:
-        "Sync a Metal Instance State receiving current state and answering with desired state",
-      responses: {
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", SyncMetalInstanceRequest),
-    responseValidator(bindings, SyncMetalInstanceResponse),
-    transactionMiddleware(bindings.dataSource),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const result = await bindings.services.metalInstance.sync(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      if (!result) {
-        return c.notFound();
-      }
-      return c.json(metalInstanceMapper.syncEntityToResponse(result));
     },
   );
 }

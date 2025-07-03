@@ -2,7 +2,7 @@ use crate::{
     clients::qemu::{HardDiskFormat, HardDiskSpec, VmSpec},
     config::{CvmConfig, CvmFiles},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
-    repositories::workload::{WorkloadModel, WorkloadModelStatus, WorkloadRepository, WorkloadRepositoryError},
+    repositories::workload::{Workload, WorkloadRepository, WorkloadRepositoryError},
     resources::{GpuAddress, SystemResources},
     routes::workloads::create::CreateWorkloadRequest,
     services::{
@@ -62,8 +62,8 @@ pub struct WorkloadServiceArgs {
 struct AvailableResources {
     cpus: u32,
     gpus: Vec<GpuAddress>,
-    memory_gb: u64,
-    disk_space_gb: u64,
+    memory_mb: u32,
+    disk_space_gb: u32,
     ports: Vec<u16>,
 }
 
@@ -119,7 +119,7 @@ impl DefaultWorkloadService {
         let mut gpus: BTreeSet<_> = resources.gpus.iter().flat_map(|g| g.addresses.iter().cloned()).collect();
         let mut ports: BTreeSet<_> = open_ports.collect();
         let mut cpus = resources.available_cpus();
-        let mut memory_gb = resources.available_memory_gb();
+        let mut memory_mb = resources.available_memory_mb();
         let mut disk_space_gb = resources.available_disk_space_gb();
         for workload in workloads {
             let workload_id = workload.id;
@@ -128,34 +128,30 @@ impl DefaultWorkloadService {
                     return Err(CreateServiceError::CommittedGpuMissing(workload_id, gpu));
                 }
             }
-            for port in [workload.metal_http_port, workload.metal_https_port] {
+            for port in [workload.proxy_http_port, workload.proxy_https_port] {
                 if !ports.remove(&port) {
                     return Err(CreateServiceError::PortOutOfRange(port));
                 }
             }
-            cpus = cpus.checked_sub(workload.cpus.get() as u32).ok_or(CreateServiceError::OvercommittedCpus)?;
-            // TODO conversions....
-            memory_gb = memory_gb
-                .checked_sub((workload.memory_mb / 1024) as u64)
-                .ok_or(CreateServiceError::OvercommittedMemory)?;
-            disk_space_gb = disk_space_gb
-                .checked_sub(workload.disk_gb.get() as u64)
-                .ok_or(CreateServiceError::OvercommittedDiskSpace)?;
+            cpus = cpus.checked_sub(workload.cpus).ok_or(CreateServiceError::OvercommittedCpus)?;
+            memory_mb = memory_mb.checked_sub(workload.memory_mb).ok_or(CreateServiceError::OvercommittedMemory)?;
+            disk_space_gb =
+                disk_space_gb.checked_sub(workload.disk_space_gb).ok_or(CreateServiceError::OvercommittedDiskSpace)?;
         }
         let gpus = gpus.into_iter().collect();
         let ports = ports.into_iter().collect();
-        let resources = AvailableResources { cpus, gpus, ports, memory_gb, disk_space_gb }.into();
+        let resources = AvailableResources { cpus, gpus, ports, memory_mb, disk_space_gb }.into();
         Ok(Self { state_path, scheduler, disk_service, repository, proxy_service, resources, cvm_config })
     }
 
-    fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> WorkloadModel {
+    fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> Workload {
         let CreateWorkloadRequest {
             id,
             docker_compose,
             env_vars,
             public_container_name,
             public_container_port,
-            memory_gb,
+            memory_mb,
             cpus,
             gpus,
             disk_space_gb,
@@ -163,25 +159,24 @@ impl DefaultWorkloadService {
         let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
         let ports: Vec<u16> = resources.ports.iter().take(2).copied().collect();
 
-        WorkloadModel {
+        Workload {
             id,
             docker_compose,
-            environment_variables: env_vars,
+            env_vars,
             public_container_name,
             public_container_port,
-            memory_mb: memory_gb * 1024,
+            memory_mb,
             cpus,
             gpus,
-            disk_gb: disk_space_gb,
-            metal_http_port: ports[0],
-            metal_https_port: ports[1],
-            status: WorkloadModelStatus::Scheduled,
+            disk_space_gb,
+            proxy_http_port: ports[0],
+            proxy_https_port: ports[1],
         }
     }
 
     fn create_vm_spec(
         &self,
-        workload: &WorkloadModel,
+        workload: &Workload,
         iso_path: PathBuf,
         state_disk_path: PathBuf,
         docker_compose_hash: DockerComposeHash,
@@ -191,7 +186,7 @@ impl DefaultWorkloadService {
         let kernel_args =
             KernelArgs { filesystem_root_hash: verity_root_hash, docker_compose_hash: &docker_compose_hash.0 };
         VmSpec {
-            cpu: workload.cpus.into(),
+            cpu: workload.cpus,
             ram_mib: workload.memory_mb,
             hard_disks: vec![
                 HardDiskSpec { path: base_disk.clone(), format: HardDiskFormat::Qcow2 },
@@ -200,7 +195,7 @@ impl DefaultWorkloadService {
             ],
             cdrom_iso_path: Some(iso_path),
             gpus: workload.gpus.clone(),
-            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
+            port_forwarding: vec![(workload.proxy_http_port, 80), (workload.proxy_https_port, 443)],
             bios_path: Some(self.cvm_config.bios.clone()),
             initrd_path: Some(self.cvm_config.initrd.clone()),
             kernel_path: Some(kernel.clone()),
@@ -210,11 +205,11 @@ impl DefaultWorkloadService {
         }
     }
 
-    async fn create_state_disk(&self, workload: &WorkloadModel) -> Result<PathBuf, CreateWorkloadError> {
+    async fn create_state_disk(&self, workload: &Workload) -> Result<PathBuf, CreateWorkloadError> {
         let disk_name = format!("{}.raw", workload.id);
         let disk_path = self.state_path.join(disk_name);
         self.disk_service
-            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_gb.into())
+            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_space_gb)
             .await
             .map_err(|e| CreateWorkloadError::Internal(format!("failed to create state disk: {e}")))?;
         Ok(disk_path)
@@ -222,12 +217,12 @@ impl DefaultWorkloadService {
 
     async fn create_application_iso(
         &self,
-        workload: &WorkloadModel,
+        workload: &Workload,
     ) -> Result<(PathBuf, DockerComposeHash), CreateWorkloadError> {
         let iso_name = format!("{}.iso", workload.id);
         let iso_path = self.state_path.join(iso_name);
         let environment_variables =
-            workload.environment_variables.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
+            workload.env_vars.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
         let spec = IsoSpec {
             docker_compose_yaml: workload.docker_compose.clone(),
             metadata: ApplicationMetadata {
@@ -252,17 +247,17 @@ impl DefaultWorkloadService {
 impl WorkloadService for DefaultWorkloadService {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
         let mut resources = self.resources.lock().await;
-        let cpus = request.cpus.get() as u32;
+        let cpus = request.cpus;
         let gpus = request.gpus as usize;
-        let memory_gb = request.memory_gb as u64;
-        let disk_space_gb = request.disk_space_gb.get() as u64;
+        let disk_space_gb = request.disk_space_gb;
+        let memory_mb = request.memory_mb;
         if resources.cpus < cpus {
             return Err(CreateWorkloadError::InsufficientResources("CPUs"));
         }
         if resources.gpus.len() < gpus {
             return Err(CreateWorkloadError::InsufficientResources("GPUs"));
         }
-        if resources.memory_gb < memory_gb {
+        if resources.memory_mb < memory_mb {
             return Err(CreateWorkloadError::InsufficientResources("memory"));
         }
         if resources.disk_space_gb < disk_space_gb {
@@ -275,7 +270,7 @@ impl WorkloadService for DefaultWorkloadService {
         let id = workload.id;
         info!("Storing workload {id} in database");
         // TODO: this should be a create, change once everything is migrated to new api
-        self.repository.upsert(workload.clone()).await?;
+        self.repository.create(workload.clone()).await?;
 
         info!("Creating disks for VM {id}");
         let (iso_path, docker_compose_hash) = self.create_application_iso(&workload).await?;
@@ -290,7 +285,7 @@ impl WorkloadService for DefaultWorkloadService {
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
         resources.ports.drain(0..2);
-        resources.memory_gb -= memory_gb;
+        resources.memory_mb -= memory_mb;
         resources.disk_space_gb -= disk_space_gb;
         Ok(())
     }
@@ -336,7 +331,7 @@ mod tests {
         proxy_service: MockProxyService,
         resources: SystemResources,
         open_ports: Range<u16>,
-        existing_workloads: Vec<WorkloadModel>,
+        existing_workloads: Vec<Workload>,
         cvm_config: CvmConfig,
         state_path: PathBuf,
     }
@@ -386,8 +381,8 @@ mod tests {
                 proxy_service: Default::default(),
                 resources: SystemResources {
                     hostname: "foo".into(),
-                    memory_gb: 16,
-                    reserved_memory_gb: 2,
+                    memory_mb: 65536,
+                    reserved_memory_mb: 2048,
                     disk_space_gb: 100,
                     reserved_disk_space_gb: 2,
                     cpus: 8,
@@ -417,55 +412,54 @@ mod tests {
         }
     }
 
-    fn make_workload() -> WorkloadModel {
-        WorkloadModel {
+    fn make_workload() -> Workload {
+        Workload {
             id: Uuid::new_v4(),
             docker_compose: Default::default(),
-            environment_variables: Default::default(),
+            env_vars: Default::default(),
             public_container_name: Default::default(),
             public_container_port: Default::default(),
             memory_mb: Default::default(),
             cpus: 1.try_into().unwrap(),
-            disk_gb: 1.try_into().unwrap(),
+            disk_space_gb: 1.try_into().unwrap(),
             gpus: Default::default(),
-            metal_http_port: 150,
-            metal_https_port: 151,
-            status: Default::default(),
+            proxy_http_port: 150,
+            proxy_https_port: 151,
         }
     }
 
     #[rstest]
     #[case::cpu(
-        WorkloadModel { cpus: 2.try_into().unwrap(), ..make_workload() },
+        Workload { cpus: 2.try_into().unwrap(), ..make_workload() },
         CreateServiceError::OvercommittedCpus
     )]
     #[case::memory(
-        WorkloadModel { memory_mb: 2048.try_into().unwrap(), ..make_workload() },
+        Workload { memory_mb: 2048.try_into().unwrap(), ..make_workload() },
         CreateServiceError::OvercommittedMemory
     )]
     #[case::disk_space(
-        WorkloadModel { disk_gb: 2048.try_into().unwrap(), ..make_workload() },
+        Workload { disk_space_gb: 2048.try_into().unwrap(), ..make_workload() },
         CreateServiceError::OvercommittedDiskSpace
     )]
     #[case::gpus(
-        WorkloadModel { id: Uuid::nil(), gpus: vec!["addr1".into(), "addr2".into()], ..make_workload() },
+        Workload { id: Uuid::nil(), gpus: vec!["addr1".into(), "addr2".into()], ..make_workload() },
         CreateServiceError::CommittedGpuMissing(Uuid::nil(), "addr2".into())
     )]
     #[case::http_port(
-        WorkloadModel { metal_http_port: 50, ..make_workload() },
+        Workload { proxy_http_port: 50, ..make_workload() },
         CreateServiceError::PortOutOfRange(50)
     )]
     #[case::https_port(
-        WorkloadModel { metal_https_port: 50, ..make_workload() },
+        Workload { proxy_https_port: 50, ..make_workload() },
         CreateServiceError::PortOutOfRange(50)
     )]
     #[tokio::test]
-    async fn startup_overcommitted(#[case] workload: WorkloadModel, #[case] error: CreateServiceError) {
+    async fn startup_overcommitted(#[case] workload: Workload, #[case] error: CreateServiceError) {
         let mut builder = Builder::default();
         builder.resources.cpus = 2;
         builder.resources.reserved_cpus = 1;
-        builder.resources.memory_gb = 2;
-        builder.resources.reserved_memory_gb = 1;
+        builder.resources.memory_mb = 2;
+        builder.resources.reserved_memory_mb = 1;
         builder.resources.disk_space_gb = 2;
         builder.resources.reserved_disk_space_gb = 1;
         builder.resources.gpus = Some(Gpus::new("H100", &["addr1".into()]));
@@ -479,20 +473,20 @@ mod tests {
         let mut builder = Builder::default();
         builder.resources.cpus = 4;
         builder.resources.reserved_cpus = 1;
-        builder.resources.memory_gb = 8;
-        builder.resources.reserved_memory_gb = 2;
+        builder.resources.memory_mb = 8192;
+        builder.resources.reserved_memory_mb = 2048;
         builder.resources.disk_space_gb = 100;
         builder.resources.reserved_disk_space_gb = 20;
         builder.resources.gpus = Some(Gpus::new("H100", &["addr1".into(), "addr2".into()]));
         builder.open_ports = 1000..2000;
 
-        let workload = WorkloadModel {
+        let workload = Workload {
             cpus: 1.try_into().unwrap(),
             memory_mb: 1024,
-            disk_gb: 10.try_into().unwrap(),
+            disk_space_gb: 10.try_into().unwrap(),
             gpus: vec!["addr1".into()],
-            metal_http_port: 1000,
-            metal_https_port: 1001,
+            proxy_http_port: 1000,
+            proxy_https_port: 1001,
             ..make_workload()
         };
         builder.existing_workloads = vec![workload];
@@ -503,7 +497,7 @@ mod tests {
         assert_eq!(resources.cpus, 2);
 
         // 8 total, 2 reserved, 1 used
-        assert_eq!(resources.memory_gb, 5);
+        assert_eq!(resources.memory_mb, 5120);
 
         // 100 total, 20 reserved, 10 used
         assert_eq!(resources.disk_space_gb, 70);
@@ -520,24 +514,23 @@ mod tests {
             env_vars: Default::default(),
             public_container_name: "api".into(),
             public_container_port: 80,
-            memory_gb: 1,
+            memory_mb: 1024,
             cpus: 1.try_into().unwrap(),
             gpus: 1,
             disk_space_gb: 1.try_into().unwrap(),
         };
-        let workload = WorkloadModel {
+        let workload = Workload {
             id: request.id,
             docker_compose: request.docker_compose.clone(),
-            environment_variables: request.env_vars.clone(),
+            env_vars: request.env_vars.clone(),
             public_container_name: request.public_container_name.clone(),
             public_container_port: request.public_container_port,
-            memory_mb: request.memory_gb * 1024,
+            memory_mb: request.memory_mb,
             cpus: request.cpus,
             gpus: vec!["addr1".into()],
-            disk_gb: request.disk_space_gb,
-            metal_http_port: 100,
-            metal_https_port: 101,
-            status: WorkloadModelStatus::Scheduled,
+            disk_space_gb: request.disk_space_gb,
+            proxy_http_port: 100,
+            proxy_https_port: 101,
         };
         let mut builder = Builder::default();
         let docker_compose_hash = "deadbeef";
@@ -561,7 +554,7 @@ mod tests {
             ],
             cdrom_iso_path: Some(iso_path.clone()),
             gpus: vec!["addr1".into()],
-            port_forwarding: vec![(workload.metal_http_port, 80), (workload.metal_https_port, 443)],
+            port_forwarding: vec![(workload.proxy_http_port, 80), (workload.proxy_https_port, 443)],
             bios_path: Some("/bios".into()),
             initrd_path: Some("/initrd".into()),
             kernel_path: Some("/gpu/kernel".into()),
@@ -570,13 +563,13 @@ mod tests {
             enable_cvm: true,
         };
 
-        let expected_cpus = builder.resources.available_cpus() - request.cpus.get() as u32;
-        let expected_memory = builder.resources.available_memory_gb() - request.memory_gb as u64;
-        let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb.get() as u64;
+        let expected_cpus = builder.resources.available_cpus() - request.cpus as u32;
+        let expected_memory = builder.resources.available_memory_mb() - request.memory_mb;
+        let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb;
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder.repository.expect_upsert().with(eq(workload.clone())).once().return_once(|_| Ok(()));
+        builder.repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder
             .disk_service
             .expect_create_application_iso()
@@ -604,7 +597,7 @@ mod tests {
         // Make sure the allocated resources are successfully tracked.
         let resources = service.resources.lock().await;
         assert_eq!(resources.cpus, expected_cpus);
-        assert_eq!(resources.memory_gb, expected_memory);
+        assert_eq!(resources.memory_mb, expected_memory);
         assert_eq!(resources.disk_space_gb, expected_disk_space);
         assert_eq!(resources.gpus, vec![]);
     }

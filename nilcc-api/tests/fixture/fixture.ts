@@ -33,7 +33,7 @@ export async function buildFixture(): Promise<TestFixture> {
   const id = faker.string.alphanumeric({ length: 4, casing: "lower" });
   const log = createTestLogger(id);
 
-  log.info("Creating Binding");
+  log.info("Creating binding");
 
   const baseDBUri = process.env.APP_DB_URI;
   const thisDescribeDBUri = `${baseDBUri}-${id}`;
@@ -43,7 +43,7 @@ export async function buildFixture(): Promise<TestFixture> {
     dbUri: thisDescribeDBUri,
   })) as AppBindings;
 
-  log.info("Creating App");
+  log.info("Creating app");
   const { app } = await buildApp(bindings);
 
   const userClient = new UserClient({

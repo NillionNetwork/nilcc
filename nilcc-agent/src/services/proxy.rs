@@ -1,5 +1,5 @@
 use crate::config::SniProxyConfigTimeouts;
-use crate::repositories::workload::WorkloadModel;
+use crate::repositories::workload::Workload;
 use anyhow::{bail, Context as anyhowContext, Result};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -18,9 +18,9 @@ pub struct ProxiedVm {
     pub(crate) https_port: u16,
 }
 
-impl From<&WorkloadModel> for ProxiedVm {
-    fn from(workload: &WorkloadModel) -> Self {
-        Self { id: workload.id, http_port: workload.metal_http_port, https_port: workload.metal_https_port }
+impl From<&Workload> for ProxiedVm {
+    fn from(workload: &Workload) -> Self {
+        Self { id: workload.id, http_port: workload.proxy_http_port, https_port: workload.proxy_https_port }
     }
 }
 

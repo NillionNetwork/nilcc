@@ -87,12 +87,9 @@ impl NilccApiClient for HttpNilccApiClient {
             id: self.agent_id,
             agent_version: agent_version().to_string(),
             hostname: resources.hostname.clone(),
-            memory_gb: resources.memory_gb,
-            os_reserved_memory_gb: resources.reserved_memory_gb,
-            disk_space_gb: resources.disk_space_gb,
-            os_reserved_disk_space_gb: resources.reserved_disk_space_gb,
-            cpus: resources.cpus,
-            os_reserved_cpus: resources.reserved_cpus,
+            memory_mb: Resource { reserved: resources.reserved_memory_mb, total: resources.memory_mb },
+            disk_space_gb: Resource { reserved: resources.reserved_disk_space_gb, total: resources.disk_space_gb },
+            cpus: Resource { reserved: resources.reserved_cpus, total: resources.cpus },
             gpus: resources.gpus.as_ref().map(|g| g.addresses.len() as u32),
             gpu_model: resources.gpus.as_ref().map(|g| g.model.clone()),
         };
@@ -110,33 +107,24 @@ impl NilccApiClient for HttpNilccApiClient {
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     id: Uuid,
-
     agent_version: String,
-
     hostname: String,
-
-    #[serde(rename = "totalMemory")]
-    memory_gb: u64,
-
-    #[serde(rename = "osReservedMemory")]
-    os_reserved_memory_gb: u64,
-
-    #[serde(rename = "totalDisk")]
-    disk_space_gb: u64,
-
-    #[serde(rename = "osReservedDisk")]
-    os_reserved_disk_space_gb: u64,
-
-    #[serde(rename = "totalCpus")]
-    cpus: u32,
-
-    os_reserved_cpus: u32,
+    memory_mb: Resource,
+    disk_space_gb: Resource,
+    cpus: Resource,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     gpus: Option<u32>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     gpu_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Resource {
+    reserved: u32,
+    total: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

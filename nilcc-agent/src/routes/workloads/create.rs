@@ -8,7 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, num::NonZeroU16};
+use std::collections::HashMap;
 use tracing::error;
 use uuid::Uuid;
 
@@ -19,10 +19,10 @@ pub struct CreateWorkloadRequest {
     pub(crate) env_vars: HashMap<String, String>,
     pub(crate) public_container_name: String,
     pub(crate) public_container_port: u16,
-    pub(crate) memory_gb: u32,
-    pub(crate) cpus: NonZeroU16,
+    pub(crate) memory_mb: u32,
+    pub(crate) cpus: u32,
     pub(crate) gpus: u16,
-    pub(crate) disk_space_gb: NonZeroU16,
+    pub(crate) disk_space_gb: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]

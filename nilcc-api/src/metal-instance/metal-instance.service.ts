@@ -1,4 +1,4 @@
-import { In, type QueryRunner, type Repository } from "typeorm";
+import type { QueryRunner, Repository } from "typeorm";
 import {
   CreateEntityError,
   CreateOrUpdateEntityError,
@@ -9,10 +9,7 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type {
-  RegisterMetalInstanceRequest,
-  SyncMetalInstanceRequest,
-} from "./metal-instance.dto";
+import type { RegisterMetalInstanceRequest } from "./metal-instance.dto";
 import { MetalInstanceEntity } from "./metal-instance.entity";
 
 export class MetalInstanceService {
@@ -117,14 +114,14 @@ export class MetalInstanceService {
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
     currentMetalInstance.hostname = metalInstance.hostname;
 
-    currentMetalInstance.totalCpus = metalInstance.totalCpus;
-    currentMetalInstance.osReservedCpus = metalInstance.osReservedCpus;
+    currentMetalInstance.totalCpus = metalInstance.cpus.total;
+    currentMetalInstance.osReservedCpus = metalInstance.cpus.reserved;
 
-    currentMetalInstance.totalMemory = metalInstance.totalMemory;
-    currentMetalInstance.osReservedMemory = metalInstance.osReservedMemory;
+    currentMetalInstance.totalMemory = metalInstance.memoryMb.total;
+    currentMetalInstance.osReservedMemory = metalInstance.memoryMb.reserved;
 
-    currentMetalInstance.totalDisk = metalInstance.totalDisk;
-    currentMetalInstance.osReservedDisk = metalInstance.osReservedDisk;
+    currentMetalInstance.totalDisk = metalInstance.diskSpaceGb.total;
+    currentMetalInstance.osReservedDisk = metalInstance.diskSpaceGb.reserved;
 
     currentMetalInstance.gpus = metalInstance.gpus;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
@@ -144,60 +141,17 @@ export class MetalInstanceService {
       id: metalInstance.id,
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
-      totalCpus: metalInstance.totalCpus,
-      osReservedCpus: metalInstance.osReservedCpus,
-      totalMemory: metalInstance.totalMemory,
-      osReservedMemory: metalInstance.osReservedMemory,
-      totalDisk: metalInstance.totalDisk,
-      osReservedDisk: metalInstance.osReservedDisk,
+      totalCpus: metalInstance.cpus.total,
+      osReservedCpus: metalInstance.cpus.reserved,
+      totalMemory: metalInstance.memoryMb.total,
+      osReservedMemory: metalInstance.memoryMb.reserved,
+      totalDisk: metalInstance.diskSpaceGb.total,
+      osReservedDisk: metalInstance.diskSpaceGb.reserved,
       gpus: metalInstance.gpus,
       gpuModel: metalInstance.gpuModel,
       createdAt: now,
       updatedAt: now,
     });
     await repository.save(newMetalInstance);
-  }
-
-  async sync(
-    bindings: AppBindings,
-    payload: SyncMetalInstanceRequest,
-    tx: QueryRunner,
-  ) {
-    const repository = this.getRepository(bindings, tx);
-    const instance = await repository.findOne({
-      where: { id: payload.id },
-      relations: ["workloads"],
-    });
-    if (!instance) {
-      return null;
-    }
-
-    const workloadRepository = bindings.services.workload.getRepository(
-      bindings,
-      tx,
-    );
-
-    const workloadsInInstance = payload.workloads.filter((w) => {
-      const workloadEntity = instance.workloads?.find((wl) => wl.id === w.id);
-      return workloadEntity && workloadEntity.status !== w.status;
-    });
-
-    for (const status of ["pending", "running", "stopped", "error"] as const) {
-      const workloadsIdWithStatus = workloadsInInstance
-        .filter((workload) => workload.status === status)
-        .map((w) => w.id);
-
-      await workloadRepository.update(
-        { id: In(workloadsIdWithStatus) },
-        { status },
-      );
-    }
-
-    const instanceUpdated = await repository.findOne({
-      where: { id: payload.id },
-      relations: ["workloads"],
-    });
-
-    return instanceUpdated;
   }
 }

@@ -38,12 +38,18 @@ services:
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     hostname: "my-metal-instance",
-    totalMemory: 128,
-    osReservedMemory: 8,
-    totalCpus: 64,
-    osReservedCpus: 4,
-    totalDisk: 1024,
-    osReservedDisk: 100,
+    memoryMb: {
+      total: 8192,
+      reserved: 2048,
+    },
+    cpus: {
+      total: 8,
+      reserved: 2,
+    },
+    diskSpaceGb: {
+      total: 1024,
+      reserved: 128,
+    },
   };
 
   it("should fail to create a workload if there isn't a metal instance", async ({

@@ -14,10 +14,10 @@ const NEW_VFIO_PCI_ID_PATH: &str = "/sys/bus/pci/drivers/vfio-pci/new_id";
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemResources {
     pub(crate) hostname: String,
-    pub(crate) memory_gb: u64,
-    pub(crate) reserved_memory_gb: u64,
-    pub(crate) disk_space_gb: u64,
-    pub(crate) reserved_disk_space_gb: u64,
+    pub(crate) memory_mb: u32,
+    pub(crate) reserved_memory_mb: u32,
+    pub(crate) disk_space_gb: u32,
+    pub(crate) reserved_disk_space_gb: u32,
     pub(crate) cpus: u32,
     pub(crate) reserved_cpus: u32,
     pub(crate) gpus: Option<Gpus>,
@@ -29,12 +29,10 @@ impl SystemResources {
         info!("Gathering metal instance details");
 
         let sys = System::new_all();
-
         let hostname = System::host_name().context("Failed to get hostname from sysinfo")?;
-
-        let memory_gb = sys.total_memory() / (1024 * 1024 * 1024);
-        if reserved.memory_gb > memory_gb {
-            bail!("Reserved memory ({}) exceeds total memory ({memory_gb})", reserved.memory_gb);
+        let memory_mb = (sys.total_memory() / (1024 * 1024)).try_into().context("Too much memory")?;
+        if reserved.memory_mb > memory_mb {
+            bail!("Reserved memory ({}) exceeds total memory ({memory_mb})", reserved.memory_mb);
         }
 
         let disks = Disks::new_with_refreshed_list();
@@ -44,9 +42,9 @@ impl SystemResources {
                 root_disk_bytes = disk.total_space();
             }
         }
-        let disk_size_gb = root_disk_bytes / (1024 * 1024 * 1024);
-        if reserved.disk_space_gb > disk_size_gb {
-            bail!("Reserved disk space ({}) exceeds total disk space ({disk_size_gb})", reserved.disk_space_gb);
+        let disk_space_gb = (root_disk_bytes / (1024 * 1024 * 1024)).try_into().context("Too much disk space")?;
+        if reserved.disk_space_gb > disk_space_gb {
+            bail!("Reserved disk space ({}) exceeds total disk space ({disk_space_gb})", reserved.disk_space_gb);
         }
 
         let cpus = sys.cpus().len() as u32;
@@ -57,9 +55,9 @@ impl SystemResources {
         let gpus = Self::find_gpus().await?;
         Ok(Self {
             hostname,
-            memory_gb,
-            reserved_memory_gb: reserved.memory_gb,
-            disk_space_gb: disk_size_gb,
+            memory_mb,
+            reserved_memory_mb: reserved.memory_mb,
+            disk_space_gb,
             reserved_disk_space_gb: reserved.disk_space_gb,
             cpus,
             reserved_cpus: reserved.cpus,
@@ -71,11 +69,11 @@ impl SystemResources {
         self.cpus.saturating_sub(self.reserved_cpus)
     }
 
-    pub(crate) fn available_memory_gb(&self) -> u64 {
-        self.memory_gb.saturating_sub(self.reserved_memory_gb)
+    pub(crate) fn available_memory_mb(&self) -> u32 {
+        self.memory_mb.saturating_sub(self.reserved_memory_mb)
     }
 
-    pub(crate) fn available_disk_space_gb(&self) -> u64 {
+    pub(crate) fn available_disk_space_gb(&self) -> u32 {
         self.disk_space_gb.saturating_sub(self.reserved_disk_space_gb)
     }
 
@@ -201,19 +199,19 @@ mod tests {
 
     #[tokio::test]
     async fn gather_too_much_reserved_cpu() {
-        let reserved = ReservedResourcesConfig { cpus: 1024, memory_gb: 0, disk_space_gb: 0 };
+        let reserved = ReservedResourcesConfig { cpus: 1024, memory_mb: 0, disk_space_gb: 0 };
         SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 
     #[tokio::test]
     async fn gather_too_much_reserved_memory() {
-        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 1024, disk_space_gb: 0 };
+        let reserved = ReservedResourcesConfig { cpus: 0, memory_mb: 1024 * 200, disk_space_gb: 0 };
         SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 
     #[tokio::test]
     async fn gather_too_much_reserved_disk() {
-        let reserved = ReservedResourcesConfig { cpus: 0, memory_gb: 0, disk_space_gb: 100_000 };
+        let reserved = ReservedResourcesConfig { cpus: 0, memory_mb: 0, disk_space_gb: 100_000 };
         SystemResources::gather(reserved).await.expect_err("gathering did not fail");
     }
 

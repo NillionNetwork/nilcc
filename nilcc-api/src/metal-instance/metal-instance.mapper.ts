@@ -1,9 +1,5 @@
-import type {
-  GetMetalInstanceResponse,
-  SyncMetalInstanceResponse,
-} from "#/metal-instance/metal-instance.dto";
+import type { GetMetalInstanceResponse } from "#/metal-instance/metal-instance.dto";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
-import { workloadMapper } from "#/workload/workload.mapper";
 
 export const metalInstanceMapper = {
   entityToResponse(
@@ -12,30 +8,23 @@ export const metalInstanceMapper = {
     return {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
-      totalMemory: metalInstance.totalMemory,
-      osReservedMemory: metalInstance.osReservedMemory,
-      totalCpus: metalInstance.totalCpus,
-      osReservedCpus: metalInstance.osReservedCpus,
-      totalDisk: metalInstance.totalDisk,
-      osReservedDisk: metalInstance.osReservedDisk,
+      memoryMb: {
+        total: metalInstance.totalMemory,
+        reserved: metalInstance.osReservedMemory,
+      },
+      cpus: {
+        total: metalInstance.totalCpus,
+        reserved: metalInstance.osReservedCpus,
+      },
+      diskSpaceGb: {
+        total: metalInstance.totalDisk,
+        reserved: metalInstance.osReservedDisk,
+      },
       id: metalInstance.id,
       gpus: metalInstance.gpus ?? undefined,
       gpuModel: metalInstance.gpuModel ?? undefined,
       createdAt: metalInstance.createdAt.toISOString(),
       updatedAt: metalInstance.updatedAt.toISOString(),
-    };
-  },
-
-  syncEntityToResponse(
-    metalInstance: MetalInstanceEntity,
-  ): SyncMetalInstanceResponse {
-    const metalInstanceResponse = this.entityToResponse(metalInstance);
-    const workloads = metalInstance.workloads
-      ? metalInstance.workloads.map((w) => workloadMapper.entityToResponse(w))
-      : [];
-    return {
-      ...metalInstanceResponse,
-      workloads,
     };
   },
 };

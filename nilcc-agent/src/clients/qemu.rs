@@ -60,7 +60,7 @@ impl fmt::Display for HardDiskFormat {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VmSpec {
     /// Number of vCPUs to allocate to the VM.
-    pub cpu: u16,
+    pub cpu: u32,
 
     /// Amount of RAM to allocate to the VM (in MiB).
     pub ram_mib: u32,
