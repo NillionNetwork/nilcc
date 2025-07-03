@@ -18,7 +18,7 @@ pub struct AgentConfig {
     pub agent_id: Uuid,
 
     /// nilcc API configuration.
-    pub controller: ControllerConfig,
+    pub controller: AgentMode,
 
     /// API configuration.
     pub api: ApiConfig,
@@ -74,6 +74,14 @@ pub struct QemuConfig {
 
     /// Path to the qemu-img binary
     pub img_bin: PathBuf,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum AgentMode {
+    Standalone,
+
+    Remote(ControllerConfig),
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -190,9 +198,10 @@ where
     D: Deserializer<'de>,
 {
     let path = String::deserialize(deserializer)?;
-    std::fs::read_to_string(&path)
+    let output = std::fs::read_to_string(&path)
         .context(format!("Reading verity_root_hash file {path}"))
-        .map_err(serde::de::Error::custom)
+        .map_err(serde::de::Error::custom)?;
+    Ok(output.trim().to_string())
 }
 
 fn u32_max() -> u32 {

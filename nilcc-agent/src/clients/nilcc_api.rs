@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Client, Method};
 use serde::Serialize;
+use tracing::info;
 use uuid::Uuid;
 
 #[cfg_attr(test, mockall::automock)]
@@ -100,6 +101,21 @@ impl NilccApiClient for HttpNilccApiClient {
         let url = self.make_url("/api/v1/metal-instances/~/events/submit");
         let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
         self.send_request(Method::POST, url, &payload).await.context("Failed to submit event")
+    }
+}
+
+pub struct DummyNilccApiClient;
+
+#[async_trait]
+impl NilccApiClient for DummyNilccApiClient {
+    async fn register(&self, resources: &SystemResources) -> anyhow::Result<()> {
+        info!("Registering with resources: {resources:?}");
+        Ok(())
+    }
+
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
+        info!("Reporting VM event for {workload_id}: {event:?}");
+        Ok(())
     }
 }
 

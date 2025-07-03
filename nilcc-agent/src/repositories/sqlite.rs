@@ -10,7 +10,8 @@ pub struct SqliteDb(SqlitePool);
 
 impl SqliteDb {
     pub async fn connect(url: &str) -> anyhow::Result<Self> {
-        let connect_options = SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal);
+        let connect_options =
+            SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal).create_if_missing(true);
         let mut pool_options = SqlitePoolOptions::new();
         if connect_options.get_filename() == Path::new(":memory:") {
             // if we don't do this eventually the database gets dropped and tables disappear.
