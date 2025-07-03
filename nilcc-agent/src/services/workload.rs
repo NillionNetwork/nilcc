@@ -22,10 +22,10 @@ use uuid::Uuid;
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
-    async fn delete_workload(&self, id: Uuid);
+    async fn delete_workload(&self, id: Uuid) -> Result<(), DeleteWorkloadError>;
 }
 
-#[derive(Debug, thiserror::Error, EnumDiscriminants)]
+#[derive(Debug, thiserror::Error)]
 pub enum CreateWorkloadError {
     #[error("not enough {0} avalable")]
     InsufficientResources(&'static str),
@@ -44,6 +44,24 @@ impl From<WorkloadRepositoryError> for CreateWorkloadError {
             WorkloadRepositoryError::WorkloadNotFound | WorkloadRepositoryError::Database(_) => {
                 Self::Internal(e.to_string())
             }
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error, EnumDiscriminants)]
+pub enum DeleteWorkloadError {
+    #[error("workload not found")]
+    WorkloadNotFound,
+
+    #[error("database: {0}")]
+    Database(WorkloadRepositoryError),
+}
+
+impl From<WorkloadRepositoryError> for DeleteWorkloadError {
+    fn from(e: WorkloadRepositoryError) -> Self {
+        match e {
+            WorkloadRepositoryError::WorkloadNotFound => Self::WorkloadNotFound,
+            e => Self::Database(e),
         }
     }
 }
@@ -290,9 +308,15 @@ impl WorkloadService for DefaultWorkloadService {
         Ok(())
     }
 
-    async fn delete_workload(&self, id: Uuid) {
+    async fn delete_workload(&self, id: Uuid) -> Result<(), DeleteWorkloadError> {
+        // Make sure it exists first
+        self.repository.find(id).await?;
+
+        info!("Deleting workload: {id}");
+        self.repository.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
         self.scheduler.stop_vm(id).await;
+        Ok(())
     }
 }
 
