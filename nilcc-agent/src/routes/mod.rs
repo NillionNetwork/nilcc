@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use crate::config::ResourceLimitsConfig;
 use crate::services::workload::WorkloadService;
 
 pub(crate) mod workloads;
@@ -21,6 +22,7 @@ pub struct Services {
 #[derive(Clone)]
 pub struct AppState {
     pub services: Services,
+    pub resource_limits: ResourceLimitsConfig,
 }
 
 pub fn build_router(state: AppState) -> Router {
