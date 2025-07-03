@@ -119,8 +119,9 @@ pub struct SniProxyConfig {
     /// The path to the HAProxy configuration file.
     pub config_file_path: String,
 
-    /// The command to reload the HAProxy configuration.
-    pub ha_proxy_config_reload_command: String,
+    /// The path to the HA proxy master socket.
+    #[serde(default = "ha_proxy_master_socket_path")]
+    pub master_socket_path: PathBuf,
 
     /// The timeouts for the SNI proxy.
     pub timeouts: SniProxyConfigTimeouts,
@@ -206,4 +207,8 @@ where
 
 fn u32_max() -> u32 {
     u32::MAX
+}
+
+fn ha_proxy_master_socket_path() -> PathBuf {
+    "/var/run/haproxy-master.sock".into()
 }

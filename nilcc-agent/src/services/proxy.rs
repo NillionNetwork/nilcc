@@ -3,10 +3,10 @@ use crate::repositories::workload::Workload;
 use anyhow::{bail, Context as anyhowContext, Result};
 use async_trait::async_trait;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 use tera::{Context, Tera};
-use tokio::{process::Command, sync::Mutex};
-use tracing::error;
+use tokio::{io::AsyncWriteExt, net::UnixSocket, process::Command, sync::Mutex};
+use tracing::{error, info};
 use uuid::Uuid;
 
 const HAPROXY_TEMPLATE: &str = include_str!("../templates/haproxy.cfg.j2");
@@ -36,7 +36,7 @@ pub trait ProxyService: Send + Sync {
 
 pub struct HaProxyProxyService {
     config_file_path: String,
-    ha_proxy_config_reload_command: String,
+    master_socket_path: PathBuf,
     timeouts: SniProxyConfigTimeouts,
     dns_subdomain: String,
     max_connections: u64,
@@ -46,7 +46,7 @@ pub struct HaProxyProxyService {
 impl HaProxyProxyService {
     pub fn new(
         config_file_path: String,
-        ha_proxy_config_reload_command: String,
+        master_socket_path: PathBuf,
         timeouts: SniProxyConfigTimeouts,
         dns_subdomain: String,
         max_connections: u64,
@@ -55,7 +55,7 @@ impl HaProxyProxyService {
         let proxied_vms: BTreeMap<_, _> = proxied_vms.into_iter().map(|vm| (vm.id, vm)).collect();
         Self {
             config_file_path,
-            ha_proxy_config_reload_command,
+            master_socket_path,
             timeouts,
             dns_subdomain,
             max_connections,
@@ -64,16 +64,15 @@ impl HaProxyProxyService {
     }
 
     async fn reload(&self) -> Result<()> {
-        Command::new("bash")
-            .arg("-c")
-            .arg(self.ha_proxy_config_reload_command.clone())
-            .status()
-            .await
-            .context("Failed to reload HAProxy configuration")?;
+        info!("Reloading HA proxy config");
+        let mut socket =
+            UnixSocket::new_stream()?.connect(&self.master_socket_path).await.context("Connecting to master socket")?;
+        socket.write_all(b"reload").await?;
         Ok(())
     }
 
     async fn check_config(&self) -> Result<()> {
+        info!("Validating HA proxy config");
         let output = Command::new("haproxy").arg("-c").arg("-f").arg(&self.config_file_path).output().await?;
         if !output.status.success() {
             let stderr_message = String::from_utf8_lossy(&output.stderr);
@@ -85,7 +84,7 @@ impl HaProxyProxyService {
 
     async fn persist_config(&self, proxied_vms: impl IntoIterator<Item = &ProxiedVm>) -> Result<()> {
         let dns_subdomain = &self.dns_subdomain;
-        let workloads: Vec<_> = proxied_vms
+        let backends: Vec<_> = proxied_vms
             .into_iter()
             .map(|vm| {
                 let ProxiedVm { id, http_port, https_port } = vm;
@@ -100,8 +99,9 @@ impl HaProxyProxyService {
         let context = SniProxyTemplateContext {
             max_connections: self.max_connections,
             timeouts: self.timeouts.clone(),
-            backends: workloads,
+            backends,
         };
+        info!("Persisting HA proxy config using {} VMs as backends", context.backends.len());
         let config_file = context.render_config_file()?;
         tokio::fs::write(&self.config_file_path, config_file).await.context("Failed to write HAProxy config file")?;
         self.check_config().await?;
@@ -150,7 +150,10 @@ impl SniProxyTemplateContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const EXPECTED_HAPROXY_CONFIG: &str = r#"global
+
+    #[test]
+    fn render_config_file() {
+        let expected_config = r#"global
     daemon
     maxconn 100000
     log stdout local0 info
@@ -186,18 +189,19 @@ frontend https_frontend
     use_backend backend-https-foo if { req.ssl_sni -i foo.nilcc.com }
 
 # Backend servers
+
+# VM foo backend servers
 backend backend-http-foo
-    mode tcp
+    mode http
     balance roundrobin
     server cvm 127.0.0.1:9000 check
+
 backend backend-https-foo
     mode tcp
     balance roundrobin
     server cvm 127.0.0.1:9001 check
 
 "#;
-    #[test]
-    fn render_config_file() {
         let config = SniProxyTemplateContext {
             max_connections: 100000,
             timeouts: SniProxyConfigTimeouts { connect: 5000, server: 50000, client: 50000 },
@@ -209,6 +213,6 @@ backend backend-https-foo
             }],
         };
         let config_file = config.render_config_file().unwrap();
-        assert_eq!(EXPECTED_HAPROXY_CONFIG, config_file);
+        assert_eq!(config_file, expected_config);
     }
 }

@@ -35,7 +35,6 @@ sni_proxy:
   start_port_range: 10000
   end_port_range: 20000
   config_file_path: /etc/haproxy/haproxy.cfg
-  ha_proxy_config_reload_command: sudo systemctl reload haproxy
   timeouts:
     connect: 5000
     server: 5000
