@@ -150,7 +150,10 @@ impl SniProxyTemplateContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const EXPECTED_HAPROXY_CONFIG: &str = r#"global
+
+    #[test]
+    fn render_config_file() {
+        let expected_config = r#"global
     daemon
     maxconn 100000
     log stdout local0 info
@@ -186,18 +189,19 @@ frontend https_frontend
     use_backend backend-https-foo if { req.ssl_sni -i foo.nilcc.com }
 
 # Backend servers
+
+# VM foo backend servers
 backend backend-http-foo
-    mode tcp
+    mode http
     balance roundrobin
     server cvm 127.0.0.1:9000 check
+
 backend backend-https-foo
     mode tcp
     balance roundrobin
     server cvm 127.0.0.1:9001 check
 
 "#;
-    #[test]
-    fn render_config_file() {
         let config = SniProxyTemplateContext {
             max_connections: 100000,
             timeouts: SniProxyConfigTimeouts { connect: 5000, server: 50000, client: 50000 },
@@ -209,6 +213,6 @@ backend backend-https-foo
             }],
         };
         let config_file = config.render_config_file().unwrap();
-        assert_eq!(EXPECTED_HAPROXY_CONFIG, config_file);
+        assert_eq!(config_file, expected_config);
     }
 }
