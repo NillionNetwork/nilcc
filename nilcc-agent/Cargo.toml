@@ -32,9 +32,10 @@ convert_case = "0.8.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
 uuid = { version = "1.17.0", features = ["serde", "v4"] }
+validator = { version = "0.20.0", features = ["derive"] }
 
 [dev-dependencies]
 mockall = "0.13"
 rstest = { version = "0.25", default-features = false }
 tracing-test = "0.2.5"
-test-with = { version = "0.14", default-features = false }
+test-with = { version = "0.15", default-features = false }

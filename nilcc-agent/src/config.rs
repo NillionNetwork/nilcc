@@ -144,6 +144,10 @@ pub struct MetricsConfig {
 pub struct ResourcesConfig {
     /// The reserved resources.
     pub reserved: ReservedResourcesConfig,
+
+    /// The resource limits for VMs.
+    #[serde(default)]
+    pub limits: ResourceLimitsConfig,
 }
 
 /// The reserved resources configuration.
@@ -152,11 +156,33 @@ pub struct ReservedResourcesConfig {
     /// The number of reserved CPUs.
     pub cpus: u32,
 
-    /// The reserved memory in GBs.
+    /// The reserved memory in MBs.
     pub memory_mb: u32,
 
     /// The reserved disk space in GBs.
     pub disk_space_gb: u32,
+}
+
+/// The resource limits configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ResourceLimitsConfig {
+    /// The maximum number of CPUs.
+    #[serde(default = "u32_max")]
+    pub cpus: u32,
+
+    /// The maximum memory in MBs.
+    #[serde(default = "u32_max")]
+    pub memory_mb: u32,
+
+    /// The maximum disk space in GBs.
+    #[serde(default = "u32_max")]
+    pub disk_space_gb: u32,
+}
+
+impl Default for ResourceLimitsConfig {
+    fn default() -> Self {
+        Self { cpus: u32::MAX, memory_mb: u32::MAX, disk_space_gb: u32::MAX }
+    }
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -167,4 +193,8 @@ where
     std::fs::read_to_string(&path)
         .context(format!("Reading verity_root_hash file {path}"))
         .map_err(serde::de::Error::custom)
+}
+
+fn u32_max() -> u32 {
+    u32::MAX
 }
