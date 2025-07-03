@@ -3,10 +3,10 @@ use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     clients::{
-        nilcc_api::{HttpNilccApiClient, NilccApiClient},
+        nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::QemuClient,
     },
-    config::{AgentConfig, ControllerConfig},
+    config::{AgentConfig, AgentMode},
     iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
     repositories::{
         sqlite::SqliteDb,
@@ -24,7 +24,7 @@ use nilcc_agent::{
 };
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::{net::TcpListener, signal};
-use tracing::{debug, info};
+use tracing::{debug, info, level_filters::LevelFilter};
 
 #[derive(Parser)]
 #[clap(author, version = version::agent_version(), about = "nilcc agent")]
@@ -43,7 +43,7 @@ enum Command {
     /// Run the agent in daemon mode and connect to the nilcc API.
     Daemon {
         /// Path to the agent configuration file
-        #[clap(long, short, default_value = "nilcc-agent-config.yaml")]
+        #[clap(long, short)]
         config: PathBuf,
     },
 
@@ -108,7 +108,15 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 }
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
-    let ControllerConfig { endpoint, key } = config.controller;
+    info!("Setting up dependencies");
+    let api_client: Arc<dyn NilccApiClient> = match config.controller {
+        AgentMode::Standalone => Arc::new(DummyNilccApiClient),
+        AgentMode::Remote(remote) => Arc::new(HttpNilccApiClient::new(NilccApiClientArgs {
+            api_base_url: remote.endpoint,
+            api_key: remote.key,
+            agent_id: config.agent_id,
+        })?),
+    };
 
     PrometheusBuilder::default()
         .with_http_listener(config.metrics.bind_endpoint)
@@ -119,12 +127,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
-    info!("Setting up dependencies");
-    let api_client = Arc::new(HttpNilccApiClient::new(nilcc_agent::clients::nilcc_api::NilccApiClientArgs {
-        api_base_url: endpoint,
-        api_key: key,
-        agent_id: config.agent_id,
-    })?);
+    info!("Registering with API");
     api_client.register(&system_resources).await.context("Failed to register")?;
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
@@ -205,11 +208,17 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::filter::EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
 
     let cli = Cli::parse();
     if let Err(e) = run(cli).await {
-        eprintln!("Error running CLI: {e:#?}");
+        eprintln!("Error running CLI: {e:#}");
         std::process::exit(1);
     }
 

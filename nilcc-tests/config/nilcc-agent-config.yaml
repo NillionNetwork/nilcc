@@ -9,6 +9,7 @@ api:
   bind_endpoint: "127.0.0.1:50055"
 
 controller:
+  mode: remote
   endpoint: "http://127.0.0.1:8081"
   key: your-metal-instance-api-key
 

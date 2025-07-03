@@ -18,6 +18,7 @@ use validator::Validate;
 pub struct CreateWorkloadRequest {
     pub(crate) id: Uuid,
     pub(crate) docker_compose: String,
+    #[serde(default)]
     pub(crate) env_vars: HashMap<String, String>,
     pub(crate) public_container_name: String,
     pub(crate) public_container_port: u16,

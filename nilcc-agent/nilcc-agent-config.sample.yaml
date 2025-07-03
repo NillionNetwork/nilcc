@@ -9,6 +9,7 @@ api:
   bind_endpoint: "127.0.0.1:50055"
 
 controller:
+  mode: remote
   endpoint: "http://127.0.0.1:50051"
   key: test
 
@@ -48,3 +49,4 @@ resources:
   reserved:
     cpus: 1
     memory_mb: 1024
+    disk_space_gb: 2
