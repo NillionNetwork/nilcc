@@ -65,9 +65,10 @@ impl VmWorker {
     }
 
     async fn start_vm(&self) {
-        info!("Starting VM");
+        info!("Attempting to start VM");
         match self.vm_client.start_vm(self.spec.clone(), &self.socket_path).await {
             Ok(()) => {
+                info!("VM started successfully");
                 self.submit_event(VmEvent::Started).await;
             }
             Err(QemuClientError::VmAlreadyRunning) => {

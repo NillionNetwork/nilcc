@@ -7,7 +7,6 @@ use nilcc_agent::{
         qemu::QemuClient,
     },
     config::{AgentConfig, AgentMode},
-    iso::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoMaker, IsoSpec},
     repositories::{
         sqlite::SqliteDb,
         workload::{SqliteWorkloadRepository, WorkloadRepository},
@@ -15,12 +14,12 @@ use nilcc_agent::{
     resources::SystemResources,
     routes::{build_router, AppState, Services},
     services::{
-        disk::DefaultDiskService,
+        disk::{ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, IsoSpec},
         proxy::HaProxyProxyService,
+        vm::{DefaultVmService, VmServiceArgs},
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
-    workers::scheduler::VmScheduler,
 };
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::{net::TcpListener, signal};
@@ -89,7 +88,8 @@ async fn run_iso_command(command: IsoCommand) -> Result<()> {
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
                 environment_variables,
             };
-            IsoMaker.create_application_iso(&output, spec).await.context("creating ISO")?;
+            let disk_service = DefaultDiskService::new("qemu-img".into());
+            disk_service.create_application_iso(&output, spec).await.context("creating ISO")?;
             Ok(())
         }
     }
@@ -109,7 +109,7 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     info!("Setting up dependencies");
-    let api_client: Arc<dyn NilccApiClient> = match config.controller {
+    let nilcc_api_client: Arc<dyn NilccApiClient> = match config.controller {
         AgentMode::Standalone => Arc::new(DummyNilccApiClient),
         AgentMode::Remote(remote) => Arc::new(HttpNilccApiClient::new(NilccApiClientArgs {
             api_base_url: remote.endpoint,
@@ -128,7 +128,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
     info!("Registering with API");
-    api_client.register(&system_resources).await.context("Failed to register")?;
+    nilcc_api_client.register(&system_resources).await.context("Failed to register")?;
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
@@ -144,15 +144,19 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     );
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
-    let scheduler = VmScheduler::spawn(vm_client, api_client);
-    let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
+    let vm_service = DefaultVmService::new(VmServiceArgs {
+        vm_client,
+        nilcc_api_client,
         state_path: config.vm_store,
-        scheduler,
-        repository: Box::new(SqliteWorkloadRepository::new(db)),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
+        cvm_config: config.cvm,
+    })
+    .await?;
+    let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
+        vm_service: Box::new(vm_service),
+        repository: Box::new(SqliteWorkloadRepository::new(db)),
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
-        cvm_config: config.cvm,
         proxy_service: Box::new(proxy_service),
     })
     .await
