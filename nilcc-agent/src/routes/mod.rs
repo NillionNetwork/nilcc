@@ -1,3 +1,6 @@
+use crate::auth::AuthLayer;
+use crate::config::ResourceLimitsConfig;
+use crate::services::workload::WorkloadService;
 use axum::extract::Request;
 use axum::extract::{rejection::JsonRejection, FromRequest};
 use axum::http::StatusCode;
@@ -8,9 +11,7 @@ use convert_case::{Case, Casing};
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
-
-use crate::config::ResourceLimitsConfig;
-use crate::services::workload::WorkloadService;
+use tower::ServiceBuilder;
 
 pub(crate) mod workloads;
 
@@ -25,13 +26,14 @@ pub struct AppState {
     pub resource_limits: ResourceLimitsConfig,
 }
 
-pub fn build_router(state: AppState) -> Router {
+pub fn build_router(state: AppState, token: String) -> Router {
     Router::new().nest(
         "/api/v1",
         Router::new()
             .route("/workloads/create", post(workloads::create::handler))
             .route("/workloads/delete", post(workloads::delete::handler))
-            .with_state(state),
+            .with_state(state)
+            .layer(ServiceBuilder::new().layer(AuthLayer::new(token))),
     )
 }
 
@@ -71,7 +73,6 @@ where
             Ok(value) => Ok(Self(value.0)),
             Err(rejection) => {
                 let payload = RequestHandlerError::new(rejection.body_text(), "MALFORMED_REQUEST");
-
                 Err((rejection.status(), axum::Json(payload)))
             }
         }

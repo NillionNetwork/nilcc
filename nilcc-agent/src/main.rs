@@ -165,7 +165,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         services: Services { workload: Arc::new(workload_service) },
         resource_limits: config.resources.limits,
     };
-    let router = build_router(state);
+    let router = build_router(state, config.api.token);
     let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
     let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
     info!("Listening to requests on {}", config.api.bind_endpoint);

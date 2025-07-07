@@ -97,6 +97,9 @@ pub struct ControllerConfig {
 pub struct ApiConfig {
     /// The endpoint to bind to.
     pub bind_endpoint: SocketAddr,
+
+    /// The API key that needs to be presented when making requests to this instance.
+    pub token: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
