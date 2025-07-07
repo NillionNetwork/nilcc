@@ -1,6 +1,5 @@
 pub mod clients;
 pub mod config;
-pub mod iso;
 pub mod repositories;
 pub mod resources;
 pub mod routes;
