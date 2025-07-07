@@ -29,6 +29,7 @@ pub struct CreateWorkloadRequest {
     pub(crate) gpus: u16,
     #[validate(range(min = 2))]
     pub(crate) disk_space_gb: u32,
+    pub(crate) domain: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

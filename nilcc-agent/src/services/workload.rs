@@ -164,6 +164,7 @@ impl DefaultWorkloadService {
             cpus,
             gpus,
             disk_space_gb,
+            domain,
         } = request;
         let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
         let ports: Vec<u16> = resources.ports.iter().take(2).copied().collect();
@@ -180,6 +181,7 @@ impl DefaultWorkloadService {
             disk_space_gb,
             proxy_http_port: ports[0],
             proxy_https_port: ports[1],
+            domain,
         }
     }
 }
@@ -319,6 +321,7 @@ mod tests {
             gpus: Default::default(),
             proxy_http_port: 150,
             proxy_https_port: 151,
+            domain: "example.com".into(),
         }
     }
 
@@ -414,6 +417,7 @@ mod tests {
             cpus: 1.try_into().unwrap(),
             gpus: 1,
             disk_space_gb: 1.try_into().unwrap(),
+            domain: "example.com".into(),
         };
         let workload = Workload {
             id: request.id,
@@ -427,6 +431,7 @@ mod tests {
             disk_space_gb: request.disk_space_gb,
             proxy_http_port: 100,
             proxy_https_port: 101,
+            domain: request.domain.clone(),
         };
         let mut builder = Builder::default();
         let id = workload.id;

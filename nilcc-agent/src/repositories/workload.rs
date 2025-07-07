@@ -24,6 +24,7 @@ pub struct Workload {
     pub disk_space_gb: u32,
     pub proxy_http_port: u16,
     pub proxy_https_port: u16,
+    pub domain: String,
 }
 
 impl fmt::Debug for Workload {
@@ -40,6 +41,7 @@ impl fmt::Debug for Workload {
             gpus,
             proxy_http_port,
             proxy_https_port,
+            domain,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -55,6 +57,7 @@ impl fmt::Debug for Workload {
             .field("gpus", gpus)
             .field("proxy_http_port", proxy_http_port)
             .field("proxy_https_port", proxy_https_port)
+            .field("domain", domain)
             .finish()
     }
 }
@@ -130,9 +133,10 @@ INSERT INTO workloads (
     disk_space_gb,
     proxy_http_port,
     proxy_https_port,
+    domain,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ";
         let Workload {
             id,
@@ -146,6 +150,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             gpus,
             proxy_http_port,
             proxy_https_port,
+            domain,
         } = workload;
 
         sqlx::query(query)
@@ -160,6 +165,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             .bind(disk_space_gb)
             .bind(proxy_http_port)
             .bind(proxy_https_port)
+            .bind(domain)
             .bind(Utc::now())
             .execute(&self.pool)
             .await?;
@@ -214,6 +220,7 @@ mod tests {
             gpus: vec![GpuAddress("aa:bb".into())],
             proxy_http_port: 1080,
             proxy_https_port: 1443,
+            domain: "example.com".into(),
         };
         repo.create(workload.clone()).await.expect("failed to insert");
 
