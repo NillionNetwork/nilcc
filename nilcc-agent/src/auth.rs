@@ -39,7 +39,7 @@ pub(crate) struct AuthMiddleware<S> {
 
 impl<S> Service<Request<Body>> for AuthMiddleware<S>
 where
-    S: Service<Request<Body>, Response = Response, Error = Infallible> + Send + Sync + Clone + 'static,
+    S: Service<Request<Body>, Response = Response, Error = Infallible> + Send + Clone + 'static,
     S::Future: Send + 'static,
 {
     type Response = S::Response;

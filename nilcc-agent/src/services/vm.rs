@@ -104,7 +104,7 @@ impl DefaultVmService {
         let spec = IsoSpec {
             docker_compose_yaml: workload.docker_compose.clone(),
             metadata: ApplicationMetadata {
-                hostname: "UNKNOWN".into(),
+                hostname: workload.domain.clone(),
                 api: ContainerMetadata {
                     container: workload.public_container_name.clone(),
                     port: workload.public_container_port,
@@ -245,6 +245,7 @@ mod tests {
             disk_space_gb: 1.try_into().unwrap(),
             proxy_http_port: 1000,
             proxy_https_port: 1001,
+            domain: "example.com".into(),
         };
         let mut builder = Builder::default();
         let id = workload.id;
