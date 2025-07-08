@@ -13,7 +13,7 @@ const composeOptions = {
 };
 
 export async function setup(_project: TestProject) {
-  console.log("🚀 Starting containers...");
+  console.log("Starting containers...");
   try {
     // Check if containers are already running
     const psResult = await dockerCompose.ps(composeOptions);
@@ -22,7 +22,7 @@ export async function setup(_project: TestProject) {
       psResult.data.services.every((service) => service.state?.includes("Up"));
 
     if (allServicesUp) {
-      console.log("✅ Containers already running, skipping startup.");
+      console.log("Containers already running, skipping startup.");
       return;
     }
 
@@ -38,14 +38,14 @@ export async function setup(_project: TestProject) {
       await new Promise((f) => setTimeout(f, 200));
     }
     if (retry >= MAX_RETRIES) {
-      console.error("❌ Error starting containers: timeout");
+      console.error("Error starting containers: timeout");
       process.exit(1);
     }
     // We need sleep 1 sec to be sure that the AboutResponse.started is at least 1 sec earlier than the tests start.
     await new Promise((f) => setTimeout(f, 2000));
-    console.log("✅ Containers started successfully.");
+    console.log("Containers started successfully.");
   } catch (error) {
-    console.error("❌ Error starting containers: ", error);
+    console.error("Error starting containers: ", error);
     process.exit(1);
   }
 }
@@ -53,16 +53,16 @@ export async function setup(_project: TestProject) {
 export async function teardown(_project: TestProject) {
   // Skip teardown if KEEP_INFRA environment variable is set
   if (process.env.KEEP_INFRA === "true") {
-    console.log("🔄 Keeping infrastructure running as KEEP_INFRA=true");
+    console.log("Keeping infrastructure running as KEEP_INFRA=true");
     return;
   }
 
-  console.log("🛑 Removing containers...");
+  console.log("Removing containers...");
   try {
     await dockerCompose.downAll(composeOptions);
-    console.log("✅ Containers removed successfully.");
+    console.log("Containers removed successfully.");
   } catch (error) {
-    console.error("❌ Error removing containers: ", error);
+    console.error("Error removing containers: ", error);
     process.exit(1);
   }
 }

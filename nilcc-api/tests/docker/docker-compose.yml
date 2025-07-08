@@ -5,7 +5,15 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "35432:5432"
+
   localstack:
     image: localstack/localstack
     ports:
       - "4566:4566"
+
+  agent:
+    image: caddy:2
+    ports:
+      - "35433:80"
+    command: |
+      caddy respond --listen :80 --body '{}' --header "Content-Type: application/json" 

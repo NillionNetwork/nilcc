@@ -17,7 +17,7 @@ export const CreateWorkloadRequest = z
       .int()
       .min(10, "Disk must be at least 10GB")
       .max(100, "Disk must be at most 100GB"),
-    gpu: z.number().int().positive().optional(),
+    gpus: z.number().int(),
   })
   .openapi({ ref: "CreateWorkloadRequest" });
 export type CreateWorkloadRequest = z.infer<typeof CreateWorkloadRequest>;
@@ -39,30 +39,3 @@ export const ListWorkloadsResponse = z
   .array(GetWorkloadResponse)
   .openapi({ ref: "ListWorkloadsResponse" });
 export type ListWorkloadsResponse = z.infer<typeof ListWorkloadsResponse>;
-
-export const UpdateWorkloadRequest = z
-  .object({
-    id: Uuid,
-    name: z.string().min(1, "Name is required").optional(),
-    description: z.string().optional(),
-    tags: z.array(z.string()).optional(),
-    dockerCompose: z.string().min(1, "Docker Compose is required").optional(),
-    envVars: z.record(z.string(), z.string()).optional(),
-    serviceToExpose: z
-      .string()
-      .min(1, "Service to expose is required")
-      .optional(),
-    servicePortToExpose: z
-      .number()
-      .int()
-      .min(1, "Service port to expose is required")
-      .optional(),
-    memory: z
-      .number()
-      .int()
-      .min(1, "Memory must be a positive integer")
-      .optional(),
-    cpus: z.number().int().min(1, "CPU must be a positive integer").optional(),
-  })
-  .openapi({ ref: "UpdateWorkloadRequest" });
-export type UpdateWorkloadRequest = z.infer<typeof UpdateWorkloadRequest>;

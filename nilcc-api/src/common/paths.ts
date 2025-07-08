@@ -21,7 +21,6 @@ export const PathsV1 = {
   },
   metalInstance: {
     register: PathSchema.parse("/api/v1/metal-instances/~/register"),
-    sync: PathSchema.parse("/api/v1/metal-instances/~/sync"),
     read: PathSchema.parse("/api/v1/metal-instances/:id"),
     list: PathSchema.parse("/api/v1/metal-instances"),
   },

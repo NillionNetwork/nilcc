@@ -46,6 +46,9 @@ export class WorkloadEntity {
   cpus: number;
 
   @Column({ type: "int" })
+  gpus: number;
+
+  @Column({ type: "int" })
   disk: number;
 
   @Column({

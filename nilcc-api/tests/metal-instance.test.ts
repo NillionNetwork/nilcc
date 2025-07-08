@@ -11,6 +11,8 @@ describe("Metal Instance", () => {
   const myMetalInstance: RegisterMetalInstanceRequest = {
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
+    endpoint: "http://127.0.0.1:35433",
+    token: "my_token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
@@ -24,9 +26,10 @@ describe("Metal Instance", () => {
       total: 128,
       reserved: 16,
     },
+    gpus: 0,
   };
 
-  it("should register a metal instance that haven't been created", async ({
+  it("should register a metal instance that hasn't been created", async ({
     expect,
     metalInstanceClient,
     userClient,
@@ -44,7 +47,12 @@ describe("Metal Instance", () => {
 
     expect(getResponseAfter.response.status).equals(200);
     const body = await getResponseAfter.parse_body();
-    const cleanBody = { ...body, updatedAt: undefined, createdAt: undefined };
+    const cleanBody = {
+      ...body,
+      updatedAt: undefined,
+      createdAt: undefined,
+      token: myMetalInstance.token,
+    };
     expect(cleanBody).toEqual(myMetalInstance);
   });
 
@@ -71,7 +79,12 @@ describe("Metal Instance", () => {
     });
     expect(getResponse.response.status).equals(200);
     const body = await getResponse.parse_body();
-    const cleanBody = { ...body, updatedAt: undefined, createdAt: undefined };
+    const cleanBody = {
+      ...body,
+      updatedAt: undefined,
+      createdAt: undefined,
+      token: myMetalInstance.token,
+    };
     expect(cleanBody).toEqual(updatedMetalInstance);
   });
 });
