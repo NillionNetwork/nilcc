@@ -128,7 +128,7 @@ export class MetalInstanceService {
   async create(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
-    tx: QueryRunner | undefined,
+    tx?: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
     const now = new Date();

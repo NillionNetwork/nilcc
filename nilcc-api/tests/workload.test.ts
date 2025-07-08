@@ -121,4 +121,29 @@ services:
     });
     expect(getResponse.response.status).equal(404);
   });
+
+  it("should update a workload's state", async ({
+    expect,
+    userClient,
+    metalInstanceClient,
+  }) => {
+    await metalInstanceClient.register(myMetalInstance);
+    const workloadResponse = await userClient.createWorkload(
+      createWorkloadRequest,
+    );
+    myWorkload = await workloadResponse.parse_body();
+
+    const response = await userClient.submitEvent({
+      agentId: myMetalInstance.id,
+      workloadId: myWorkload.id,
+      event: { kind: "started" },
+    });
+    expect(response.status).toBe(200);
+
+    const updatedWorkloadResponse = await userClient.getWorkload({
+      id: myWorkload.id,
+    });
+    const updatedWorkload = await updatedWorkloadResponse.parse_body();
+    expect(updatedWorkload.status).toBe("running");
+  });
 });

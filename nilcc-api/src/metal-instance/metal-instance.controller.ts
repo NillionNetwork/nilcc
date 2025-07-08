@@ -23,12 +23,12 @@ export function register(options: ControllerOptions) {
     describeRoute({
       tags: ["Metal-Instance"],
       summary:
-        "Register a Metal Instance, will create it if it does not exist, or update it if it does",
+        "Register a metal instance, will create it if it does not exist, or update it if it does",
       description:
-        "Registers a Metal Instance by creating it if it does not exist, or updating it if it does",
+        "Registers a metal instance by creating it if it does not exist, or updating it if it does",
       responses: {
         200: {
-          description: "Metal Instance registered successfully",
+          description: "Metal instance registered successfully",
         },
         ...OpenApiSpecCommonErrorResponses,
       },
@@ -54,8 +54,8 @@ export function read(options: ControllerOptions) {
     PathsV1.metalInstance.read,
     describeRoute({
       tags: ["Metal-Instance"],
-      summary: "Get a Metal Instance by ID",
-      description: "Returns a Metal Instance by its ID",
+      summary: "Get a metal instance by ID",
+      description: "Returns a metal instance by its ID",
       responses: {
         200: {
           description: "Workload found",
@@ -88,11 +88,11 @@ export function list(options: ControllerOptions) {
     PathsV1.metalInstance.list,
     describeRoute({
       tags: ["Metal-Instance"],
-      summary: "List all Metal Instances",
-      description: "Returns a list of all Metal Instances",
+      summary: "List all metal instances",
+      description: "Returns a list of all metal instances",
       responses: {
         200: {
-          description: "List of Metal Instances",
+          description: "List of metal instances",
           content: {
             "application/json": {
               schema: resolver(ListMetalInstancesResponse),

@@ -16,6 +16,7 @@ import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { paramsValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
+import { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
 import { workloadMapper } from "#/workload/workload.mapper";
 import {
   CreateWorkloadRequest,
@@ -171,6 +172,31 @@ export function remove(options: ControllerOptions): void {
         return c.notFound();
       }
       return c.body(null, 200);
+    },
+  );
+}
+
+export function submitEvent(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.events.submit,
+    describeRoute({
+      tags: ["Metal-Instance"],
+      summary: "Report an event for a workload running inside a metal instance",
+      description: "Reports an event and updates the state for the workload",
+      responses: {
+        200: {
+          description: "The event was processed successfully",
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.metalInstanceApiKey),
+    zValidator("json", SubmitEventRequest),
+    async (c) => {
+      const payload = c.req.valid("json");
+      await bindings.services.workload.submitEvent(bindings, payload);
+      return c.body(null);
     },
   );
 }

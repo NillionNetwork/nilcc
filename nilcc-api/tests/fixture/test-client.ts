@@ -5,6 +5,7 @@ import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
   type RegisterMetalInstanceRequest,
+  type SubmitEventRequest,
 } from "#/metal-instance/metal-instance.dto";
 import {
   type CreateWorkloadRequest,
@@ -35,19 +36,23 @@ class TestClient {
       method?: "GET" | "POST" | "PUT" | "DELETE";
       body?: T;
       params?: Record<string, string>;
+      headers?: Record<string, string>;
     } = {},
   ): Promise<Response> {
-    const { method = "GET", body } = options;
+    const { method = "GET", body, headers } = options;
 
-    const headers: Record<string, string> = this.extraHeaders();
+    const requestHeaders: Record<string, string> = {
+      ...this.extraHeaders(),
+      ...headers,
+    };
 
     if (body) {
-      headers["Content-Type"] = "application/json";
+      requestHeaders["Content-Type"] = "application/json";
     }
 
     return this.app.request(path, {
       method,
-      headers,
+      headers: requestHeaders,
       ...(body && { body: JSON.stringify(body) }),
     });
   }
@@ -140,6 +145,16 @@ export class UserClient extends TestClient {
       response,
       GetMetalInstanceResponse,
     );
+  }
+
+  async submitEvent(request: SubmitEventRequest) {
+    return this.request(PathsV1.workload.events.submit, {
+      method: "POST",
+      body: request,
+      headers: {
+        "x-api-key": this.bindings.config.metalInstanceApiKey,
+      },
+    });
   }
 }
 
