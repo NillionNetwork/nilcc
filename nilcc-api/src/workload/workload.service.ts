@@ -6,9 +6,11 @@ import {
   InstancesNotAvailable,
   mapError,
   RemoveEntityError,
+  SubmitEventError,
 } from "#/common/errors";
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
+import type { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
 import type { CreateWorkloadRequest } from "./workload.dto";
 import { WorkloadEntity } from "./workload.entity";
 
@@ -108,6 +110,33 @@ export class WorkloadService {
       workloadId,
     );
     return true;
+  }
+
+  @mapError((e) => new SubmitEventError(e))
+  async submitEvent(
+    bindings: AppBindings,
+    request: SubmitEventRequest,
+    tx?: QueryRunner,
+  ): Promise<void> {
+    const workloadRepository = this.getRepository(bindings, tx);
+    const workload = await workloadRepository.findOneBy({
+      id: request.workloadId,
+    });
+    if (workload === null) {
+      throw new Error("workload not found");
+    }
+    switch (request.event.kind) {
+      case "started":
+        workload.status = "running";
+        break;
+      case "stopped":
+        workload.status = "stopped";
+        break;
+      case "failedToStart":
+        workload.status = "error";
+        break;
+    }
+    await workloadRepository.save(workload);
   }
 
   async createCnameForWorkload(

@@ -53,10 +53,10 @@ export class WorkloadEntity {
 
   @Column({
     type: "enum",
-    enum: ["pending", "running", "stopped", "error"],
-    default: "pending",
+    enum: ["scheduled", "running", "stopped", "error"],
+    default: "scheduled",
   })
-  status: "pending" | "running" | "stopped" | "error";
+  status: "scheduled" | "running" | "stopped" | "error";
 
   @ManyToOne(
     () => MetalInstanceEntity,

@@ -50,3 +50,19 @@ export const ListMetalInstancesResponse = z
 export type ListMetalInstancesResponse = z.infer<
   typeof ListMetalInstancesResponse
 >;
+
+export const WorkloadEvent = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("started") }),
+  z.object({ kind: z.literal("stopped") }),
+  z.object({ kind: z.literal("failedToStart"), error: z.string() }),
+]);
+export type WorkloadEvent = z.infer<typeof WorkloadEvent>;
+
+export const SubmitEventRequest = z
+  .object({
+    agentId: Uuid,
+    workloadId: Uuid,
+    event: WorkloadEvent,
+  })
+  .openapi({ ref: "SubmitEventRequest" });
+export type SubmitEventRequest = z.infer<typeof SubmitEventRequest>;

@@ -18,6 +18,9 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/workloads/:id"),
     update: PathSchema.parse("/api/v1/workloads"),
     remove: PathSchema.parse("/api/v1/workloads/:id"),
+    events: {
+      submit: PathSchema.parse("/api/v1/workloads/~/events/submit"),
+    },
   },
   metalInstance: {
     register: PathSchema.parse("/api/v1/metal-instances/~/register"),

@@ -146,6 +146,10 @@ export class AgentRequestError extends AppError {
   tag = "AgentRequestError";
 }
 
+export class SubmitEventError extends AppError {
+  tag = "SubmitEventError";
+}
+
 export class HttpError extends AppError {
   tag = "HttpError";
   statusCode: ContentfulStatusCode;
