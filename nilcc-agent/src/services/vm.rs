@@ -5,8 +5,7 @@ use crate::{
     },
     config::{CvmConfig, CvmFiles},
     repositories::workload::Workload,
-    services::disk::DiskService,
-    services::disk::{ApplicationMetadata, ContainerMetadata, EnvironmentVariable, IsoSpec},
+    services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::vm::{VmWorker, VmWorkerHandle},
 };
 use anyhow::Context;
@@ -101,6 +100,7 @@ impl DefaultVmService {
         }
         let environment_variables =
             workload.env_vars.iter().map(|(name, value)| EnvironmentVariable::new(name, value)).collect();
+        let files = workload.files.iter().map(|(name, contents)| ExternalFile::new(name, contents.clone())).collect();
         let spec = IsoSpec {
             docker_compose_yaml: workload.docker_compose.clone(),
             metadata: ApplicationMetadata {
@@ -111,6 +111,7 @@ impl DefaultVmService {
                 },
             },
             environment_variables,
+            files,
         };
         self.disk_service
             .create_application_iso(&iso_path, spec)
@@ -237,6 +238,7 @@ mod tests {
             id: Uuid::new_v4(),
             docker_compose: "compose".into(),
             env_vars: Default::default(),
+            files: Default::default(),
             public_container_name: "api".into(),
             public_container_port: 80,
             memory_mb: 1024,

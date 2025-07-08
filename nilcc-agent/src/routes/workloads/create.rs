@@ -8,18 +8,24 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::collections::HashMap;
 use strum::EnumDiscriminants;
 use tracing::error;
 use uuid::Uuid;
 use validator::Validate;
 
+#[serde_as]
 #[derive(Clone, Debug, Deserialize, Validate)]
 pub struct CreateWorkloadRequest {
     pub(crate) id: Uuid,
     pub(crate) docker_compose: String,
     #[serde(default)]
     pub(crate) env_vars: HashMap<String, String>,
+    #[serde_as(deserialize_as = "HashMap<_, Base64>")]
+    #[serde(default)]
+    pub(crate) files: HashMap<String, Vec<u8>>,
     pub(crate) public_container_name: String,
     pub(crate) public_container_port: u16,
     #[validate(range(min = 512))]

@@ -23,6 +23,7 @@ export "CADDY_INPUT_FILE=${caddyfile_path}"
 
 export NILCC_VERSION=$(cat /opt/nillion/nilcc-version)
 export NILCC_VM_TYPE=$(cat /opt/nillion/nilcc-vm-type)
+export FILES=$ROOT_PATH/files
 echo "Using NILCC_VERSION ${NILCC_VERSION}"
 echo "Using NILCC_VM_TYPE ${NILCC_VM_TYPE}"
 

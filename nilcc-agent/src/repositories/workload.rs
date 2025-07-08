@@ -15,6 +15,8 @@ pub struct Workload {
     pub docker_compose: String,
     #[sqlx(json)]
     pub env_vars: HashMap<String, String>,
+    #[sqlx(json)]
+    pub files: HashMap<String, Vec<u8>>,
     pub public_container_name: String,
     pub public_container_port: u16,
     pub memory_mb: u32,
@@ -33,6 +35,7 @@ impl fmt::Debug for Workload {
             id,
             docker_compose,
             env_vars,
+            files,
             public_container_name,
             public_container_port,
             memory_mb,
@@ -49,6 +52,7 @@ impl fmt::Debug for Workload {
             .field("id", id)
             .field("docker_compose", docker_compose)
             .field("env_vars", &environment_variables)
+            .field("files", &files)
             .field("public_container_name", public_container_name)
             .field("public_container_port", public_container_port)
             .field("memory_mb", memory_mb)
@@ -125,6 +129,7 @@ INSERT INTO workloads (
     id,
     docker_compose,
     env_vars,
+    files,
     public_container_name,
     public_container_port,
     memory_mb,
@@ -136,12 +141,13 @@ INSERT INTO workloads (
     domain,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ";
         let Workload {
             id,
             docker_compose,
             env_vars,
+            files,
             public_container_name,
             public_container_port,
             memory_mb,
@@ -157,6 +163,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             .bind(id)
             .bind(docker_compose)
             .bind(sqlx::types::Json(env_vars))
+            .bind(sqlx::types::Json(files))
             .bind(public_container_name)
             .bind(public_container_port)
             .bind(memory_mb)
@@ -212,6 +219,7 @@ mod tests {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),
             env_vars: HashMap::from([("FOO".into(), "value".into())]),
+            files: HashMap::from([("foo.txt".into(), vec![1, 2, 3])]),
             public_container_name: "container-1".into(),
             public_container_port: 80,
             memory_mb: 1024,

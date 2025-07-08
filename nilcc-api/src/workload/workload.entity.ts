@@ -33,6 +33,20 @@ export class WorkloadEntity {
   })
   envVars?: Record<string, string>;
 
+  @Column({
+    type: "text",
+    nullable: true,
+    transformer: {
+      to: (value?: Record<string, string>) =>
+        value
+          ? z.record(z.string(), z.string()).parse(value) &&
+            JSON.stringify(value)
+          : null,
+      from: (value?: string) => (value ? JSON.parse(value) : {}),
+    },
+  })
+  files?: Record<string, string>;
+
   @Column({ type: "varchar" })
   serviceToExpose: string;
 

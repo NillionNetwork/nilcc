@@ -8,6 +8,7 @@ export const CreateWorkloadRequest = z
     tags: z.array(z.string()).optional(),
     dockerCompose: z.string(),
     envVars: z.record(z.string(), z.string()).optional(),
+    files: z.record(z.string(), z.string().base64()).optional(),
     serviceToExpose: z.string().min(1, "Service to expose is required"),
     servicePortToExpose: z.number().int().positive(),
     memory: z.number().int().positive(),
