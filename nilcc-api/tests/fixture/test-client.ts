@@ -11,7 +11,6 @@ import {
   CreateWorkloadResponse,
   GetWorkloadResponse,
   ListWorkloadsResponse,
-  type UpdateWorkloadRequest,
 } from "#/workload/workload.dto";
 
 export type TestClientOptions = {
@@ -121,13 +120,6 @@ export class UserClient extends TestClient {
       response,
       ListWorkloadsResponse,
     );
-  }
-
-  async updateWorkload(body: UpdateWorkloadRequest): Promise<Response> {
-    return await this.request(PathsV1.workload.update, {
-      method: "PUT",
-      body,
-    });
   }
 
   async deleteWorkload(params: { id: string }): Promise<Response> {

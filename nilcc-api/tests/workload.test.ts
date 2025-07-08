@@ -32,11 +32,14 @@ services:
     memory: 4,
     cpus: 2,
     disk: 40,
+    gpus: 0,
   };
 
   const myMetalInstance: RegisterMetalInstanceRequest = {
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
+    endpoint: "http://127.0.0.1:35433",
+    token: "my_token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
@@ -50,6 +53,7 @@ services:
       total: 1024,
       reserved: 128,
     },
+    gpus: 0,
   };
 
   it("should fail to create a workload if there isn't a metal instance", async ({
@@ -103,15 +107,6 @@ services:
     const workloads = await workloadsResponse.parse_body();
     expect(workloads.length).greaterThan(0);
     expect(workloads[0].name).equals(myWorkload!.name);
-  });
-
-  it("should update a workload", async ({ expect, userClient }) => {
-    const updatedName = "my-cool-workload-updated";
-    const response = await userClient.updateWorkload({
-      id: myWorkload!.id,
-      name: updatedName,
-    });
-    expect(response.status).equals(200);
   });
 
   it("should delete a workload", async ({ expect, userClient }) => {

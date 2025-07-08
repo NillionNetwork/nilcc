@@ -8,6 +8,7 @@ export const metalInstanceMapper = {
     return {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
+      endpoint: metalInstance.endpoint,
       memoryMb: {
         total: metalInstance.totalMemory,
         reserved: metalInstance.osReservedMemory,
@@ -21,7 +22,7 @@ export const metalInstanceMapper = {
         reserved: metalInstance.osReservedDisk,
       },
       id: metalInstance.id,
-      gpus: metalInstance.gpus ?? undefined,
+      gpus: metalInstance.gpus,
       gpuModel: metalInstance.gpuModel ?? undefined,
       createdAt: metalInstance.createdAt.toISOString(),
       updatedAt: metalInstance.updatedAt.toISOString(),

@@ -6,6 +6,10 @@ import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
 import { WorkloadService } from "#/workload/workload.service";
 import {
+  DefaultNilccAgentClient,
+  type NilccAgentClient,
+} from "./clients/nilcc-agent.service";
+import {
   type DnsService,
   LocalStackDnsService,
   Route53DnsService,
@@ -43,6 +47,7 @@ export type AppServices = {
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
   dns: DnsService;
+  nilccAgentClient: NilccAgentClient;
 };
 
 export type AppBindings = {
@@ -121,11 +126,13 @@ async function buildServices(
 
   const metalInstanceService = new MetalInstanceService();
   const workloadService = new WorkloadService();
+  const nilccAgentClient = new DefaultNilccAgentClient();
 
   return {
     metalInstance: metalInstanceService,
     workload: workloadService,
     dns: dnsService,
+    nilccAgentClient,
   };
 }
 

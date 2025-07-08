@@ -98,6 +98,9 @@ pub struct ApiConfig {
     /// The endpoint to bind to.
     pub bind_endpoint: SocketAddr,
 
+    /// The public domain where this agent can be reached.
+    pub domain: String,
+
     /// The API key that needs to be presented when making requests to this instance.
     pub token: String,
 }

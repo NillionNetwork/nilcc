@@ -128,7 +128,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
     info!("Registering with API");
-    nilcc_api_client.register(&system_resources).await.context("Failed to register")?;
+    nilcc_api_client.register(&config.api, &system_resources).await.context("Failed to register")?;
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));

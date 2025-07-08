@@ -68,13 +68,13 @@ export class MetalInstanceService {
       cpus: number;
       memory: number;
       disk: number;
-      gpu: number | undefined;
+      gpus: number;
     },
     bindings: AppBindings,
     tx: QueryRunner,
   ): Promise<MetalInstanceEntity[]> {
     const repository = this.getRepository(bindings, tx);
-    let queryBuilder = repository
+    const queryBuilder = repository
       .createQueryBuilder("metalInstance")
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
@@ -89,18 +89,13 @@ export class MetalInstanceService {
       .andHaving(
         "metalInstance.totalDisk - metalInstance.osReservedDisk - COALESCE(SUM(workload.disk), 0) > :requiredDisk",
         { requiredDisk: param.disk },
+      )
+      .andHaving(
+        "metalInstance.gpus - COALESCE(SUM(workload.gpus), 0) >= :requiredGpu",
+        { requiredGpu: param.gpus },
       );
 
-    if (param.gpu) {
-      queryBuilder = queryBuilder.andHaving(
-        "metalInstance.gpu - COALESCE(SUM(workload.gpu), 0) >= :requiredGpu",
-        { requiredGpu: param.gpu },
-      );
-    }
-
-    const result = await queryBuilder.getMany();
-
-    return result;
+    return await queryBuilder.getMany();
   }
 
   @mapError((e) => new UpdateEntityError(MetalInstanceEntity, e))
@@ -140,6 +135,8 @@ export class MetalInstanceService {
     const newMetalInstance = repository.create({
       id: metalInstance.id,
       agentVersion: metalInstance.agentVersion,
+      token: metalInstance.token,
+      endpoint: metalInstance.endpoint,
       hostname: metalInstance.hostname,
       totalCpus: metalInstance.cpus.total,
       osReservedCpus: metalInstance.cpus.reserved,

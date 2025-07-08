@@ -142,6 +142,10 @@ export class InvalidDockerCompose extends AppError {
   tag = "InvalidDockerCompose";
 }
 
+export class AgentRequestError extends AppError {
+  tag = "AgentRequestError";
+}
+
 export class HttpError extends AppError {
   tag = "HttpError";
   statusCode: ContentfulStatusCode;

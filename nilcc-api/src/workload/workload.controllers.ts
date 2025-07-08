@@ -22,7 +22,6 @@ import {
   CreateWorkloadResponse,
   GetWorkloadResponse,
   ListWorkloadsResponse,
-  UpdateWorkloadRequest,
 } from "./workload.dto";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -142,36 +141,6 @@ export function read(options: ControllerOptions): void {
         return c.notFound();
       }
       return c.json(workloadMapper.entityToResponse(workload));
-    },
-  );
-}
-
-export function update(options: ControllerOptions): void {
-  const { app, bindings } = options;
-
-  app.put(
-    PathsV1.workload.update,
-    describeRoute({
-      tags: ["Workload"],
-      summary: "Update a Workload",
-      description: "Update a Workload",
-      responses: {
-        200: OpenApiSpecEmptySuccessResponses[200],
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.userApiKey),
-    zValidator("json", UpdateWorkloadRequest),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const updated = await bindings.services.workload.update(
-        bindings,
-        payload,
-      );
-      if (!updated) {
-        return c.notFound();
-      }
-      return c.body(null, 200);
     },
   );
 }

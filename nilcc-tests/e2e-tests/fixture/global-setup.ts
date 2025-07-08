@@ -62,11 +62,11 @@ async function waitForResource(
   maxRetries = 30,
   retryDelay = 1000,
 ): Promise<void> {
-  console.log(`⏳ Waiting for ${resourceName} to be ready...`);
+  console.log(`Waiting for ${resourceName} to be ready...`);
   for (let retry = 1; retry <= maxRetries; retry++) {
     try {
       await check();
-      console.log(`✅ ${resourceName} is ready.`);
+      console.log(`${resourceName} is ready.`);
       return;
     } catch (error) {
       if (retry < maxRetries) {
@@ -121,7 +121,7 @@ async function waitForApi(): Promise<void> {
 }
 
 async function startDockerContainers() {
-  console.log("🚀 Starting docker containers...");
+  console.log("Starting docker containers...");
   try {
     await dockerCompose.upAll({
       ...DOCKER_COMPOSE_OPTIONS,
@@ -130,20 +130,20 @@ async function startDockerContainers() {
 
     await waitForPostgres();
     await waitForLocalstack();
-    console.log("✅ Containers and services are ready.");
+    console.log("Containers and services are ready.");
   } catch (error) {
-    console.error("❌ Error starting containers: ", error);
+    console.error("Error starting containers: ", error);
     await process.exit(1);
   }
 }
 
 async function startApiServer() {
   const apiCwd = "../nilcc-api";
-  console.log(`🚀 Installing API dependencies in ${apiCwd}...`);
+  console.log(`Installing API dependencies in ${apiCwd}...`);
   await spawnAsync("pnpm", ["install"], { cwd: apiCwd });
-  console.log("✅ API dependencies installed.");
+  console.log("API dependencies installed.");
 
-  console.log("🚀 Starting API server...");
+  console.log("Starting API server...");
   apiProcess = spawn("pnpm", ["start"], {
     cwd: apiCwd,
     env: { ...process.env, ...API_CONFIG },
@@ -157,42 +157,42 @@ async function startApiServer() {
 }
 
 export async function setup() {
-  console.log("⚙️  Building rust agent...");
+  console.log("Building rust agent...");
   await spawnAsync(...NILCC_AGENT_BUILD_OPTIONS);
-  console.log("✅ Rust agent built successfully.");
+  console.log("Rust agent built successfully.");
 
   await startDockerContainers();
   await startApiServer();
 
-  console.log("✅ Setup complete. Ready for tests.");
+  console.log("Setup complete. Ready for tests.");
 }
 
 export async function teardown() {
   if (process.env.SKIP_TEARDOWN) {
-    console.log("🟡 Skipping teardown due to SKIP_TEARDOWN flag.");
+    console.log("Skipping teardown due to SKIP_TEARDOWN flag.");
     return;
   }
 
   if (apiProcess?.pid) {
-    console.log("🛑 Stopping API server...");
+    console.log("Stopping API server...");
     try {
       // Use process group killing to ensure child processes are also terminated
       process.kill(-apiProcess.pid, "SIGTERM");
-      console.log("✅ API server stopped.");
+      console.log("API server stopped.");
     } catch (error) {
-      console.error("❌ Error stopping API server: ", error);
+      console.error("Error stopping API server: ", error);
     }
   }
 
-  console.log("🛑 Removing containers...");
+  console.log("Removing containers...");
   try {
     await dockerCompose.downAll({
       ...DOCKER_COMPOSE_OPTIONS,
       commandOptions: ["--volumes"], // Also remove volumes to ensure a full clean up
     });
-    console.log("✅ Containers removed successfully.");
+    console.log("Containers removed successfully.");
   } catch (error) {
-    console.error("❌ Error removing containers: ", error);
+    console.error("Error removing containers: ", error);
     process.exit(1);
   }
 }

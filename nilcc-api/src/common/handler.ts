@@ -4,11 +4,13 @@ import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 import {
+  AgentRequestError,
   CreateEntityError,
   DataValidationError,
   FindEntityError,
   GetRepositoryError,
   HttpError,
+  InvalidDockerCompose,
   RemoveEntityError,
   UpdateEntityError,
 } from "#/common/errors";
@@ -50,7 +52,7 @@ export function errorHandler(e: unknown, c: Context) {
     return c.json(payload, statusCode);
   };
 
-  if (e instanceof DataValidationError) {
+  if (e instanceof DataValidationError || e instanceof InvalidDockerCompose) {
     return toResponse(e, e.humanize(), StatusCodes.BAD_REQUEST);
   }
 
@@ -63,7 +65,8 @@ export function errorHandler(e: unknown, c: Context) {
     e instanceof CreateEntityError ||
     e instanceof FindEntityError ||
     e instanceof UpdateEntityError ||
-    e instanceof RemoveEntityError
+    e instanceof RemoveEntityError ||
+    e instanceof AgentRequestError
   ) {
     return toResponse(e, e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
   }

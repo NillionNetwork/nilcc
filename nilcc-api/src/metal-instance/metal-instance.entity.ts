@@ -10,6 +10,12 @@ export class MetalInstanceEntity {
   hostname: string;
 
   @Column({ type: "varchar" })
+  endpoint: string;
+
+  @Column({ type: "varchar" })
+  token: string;
+
+  @Column({ type: "varchar" })
   agentVersion: string;
 
   @Column({ type: "int" })
@@ -30,8 +36,8 @@ export class MetalInstanceEntity {
   @Column({ type: "int" })
   osReservedDisk: number;
 
-  @Column({ type: "int", nullable: true })
-  gpus?: number;
+  @Column({ type: "int" })
+  gpus: number;
 
   @Column({ type: "varchar", nullable: true })
   gpuModel?: string;
