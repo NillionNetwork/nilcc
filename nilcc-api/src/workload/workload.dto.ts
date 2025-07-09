@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { Uuid } from "#/common/types";
 
+const FILENAME_REGEX = /^[\w/._-]+$/;
+
 export const CreateWorkloadRequest = z
   .object({
     name: z.string().min(1, "Name is required"),
@@ -8,7 +10,13 @@ export const CreateWorkloadRequest = z
     tags: z.array(z.string()).optional(),
     dockerCompose: z.string(),
     envVars: z.record(z.string(), z.string()).optional(),
-    files: z.record(z.string(), z.string().base64()).optional(),
+    files: z
+      .record(z.string(), z.string().base64())
+      .refine(
+        (arg) => Object.keys(arg).every((name) => name.match(FILENAME_REGEX)),
+        `filename must follow $the pattern ${FILENAME_REGEX}`,
+      )
+      .optional(),
     serviceToExpose: z.string().min(1, "Service to expose is required"),
     servicePortToExpose: z.number().int().positive(),
     memory: z.number().int().positive(),

@@ -1687,6 +1687,7 @@ dependencies = [
  "mockall",
  "once_cell",
  "qapi",
+ "regex",
  "reqwest",
  "rstest",
  "serde",

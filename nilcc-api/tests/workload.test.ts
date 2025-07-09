@@ -28,7 +28,7 @@ services:
       MY_SECRET: "42",
     },
     files: {
-      "foo/bar.txt": "aGkgbW9t",
+      "foo_-choop/bar42_beep.txt": "aGkgbW9t",
     },
     serviceToExpose: "app",
     servicePortToExpose: 80,

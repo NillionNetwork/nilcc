@@ -7,34 +7,57 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 use strum::EnumDiscriminants;
 use tracing::error;
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
+
+static FILENAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[\w/._-]+$").unwrap());
+
+fn beep(files: &HashMap<String, Vec<u8>>) -> Result<(), ValidationError> {
+    for key in files.keys() {
+        if !FILENAME_REGEX.is_match(key) {
+            return Err(ValidationError::new("invalid filename"));
+        }
+    }
+    Ok(())
+}
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Validate)]
 pub struct CreateWorkloadRequest {
     pub(crate) id: Uuid,
+
     pub(crate) docker_compose: String,
+
     #[serde(default)]
     pub(crate) env_vars: HashMap<String, String>,
+
     #[serde_as(deserialize_as = "HashMap<_, Base64>")]
     #[serde(default)]
+    #[validate(custom(function = "beep"))]
     pub(crate) files: HashMap<String, Vec<u8>>,
+
     pub(crate) public_container_name: String,
+
     pub(crate) public_container_port: u16,
+
     #[validate(range(min = 512))]
     pub(crate) memory_mb: u32,
+
     #[validate(range(min = 1))]
     pub(crate) cpus: u32,
+
     pub(crate) gpus: u16,
+
     #[validate(range(min = 2))]
     pub(crate) disk_space_gb: u32,
+
     pub(crate) domain: String,
 }
 
