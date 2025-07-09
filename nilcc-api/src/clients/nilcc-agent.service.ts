@@ -25,6 +25,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       id: workload.id,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars,
+      externalFiles: workload.files,
       publicContainerName: workload.serviceToExpose,
       publicContainerPort: workload.servicePortToExpose,
       memoryMb: workload.memory,
@@ -70,6 +71,7 @@ type CreateWorkloadRequest = {
   id: string;
   dockerCompose: string;
   envVars?: Record<string, string>;
+  externalFiles?: Record<string, string>;
   publicContainerName: string;
   publicContainerPort: number;
   memoryMb: number;

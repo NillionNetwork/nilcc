@@ -27,6 +27,9 @@ services:
     envVars: {
       MY_SECRET: "42",
     },
+    files: {
+      "foo_-choop/bar42_beep.txt": "aGkgbW9t",
+    },
     serviceToExpose: "app",
     servicePortToExpose: 80,
     memory: 4,

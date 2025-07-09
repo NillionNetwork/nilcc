@@ -14,14 +14,17 @@ use nilcc_agent::{
     resources::SystemResources,
     routes::{build_router, AppState, Services},
     services::{
-        disk::{ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, IsoSpec},
+        disk::{
+            ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, ExternalFile,
+            IsoSpec,
+        },
         proxy::HaProxyProxyService,
         vm::{DefaultVmService, VmServiceArgs},
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
 };
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::{net::TcpListener, signal};
 use tracing::{debug, info, level_filters::LevelFilter};
 
@@ -72,21 +75,54 @@ enum IsoCommand {
 
         /// An environment variable that will be set when the docker compose is ran.
         #[clap(short, long = "env")]
-        environment_variables: Vec<EnvironmentVariable>,
+        environment_variables: Vec<CliEnvironmentVariable>,
+
+        /// The external files to include in the ISO.
+        #[clap(short = 'f', long = "file")]
+        files: Vec<CliExternalFile>,
 
         /// The path to the docker compose to be ran.
         docker_compose_path: PathBuf,
     },
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct CliExternalFile(ExternalFile);
+
+impl FromStr for CliExternalFile {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (name, path) = s.split_once('=').context("expected environment variable in <name>=<value> syntax")?;
+        let name = name.trim().to_string();
+        let contents = std::fs::read(path).context("Failed to read external file")?;
+        Ok(Self(ExternalFile { name, contents }))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CliEnvironmentVariable(EnvironmentVariable);
+
+impl FromStr for CliEnvironmentVariable {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (name, value) = s.split_once('=').context("expected environment variable in <name>=<value> syntax")?;
+        let name = name.trim().to_string();
+        let value = value.to_string();
+        Ok(Self(EnvironmentVariable { name, value }))
+    }
+}
+
 async fn run_iso_command(command: IsoCommand) -> Result<()> {
     match command {
-        IsoCommand::Create { container, port, hostname, output, docker_compose_path, environment_variables } => {
+        IsoCommand::Create { container, port, hostname, output, docker_compose_path, environment_variables, files } => {
             let compose = std::fs::read_to_string(docker_compose_path).context("reading docker compose")?;
             let spec = IsoSpec {
                 docker_compose_yaml: compose,
                 metadata: ApplicationMetadata { hostname, api: ContainerMetadata { container, port } },
-                environment_variables,
+                environment_variables: environment_variables.into_iter().map(|e| e.0).collect(),
+                files: files.into_iter().map(|f| f.0).collect(),
             };
             let disk_service = DefaultDiskService::new("qemu-img".into());
             disk_service.create_application_iso(&output, spec).await.context("creating ISO")?;
