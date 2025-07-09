@@ -32,12 +32,21 @@ frontend https_frontend
     tcp-request inspect-delay 5s
     tcp-request content accept if { req_ssl_hello_type 1 }
 
+    # Route via SNI to nilcc-agent
+    use_backend agent-backend if { req.ssl_sni -i {{ agent_domain }} }
+
     # Route based on SNI
     {%- for backend in backends %}
     use_backend backend-https-{{ backend.id }} if { req.ssl_sni -i {{ backend.domain }} }
     {%- endfor %}
 
 # Backend servers
+
+# nilcc-agent backend
+backend agent-backend 
+    mode tcp
+    server nilcc-agent {{ agent_domain }} check
+
 {%- for backend in backends %}
 
 # VM {{ backend.id }} backend servers

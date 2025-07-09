@@ -4,31 +4,36 @@ import {
   ListHostedZonesCommand,
   ListResourceRecordSetsCommand,
   Route53Client,
+  type RRType,
 } from "@aws-sdk/client-route-53";
 import { mapError } from "#/common/errors";
-import { RegisterCnameError, RemoveDomainError } from "#/dns/dns.errors";
+import { CreateRecordError, DeleteRecordError } from "#/dns/dns.errors";
 
 export interface DnsService {
-  registerCname(domain: string, to: string): Promise<void>;
-  removeDomain(domain: string): Promise<void>;
+  createRecord(domain: string, to: string, recordType: RRType): Promise<void>;
+  deleteRecord(domain: string, recordType: RRType): Promise<void>;
 }
 
 export class Route53DnsService implements DnsService {
   protected readonly route53: Route53Client;
+  readonly zone: string;
   readonly zoneId: string;
   readonly subdomain: string;
 
   protected constructor(
+    zone: string,
     subdomain: string,
     zoneId: string,
     route53: Route53Client,
   ) {
-    this.route53 = route53;
+    this.zone = zone;
     this.subdomain = subdomain;
+    this.route53 = route53;
     this.zoneId = zoneId;
   }
 
   static async create(
+    zone: string,
     subdomain: string,
     options?: {
       endpoint?: string;
@@ -42,13 +47,20 @@ export class Route53DnsService implements DnsService {
     } else {
       route53 = new Route53Client();
     }
+    if (!subdomain.endsWith(zone)) {
+      throw new Error(`${subdomain} isn't a subdomain of ${zone}`);
+    }
 
-    const zoneId = await Route53DnsService.findHostedZone(route53, subdomain);
-    return new Route53DnsService(subdomain, zoneId, route53);
+    const zoneId = await Route53DnsService.findHostedZone(route53, zone);
+    return new Route53DnsService(zone, subdomain, zoneId, route53);
   }
 
-  @mapError((e) => new RegisterCnameError(e))
-  async registerCname(domain: string, to: string): Promise<void> {
+  @mapError((e) => new CreateRecordError(e))
+  async createRecord(
+    domain: string,
+    to: string,
+    recordType: RRType,
+  ): Promise<void> {
     const fullDomain = `${domain}.${this.subdomain}`;
     const command = new ChangeResourceRecordSetsCommand({
       HostedZoneId: this.zoneId,
@@ -58,7 +70,7 @@ export class Route53DnsService implements DnsService {
             Action: "CREATE",
             ResourceRecordSet: {
               Name: fullDomain,
-              Type: "CNAME",
+              Type: recordType,
               TTL: 300,
               ResourceRecords: [{ Value: to }],
             },
@@ -69,10 +81,14 @@ export class Route53DnsService implements DnsService {
     await this.route53.send(command);
   }
 
-  @mapError((e) => new RemoveDomainError(e))
-  async removeDomain(domain: string): Promise<void> {
+  @mapError((e) => new DeleteRecordError(e))
+  async deleteRecord(domain: string, recordType: RRType): Promise<void> {
     const fullDomain = `${domain}.${this.subdomain}`;
-    const domainData = await this.findDomain(this.zoneId, fullDomain);
+    const domainData = await this.findDomain(
+      this.zoneId,
+      fullDomain,
+      recordType,
+    );
     if (!domainData) {
       throw Error(`Domain not found: ${fullDomain}`);
     }
@@ -110,11 +126,11 @@ export class Route53DnsService implements DnsService {
     return hostedZone.Id;
   }
 
-  private async findDomain(zoneId: string, domain: string) {
+  private async findDomain(zoneId: string, domain: string, recordType: RRType) {
     const command = new ListResourceRecordSetsCommand({
       HostedZoneId: zoneId,
       StartRecordName: `${domain}.`,
-      StartRecordType: "CNAME",
+      StartRecordType: recordType,
       MaxItems: 1,
     });
     const response = await this.route53.send(command);
@@ -124,7 +140,10 @@ export class Route53DnsService implements DnsService {
 }
 
 export class LocalStackDnsService extends Route53DnsService {
-  static override async create(subdomain: string): Promise<Route53DnsService> {
+  static override async create(
+    zone: string,
+    subdomain: string,
+  ): Promise<Route53DnsService> {
     const route53 = new Route53Client({
       endpoint: "http://localhost:4566",
       region: "us-east-1", // LocalStack default region
@@ -138,7 +157,7 @@ export class LocalStackDnsService extends Route53DnsService {
       subdomain,
       route53,
     );
-    return new LocalStackDnsService(subdomain, zoneId, route53);
+    return new LocalStackDnsService(zone, subdomain, zoneId, route53);
   }
 
   private static async createHostedZone(

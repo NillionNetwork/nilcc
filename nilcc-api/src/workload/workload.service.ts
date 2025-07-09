@@ -144,8 +144,12 @@ export class WorkloadService {
     workloadId: string,
     metalInstanceId: string,
   ): Promise<string> {
-    const metalInstanceDomain = `${metalInstanceId}.${bindings.config.metalInstanceDnsDomain}`;
-    await bindings.services.dns.registerCname(workloadId, metalInstanceDomain);
+    const metalInstanceDomain = `${metalInstanceId}.${bindings.config.metalInstancesDnsDomain}`;
+    await bindings.services.dns.workloads.createRecord(
+      workloadId,
+      metalInstanceDomain,
+      "CNAME",
+    );
     return metalInstanceDomain;
   }
 
@@ -153,6 +157,9 @@ export class WorkloadService {
     bindings: AppBindings,
     workloadId: string,
   ): Promise<void> {
-    return await bindings.services.dns.removeDomain(workloadId);
+    return await bindings.services.dns.workloads.deleteRecord(
+      workloadId,
+      "CNAME",
+    );
   }
 }

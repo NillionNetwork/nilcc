@@ -22,8 +22,12 @@ export const API_CONFIG = {
   APP_HTTP_API_PORT: "8081",
   APP_METAL_INSTANCE_API_KEY: "your-metal-instance-api-key",
   APP_USER_API_KEY: "your-user-api-key",
-  APP_WORKLOAD_DNS_DOMAIN: "localhost",
-  APP_METAL_INSTANCE_DNS_DOMAIN: "localhost",
+  APP_WORKLOADS_DNS_ZONE: "workloads.localhost",
+  APP_WORKLOADS_DNS_DOMAIN: "workloads.localhost",
+  APP_METAL_INSTANCES_DNS_ZONE: "agents.localhost",
+  APP_METAL_INSTANCES_DNS_DOMAIN: "agents.localhost",
+  APP_METAL_INSTANCES_ENDPOINT_SCHEME: "http",
+  APP_METAL_INSTANCES_ENDPOINT_PORT: "35433",
 };
 
 export const API_URL = `http://localhost:${API_CONFIG.APP_HTTP_API_PORT}`;
@@ -133,7 +137,7 @@ async function startDockerContainers() {
     console.log("Containers and services are ready.");
   } catch (error) {
     console.error("Error starting containers: ", error);
-    await process.exit(1);
+    process.exit(1);
   }
 }
 

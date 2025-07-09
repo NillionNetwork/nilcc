@@ -127,28 +127,34 @@ export class MetalInstanceService {
   @mapError((e) => new CreateEntityError(MetalInstanceEntity, e))
   async create(
     bindings: AppBindings,
-    metalInstance: RegisterMetalInstanceRequest,
+    request: RegisterMetalInstanceRequest,
     tx?: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
     const now = new Date();
     const newMetalInstance = repository.create({
-      id: metalInstance.id,
-      agentVersion: metalInstance.agentVersion,
-      token: metalInstance.token,
-      endpoint: metalInstance.endpoint,
-      hostname: metalInstance.hostname,
-      totalCpus: metalInstance.cpus.total,
-      osReservedCpus: metalInstance.cpus.reserved,
-      totalMemory: metalInstance.memoryMb.total,
-      osReservedMemory: metalInstance.memoryMb.reserved,
-      totalDisk: metalInstance.diskSpaceGb.total,
-      osReservedDisk: metalInstance.diskSpaceGb.reserved,
-      gpus: metalInstance.gpus,
-      gpuModel: metalInstance.gpuModel,
+      id: request.id,
+      agentVersion: request.agentVersion,
+      token: request.token,
+      publicIp: request.publicIp,
+      hostname: request.hostname,
+      totalCpus: request.cpus.total,
+      osReservedCpus: request.cpus.reserved,
+      totalMemory: request.memoryMb.total,
+      osReservedMemory: request.memoryMb.reserved,
+      totalDisk: request.diskSpaceGb.total,
+      osReservedDisk: request.diskSpaceGb.reserved,
+      gpus: request.gpus,
+      gpuModel: request.gpuModel,
       createdAt: now,
       updatedAt: now,
     });
+    bindings.services.dns.metalInstances.createRecord(
+      request.id,
+      request.publicIp,
+      "A",
+    );
+
     await repository.save(newMetalInstance);
   }
 }

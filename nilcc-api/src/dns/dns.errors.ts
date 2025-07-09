@@ -1,9 +1,9 @@
 import { AppError } from "#/common/errors";
 
-export class RegisterCnameError extends AppError {
-  tag = "RegisterCnameError";
+export class CreateRecordError extends AppError {
+  tag = "CreateRecordError";
 }
 
-export class RemoveDomainError extends AppError {
-  tag = "RemoveDomainError";
+export class DeleteRecordError extends AppError {
+  tag = "DeleteRecordError";
 }

@@ -11,7 +11,7 @@ export const RegisterMetalInstanceRequest = z
   .object({
     id: Uuid,
     agentVersion: z.string().min(1, "Agent version is required"),
-    endpoint: z.string(),
+    publicIp: z.string().ip({ version: "v4" }),
     token: z.string(),
     hostname: z.string().min(1, "hostname is required"),
     memoryMb: Resource,
@@ -29,8 +29,8 @@ export const GetMetalInstanceResponse = z
   .object({
     id: Uuid,
     agentVersion: z.string(),
-    endpoint: z.string(),
     hostname: z.string(),
+    publicIp: z.string(),
     memoryMb: Resource,
     cpus: Resource,
     diskSpaceGb: Resource,

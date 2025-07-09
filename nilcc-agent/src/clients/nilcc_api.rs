@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Client, Method};
 use serde::Serialize;
+use std::net::Ipv4Addr;
 use tracing::info;
 use uuid::Uuid;
 
@@ -12,7 +13,12 @@ use uuid::Uuid;
 #[async_trait]
 pub trait NilccApiClient: Send + Sync {
     /// Register an agent.
-    async fn register(&self, config: &ApiConfig, resources: &SystemResources) -> anyhow::Result<()>;
+    async fn register(
+        &self,
+        config: &ApiConfig,
+        resources: &SystemResources,
+        public_ip: Ipv4Addr,
+    ) -> anyhow::Result<()>;
 
     /// Report an event that occurred for a VM.
     async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()>;
@@ -82,12 +88,17 @@ impl HttpNilccApiClient {
 
 #[async_trait]
 impl NilccApiClient for HttpNilccApiClient {
-    async fn register(&self, api_config: &ApiConfig, resources: &SystemResources) -> anyhow::Result<()> {
+    async fn register(
+        &self,
+        api_config: &ApiConfig,
+        resources: &SystemResources,
+        public_ip: Ipv4Addr,
+    ) -> anyhow::Result<()> {
         let url = self.make_url("/api/v1/metal-instances/~/register");
         let payload = RegisterRequest {
             id: self.agent_id,
             agent_version: agent_version().to_string(),
-            endpoint: format!("https://{}", api_config.domain),
+            public_ip: public_ip.to_string(),
             token: api_config.token.clone(),
             hostname: resources.hostname.clone(),
             memory_mb: Resource { reserved: resources.reserved_memory_mb, total: resources.memory_mb },
@@ -110,8 +121,13 @@ pub struct DummyNilccApiClient;
 
 #[async_trait]
 impl NilccApiClient for DummyNilccApiClient {
-    async fn register(&self, _api_config: &ApiConfig, resources: &SystemResources) -> anyhow::Result<()> {
-        info!("Registering with resources: {resources:?}");
+    async fn register(
+        &self,
+        _api_config: &ApiConfig,
+        resources: &SystemResources,
+        public_ip: Ipv4Addr,
+    ) -> anyhow::Result<()> {
+        info!("Registering with resources: {resources:?} and public IP: {public_ip}");
         Ok(())
     }
 
@@ -126,7 +142,7 @@ impl NilccApiClient for DummyNilccApiClient {
 pub struct RegisterRequest {
     id: Uuid,
     agent_version: String,
-    endpoint: String,
+    public_ip: String,
     token: String,
     hostname: String,
     memory_mb: Resource,

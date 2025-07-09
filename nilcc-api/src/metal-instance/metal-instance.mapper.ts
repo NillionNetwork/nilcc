@@ -8,7 +8,7 @@ export const metalInstanceMapper = {
     return {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
-      endpoint: metalInstance.endpoint,
+      publicIp: metalInstance.publicIp,
       memoryMb: {
         total: metalInstance.totalMemory,
         reserved: metalInstance.osReservedMemory,

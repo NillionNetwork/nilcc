@@ -10,7 +10,7 @@ export class MetalInstanceEntity {
   hostname: string;
 
   @Column({ type: "varchar" })
-  endpoint: string;
+  publicIp: string;
 
   @Column({ type: "varchar" })
   token: string;

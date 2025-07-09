@@ -2,10 +2,13 @@ use crate::config::ReservedResourcesConfig;
 use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::{fmt, io};
-use sysinfo::{Disks, System};
+use std::{
+    fmt, io,
+    net::{IpAddr, Ipv4Addr},
+};
+use sysinfo::{Disks, Networks, System};
 use tokio::{fs, process::Command};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 const H100_MODEL: &str = "H100";
 const NVIDIA_GPU_VENDOR_ID: &str = "10de";
@@ -138,6 +141,61 @@ impl SystemResources {
         let (_, device_id) =
             device.split_once(':').ok_or_else(|| anyhow!("No colon in lspci output: {lspci_output}"))?;
         Ok(device_id.to_string())
+    }
+
+    pub fn find_public_ip() -> anyhow::Result<Ipv4Addr> {
+        let networks = Networks::new_with_refreshed_list();
+        for (_, network) in &networks {
+            for network in network.ip_networks() {
+                let IpAddr::V4(addr) = network.addr else {
+                    debug!("Ignoring IPv6 address {}", network.addr);
+                    continue;
+                };
+                if addr.is_public() {
+                    info!("Found public IPv4 address: {addr}");
+                    return Ok(addr);
+                }
+            }
+        }
+        bail!("not public addresses available");
+    }
+}
+
+trait IsPublic {
+    fn is_public(&self) -> bool;
+}
+
+impl IsPublic for Ipv4Addr {
+    fn is_public(&self) -> bool {
+        // TODO: use `Ipv4Addr::is_global` when stabilized
+        let octets = self.octets();
+
+        // 10.0.0.0/8
+        if octets[0] == 10 {
+            return false;
+        }
+
+        // 192.168.0.0/16
+        if octets[0] == 192 && octets[1] == 168 {
+            return false;
+        }
+
+        // 169.254.1.0 - 169.254.254.255
+        if octets[0] == 169 && octets[1] == 254 && octets[2] != 0 && octets[2] != 255 {
+            return false;
+        }
+
+        // 172.16.0.0/12
+        if octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31 {
+            return false;
+        }
+
+        // 100.64.0.0/10
+        if octets[0] == 100 && (octets[1] & 0xc0) == 64 {
+            return false;
+        }
+
+        true
     }
 }
 

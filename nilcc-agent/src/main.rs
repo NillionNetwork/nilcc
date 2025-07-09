@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use axum_server::Handle;
 use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
@@ -18,15 +19,18 @@ use nilcc_agent::{
             ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, ExternalFile,
             IsoSpec,
         },
-        proxy::HaProxyProxyService,
+        proxy::{HaProxyProxyService, ProxyService, ProxyServiceArgs},
         vm::{DefaultVmService, VmServiceArgs},
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
 };
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
-use tokio::{net::TcpListener, signal};
+use rustls_acme::{caches::DirCache, AcmeConfig};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use tokio::signal;
 use tracing::{debug, info, level_filters::LevelFilter};
+
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
 #[clap(author, version = version::agent_version(), about = "nilcc agent")]
@@ -163,21 +167,28 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
-    info!("Registering with API");
-    nilcc_api_client.register(&config.api, &system_resources).await.context("Failed to register")?;
-
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
     let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
     let proxied_vms = existing_workloads.iter().map(Into::into).collect();
-    let proxy_service = HaProxyProxyService::new(
-        config.sni_proxy.config_file_path,
-        config.sni_proxy.master_socket_path,
-        config.sni_proxy.timeouts,
-        config.sni_proxy.dns_subdomain,
-        config.sni_proxy.max_connections,
+    let proxy_service = HaProxyProxyService::new(ProxyServiceArgs {
+        config_file_path: config.sni_proxy.config_file_path,
+        master_socket_path: config.sni_proxy.master_socket_path,
+        timeouts: config.sni_proxy.timeouts,
+        dns_subdomain: config.sni_proxy.dns_subdomain,
+        agent_domain: config.api.domain.clone(),
+        max_connections: config.sni_proxy.max_connections,
         proxied_vms,
-    );
+        reload_config: config.sni_proxy.reload_config,
+    });
+    info!("Storing current proxy config");
+    proxy_service.persist_current_config().await.context("Failed to store current proxy config")?;
+
+    info!("Finding public IPv4 address");
+    let public_ip = SystemResources::find_public_ip().context("Failed to find public IPv4 address")?;
+
+    info!("Registering with API");
+    nilcc_api_client.register(&config.api, &system_resources, public_ip).await.context("Failed to register")?;
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
     let vm_service = DefaultVmService::new(VmServiceArgs {
@@ -202,14 +213,26 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         resource_limits: config.resources.limits,
     };
     let router = build_router(state, config.api.token);
-    let listener = TcpListener::bind(config.api.bind_endpoint).await.context("Failed to bind")?;
-    let server = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal());
-    info!("Listening to requests on {}", config.api.bind_endpoint);
+    let handle = Handle::new();
+    tokio::spawn(shutdown_handler(handle.clone()));
 
-    server.await.context("Failed to serve")
+    info!("Listening to requests on {}", config.api.bind_endpoint);
+    let server = axum_server::bind(config.api.bind_endpoint).handle(handle);
+    let result = match config.tls {
+        Some(tls) => {
+            let state = AcmeConfig::new([config.api.domain])
+                .contact([format!("mailto:{}", tls.acme_contact)])
+                .cache(DirCache::new(tls.cert_cache.clone()))
+                .state();
+            let acceptor = state.axum_acceptor(state.default_rustls_config());
+            server.acceptor(acceptor).serve(router.into_make_service()).await
+        }
+        None => server.serve(router.into_make_service()).await,
+    };
+    result.context("Failed to serve")
 }
 
-async fn shutdown_signal() {
+async fn shutdown_handler(handle: Handle) {
     let ctrl_c = async {
         signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
     };
@@ -226,6 +249,7 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
     info!("Received shutdown signal");
+    handle.graceful_shutdown(Some(SHUTDOWN_GRACE_PERIOD));
 }
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
