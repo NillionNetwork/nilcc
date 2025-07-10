@@ -5,7 +5,7 @@ use crate::clients::{
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use strum::EnumDiscriminants;
 use tokio::{
-    select,
+    fs, select,
     sync::mpsc::{channel, Receiver, Sender},
     task::JoinHandle,
     time::{interval, MissedTickBehavior},
@@ -81,9 +81,18 @@ impl VmWorker {
         }
     }
 
-    async fn stop_vm(&self) {
+    async fn delete_vm(&self) {
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
+                // Process all disks and the ISO at once
+                let paths = self.spec.hard_disks.iter().map(|s| &s.path).chain(self.spec.cdrom_iso_path.as_ref());
+                for path in paths {
+                    let disk_display = path.display();
+                    info!("Deleting disk {disk_display}");
+                    if let Err(e) = fs::remove_file(&path).await {
+                        error!("Failed to delete disk {disk_display}: {e}");
+                    }
+                }
                 self.submit_event(VmEvent::Stopped).await;
                 info!("VM stopped")
             }
@@ -107,7 +116,7 @@ impl VmWorker {
         let discriminant = WorkerCommandDiscriminants::from(&command);
         info!("Received {discriminant:?} command");
         match command {
-            WorkerCommand::StopVm => self.stop_vm().await,
+            WorkerCommand::DeleteVm => self.delete_vm().await,
         }
     }
 
@@ -126,8 +135,8 @@ pub(crate) struct VmWorkerHandle {
 }
 
 impl VmWorkerHandle {
-    pub(crate) async fn stop_vm(&self) {
-        self.send_command(WorkerCommand::StopVm).await;
+    pub(crate) async fn delete_vm(&self) {
+        self.send_command(WorkerCommand::DeleteVm).await;
     }
 
     async fn send_command(&self, command: WorkerCommand) {
@@ -139,7 +148,7 @@ impl VmWorkerHandle {
 
 #[derive(Debug, EnumDiscriminants)]
 enum WorkerCommand {
-    StopVm,
+    DeleteVm,
 }
 
 #[cfg(test)]
@@ -188,7 +197,7 @@ mod tests {
 
         let join_handle = {
             let handle = VmWorker::spawn(id, Arc::new(vm_client), Arc::new(nilcc_api_client), spec, socket);
-            handle.stop_vm().await;
+            handle.delete_vm().await;
             handle.join_handle
         };
         join_handle.await.expect("failed to join");

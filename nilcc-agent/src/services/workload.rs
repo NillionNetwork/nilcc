@@ -236,7 +236,7 @@ impl WorkloadService for DefaultWorkloadService {
         info!("Deleting workload: {id}");
         self.repository.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
-        self.vm_service.stop_vm(id).await;
+        self.vm_service.delete_vm(id).await;
         Ok(())
     }
 }

@@ -25,7 +25,7 @@ use uuid::Uuid;
 #[async_trait]
 pub trait VmService: Send + Sync {
     async fn start_vm(&self, workload: Workload) -> Result<(), StartVmError>;
-    async fn stop_vm(&self, id: Uuid);
+    async fn delete_vm(&self, id: Uuid);
 }
 
 pub struct VmServiceArgs {
@@ -174,11 +174,11 @@ impl VmService for DefaultVmService {
         }
     }
 
-    async fn stop_vm(&self, id: Uuid) {
+    async fn delete_vm(&self, id: Uuid) {
         let mut workers = self.workers.lock().await;
         match workers.remove(&id) {
             Some(worker) => {
-                worker.stop_vm().await;
+                worker.delete_vm().await;
             }
             None => {
                 error!("VM {id} is not being managed by any worker");
