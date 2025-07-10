@@ -11,7 +11,7 @@ describe("Metal Instance", () => {
   const myMetalInstance: RegisterMetalInstanceRequest = {
     id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
-    endpoint: "http://127.0.0.1:35433",
+    publicIp: "127.0.0.1",
     token: "my_token",
     hostname: "my-metal-instance",
     memoryMb: {

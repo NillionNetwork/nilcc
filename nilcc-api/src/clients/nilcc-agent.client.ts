@@ -15,12 +15,26 @@ export interface NilccAgentClient {
 }
 
 export class DefaultNilccAgentClient implements NilccAgentClient {
+  protected scheme: string;
+  protected subdomain: string;
+  protected port: number;
+
+  constructor(scheme: "http" | "https", subdomain: string, port: number) {
+    this.scheme = scheme;
+    this.subdomain = subdomain;
+    this.port = port;
+  }
+
+  makeUrl(metalInstance: MetalInstanceEntity, path: string) {
+    return `${this.scheme}://${metalInstance.id}.${this.subdomain}:${this.port}${path}`;
+  }
+
   async createWorkload(
     metalInstance: MetalInstanceEntity,
     workload: WorkloadEntity,
     domain: string,
   ): Promise<void> {
-    const url = `${metalInstance.endpoint}/api/v1/workloads/create`;
+    const url = this.makeUrl(metalInstance, "/api/v1/workloads/create");
     const request: CreateWorkloadRequest = {
       id: workload.id,
       dockerCompose: workload.dockerCompose,
@@ -41,7 +55,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     metalInstance: MetalInstanceEntity,
     workloadId: string,
   ): Promise<void> {
-    const url = `${metalInstance.endpoint}/api/v1/workloads/delete`;
+    const url = this.makeUrl(metalInstance, "/api/v1/workloads/delete");
     const request: DeleteWorkloadRequest = {
       id: workloadId,
     };

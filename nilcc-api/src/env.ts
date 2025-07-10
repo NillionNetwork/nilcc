@@ -8,7 +8,7 @@ import { WorkloadService } from "#/workload/workload.service";
 import {
   DefaultNilccAgentClient,
   type NilccAgentClient,
-} from "./clients/nilcc-agent.service";
+} from "./clients/nilcc-agent.client";
 import {
   type DnsService,
   LocalStackDnsService,
@@ -43,10 +43,15 @@ export type AppVariables = {
   txQueryRunner: QueryRunner;
 };
 
+export type DnsServices = {
+  metalInstances: DnsService;
+  workloads: DnsService;
+};
+
 export type AppServices = {
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
-  dns: DnsService;
+  dns: DnsServices;
   nilccAgentClient: NilccAgentClient;
 };
 
@@ -67,8 +72,12 @@ export const EnvVarsSchema = z.object({
   httpApiPort: z.number().int().positive(),
   metalInstanceApiKey: z.string(),
   userApiKey: z.string(),
-  metalInstanceDnsDomain: z.string(),
-  workloadDnsDomain: z.string(),
+  workloadsDnsDomain: z.string(),
+  workloadsDnsZone: z.string(),
+  metalInstancesDnsDomain: z.string(),
+  metalInstancesDnsZone: z.string(),
+  metalInstancesEndpointScheme: z.enum(["http", "https"]).default("https"),
+  metalInstancesEndpointPort: z.number().default(443),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -84,8 +93,12 @@ declare global {
       APP_HTTP_API_PORT: number;
       APP_METAL_INSTANCE_API_KEY: string;
       APP_USER_API_KEY: string;
-      APP_WORKLOAD_DNS_DOMAIN: string;
-      APP_METAL_INSTANCE_DNS_DOMAIN: string;
+      APP_WORKLOADS_DNS_ZONE: string;
+      APP_WORKLOADS_DNS_DOMAIN: string;
+      APP_METAL_INSTANCES_DNS_DOMAIN: string;
+      APP_METAL_INSTANCES_DNS_ZONE: string;
+      APP_METAL_INSTANCES_ENDPOINT_SCHEME: string;
+      APP_METAL_INSTANCES_ENDPOINT_PORT: number;
     }
   }
 }
@@ -115,23 +128,32 @@ async function buildServices(
   config: EnvVars,
   log: Logger,
 ): Promise<AppServices> {
-  const dnsService = hasFeatureFlag(
-    config.enabledFeatures,
-    FeatureFlag.LOCALSTACK,
-  )
-    ? await LocalStackDnsService.create(config.workloadDnsDomain)
-    : await Route53DnsService.create(config.workloadDnsDomain);
-
-  log.debug("Using DNS service: %s", dnsService.constructor.name);
+  const dns = {
+    workloads: await createDnsService(
+      config.workloadsDnsZone,
+      config.workloadsDnsDomain,
+      config,
+    ),
+    metalInstances: await createDnsService(
+      config.metalInstancesDnsZone,
+      config.metalInstancesDnsDomain,
+      config,
+    ),
+  };
+  log.debug("Using DNS service: %s", dns.workloads.constructor.name);
 
   const metalInstanceService = new MetalInstanceService();
   const workloadService = new WorkloadService();
-  const nilccAgentClient = new DefaultNilccAgentClient();
+  const nilccAgentClient = new DefaultNilccAgentClient(
+    config.metalInstancesEndpointScheme,
+    config.metalInstancesDnsDomain,
+    config.metalInstancesEndpointPort,
+  );
 
   return {
     metalInstance: metalInstanceService,
     workload: workloadService,
-    dns: dnsService,
+    dns,
     nilccAgentClient,
   };
 }
@@ -145,12 +167,33 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     httpApiPort: Number(process.env.APP_HTTP_API_PORT),
     metalInstanceApiKey: process.env.APP_METAL_INSTANCE_API_KEY,
     userApiKey: process.env.APP_USER_API_KEY,
-    workloadDnsDomain: process.env.APP_WORKLOAD_DNS_DOMAIN,
-    metalInstanceDnsDomain: process.env.APP_METAL_INSTANCE_DNS_DOMAIN,
+    workloadsDnsDomain: process.env.APP_WORKLOADS_DNS_DOMAIN,
+    workloadsDnsZone: process.env.APP_WORKLOADS_DNS_ZONE,
+    metalInstancesDnsZone: process.env.APP_METAL_INSTANCES_DNS_ZONE,
+    metalInstancesDnsDomain: process.env.APP_METAL_INSTANCES_DNS_DOMAIN,
+    metalInstancesEndpointScheme:
+      process.env.APP_METAL_INSTANCES_ENDPOINT_SCHEME,
+    metalInstancesEndpointPort: Number(
+      process.env.APP_METAL_INSTANCES_ENDPOINT_PORT,
+    ),
   });
 
   return {
     ...config,
     ...overrides,
   };
+}
+
+async function createDnsService(
+  zone: string,
+  subdomain: string,
+  config: EnvVars,
+): Promise<DnsService> {
+  const localstackEnabled = hasFeatureFlag(
+    config.enabledFeatures,
+    FeatureFlag.LOCALSTACK,
+  );
+  return localstackEnabled
+    ? await LocalStackDnsService.create(zone, subdomain)
+    : await Route53DnsService.create(zone, subdomain);
 }

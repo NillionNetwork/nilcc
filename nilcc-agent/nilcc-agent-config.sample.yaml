@@ -7,6 +7,7 @@ qemu:
 
 api:
   bind_endpoint: "127.0.0.1:50055"
+  domain: "f7b27e21-eabb-4acb-8cd7-1d8113fd2237.agents.nilcc.com"
   token: abcdefg
 
 controller:

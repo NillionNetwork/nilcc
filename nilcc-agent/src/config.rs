@@ -34,6 +34,10 @@ pub struct AgentConfig {
 
     /// The resource configuration.
     pub resources: ResourcesConfig,
+
+    /// The optional TLS configuration.
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -134,6 +138,10 @@ pub struct SniProxyConfig {
 
     /// The maximum number of connections for the SNI proxy.
     pub max_connections: u64,
+
+    /// Whether to tell haproxy to reload the config.
+    #[serde(default = "default_true")]
+    pub reload_config: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -200,6 +208,16 @@ impl Default for ResourceLimitsConfig {
     }
 }
 
+/// The TLS configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct TlsConfig {
+    /// The path to the certificate cache.
+    pub cert_cache: PathBuf,
+
+    /// The contact email address to use for ACME requests.
+    pub acme_contact: String,
+}
+
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -213,6 +231,10 @@ where
 
 fn u32_max() -> u32 {
     u32::MAX
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn ha_proxy_master_socket_path() -> PathBuf {

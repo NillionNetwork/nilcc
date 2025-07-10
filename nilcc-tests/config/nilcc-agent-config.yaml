@@ -7,8 +7,8 @@ qemu:
 
 api:
   bind_endpoint: "127.0.0.1:50055"
+  domain: "dc96ffc5-2424-4809-b5cb-3eb405e6f519.agents.nilcc.com"
   token: my_token
-  domain: "127.0.0.1"
 
 controller:
   mode: remote
@@ -36,12 +36,13 @@ sni_proxy:
   dns_subdomain: "localhost"
   start_port_range: 10000
   end_port_range: 20000
-  config_file_path: /etc/haproxy/haproxy.cfg
+  config_file_path: /tmp/nilcc-tests-haproxy.cfg
   timeouts:
     connect: 5000
     server: 5000
     client: 5000
   max_connections: 100000
+  reload_config: false
 
 metrics:
   bind_endpoint: 0.0.0.0:9092

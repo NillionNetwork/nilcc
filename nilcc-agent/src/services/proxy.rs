@@ -27,6 +27,9 @@ impl From<&Workload> for ProxiedVm {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait ProxyService: Send + Sync {
+    /// Persist the config with whatever state we currently have.
+    async fn persist_current_config(&self) -> Result<()>;
+
     /// Start proxying a VM.
     async fn start_vm_proxy(&self, vm: ProxiedVm);
 
@@ -34,31 +37,49 @@ pub trait ProxyService: Send + Sync {
     async fn stop_vm_proxy(&self, id: Uuid);
 }
 
+pub struct ProxyServiceArgs {
+    pub config_file_path: String,
+    pub master_socket_path: PathBuf,
+    pub timeouts: SniProxyConfigTimeouts,
+    pub dns_subdomain: String,
+    pub agent_domain: String,
+    pub max_connections: u64,
+    pub proxied_vms: Vec<ProxiedVm>,
+    pub reload_config: bool,
+}
+
 pub struct HaProxyProxyService {
     config_file_path: String,
     master_socket_path: PathBuf,
     timeouts: SniProxyConfigTimeouts,
     dns_subdomain: String,
+    agent_domain: String,
     max_connections: u64,
+    reload_config: bool,
     proxied_vms: Mutex<BTreeMap<Uuid, ProxiedVm>>,
 }
 
 impl HaProxyProxyService {
-    pub fn new(
-        config_file_path: String,
-        master_socket_path: PathBuf,
-        timeouts: SniProxyConfigTimeouts,
-        dns_subdomain: String,
-        max_connections: u64,
-        proxied_vms: Vec<ProxiedVm>,
-    ) -> Self {
+    pub fn new(args: ProxyServiceArgs) -> Self {
+        let ProxyServiceArgs {
+            config_file_path,
+            master_socket_path,
+            timeouts,
+            dns_subdomain,
+            agent_domain,
+            max_connections,
+            proxied_vms,
+            reload_config,
+        } = args;
         let proxied_vms: BTreeMap<_, _> = proxied_vms.into_iter().map(|vm| (vm.id, vm)).collect();
         Self {
             config_file_path,
             master_socket_path,
             timeouts,
             dns_subdomain,
+            agent_domain,
             max_connections,
+            reload_config,
             proxied_vms: proxied_vms.into(),
         }
     }
@@ -71,7 +92,7 @@ impl HaProxyProxyService {
         Ok(())
     }
 
-    async fn check_config(&self) -> Result<()> {
+    async fn validate_config(&self) -> Result<()> {
         info!("Validating HA proxy config");
         let output = Command::new("haproxy").arg("-c").arg("-f").arg(&self.config_file_path).output().await?;
         if !output.status.success() {
@@ -99,18 +120,28 @@ impl HaProxyProxyService {
         let context = SniProxyTemplateContext {
             max_connections: self.max_connections,
             timeouts: self.timeouts.clone(),
+            agent_domain: self.agent_domain.clone(),
             backends,
         };
         info!("Persisting HA proxy config using {} VMs as backends", context.backends.len());
         let config_file = context.render_config_file()?;
         tokio::fs::write(&self.config_file_path, config_file).await.context("Failed to write HAProxy config file")?;
-        self.check_config().await?;
-        self.reload().await
+        if self.reload_config {
+            self.validate_config().await.context("Failed to check config")?;
+            self.reload().await
+        } else {
+            Ok(())
+        }
     }
 }
 
 #[async_trait]
 impl ProxyService for HaProxyProxyService {
+    async fn persist_current_config(&self) -> Result<()> {
+        let proxied_vms = self.proxied_vms.lock().await;
+        self.persist_config(proxied_vms.values()).await
+    }
+
     async fn start_vm_proxy(&self, vm: ProxiedVm) {
         let mut proxied_vms = self.proxied_vms.lock().await;
         proxied_vms.insert(vm.id, vm);
@@ -138,6 +169,7 @@ struct SniProxyTemplateContext {
     max_connections: u64,
     timeouts: SniProxyConfigTimeouts,
     backends: Vec<ProxyBackend>,
+    agent_domain: String,
 }
 
 impl SniProxyTemplateContext {
@@ -185,10 +217,18 @@ frontend https_frontend
     tcp-request inspect-delay 5s
     tcp-request content accept if { req_ssl_hello_type 1 }
 
+    # Route via SNI to nilcc-agent
+    use_backend agent-backend if { req.ssl_sni -i agent1.example.com }
+
     # Route based on SNI
     use_backend backend-https-foo if { req.ssl_sni -i foo.nilcc.com }
 
 # Backend servers
+
+# nilcc-agent backend
+backend agent-backend 
+    mode tcp
+    server nilcc-agent agent1.example.com check
 
 # VM foo backend servers
 backend backend-http-foo
@@ -205,11 +245,12 @@ backend backend-https-foo
         let config = SniProxyTemplateContext {
             max_connections: 100000,
             timeouts: SniProxyConfigTimeouts { connect: 5000, server: 50000, client: 50000 },
+            agent_domain: "agent1.example.com".into(),
             backends: vec![ProxyBackend {
-                id: "foo".to_string(),
-                domain: "foo.nilcc.com".to_string(),
-                http_address: "127.0.0.1:9000".to_string(),
-                https_address: "127.0.0.1:9001".to_string(),
+                id: "foo".into(),
+                domain: "foo.nilcc.com".into(),
+                http_address: "127.0.0.1:9000".into(),
+                https_address: "127.0.0.1:9001".into(),
             }],
         };
         let config_file = config.render_config_file().unwrap();
