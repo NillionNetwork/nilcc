@@ -6,3 +6,5 @@ node_modules/
 coverage/
 vitest.config.js
 .env
+postgres_data/
+localstack_data/
