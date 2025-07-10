@@ -11,7 +11,12 @@ use crate::{
 use anyhow::Context;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fmt, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::{fs, sync::Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -53,17 +58,17 @@ impl DefaultVmService {
         iso_path: PathBuf,
         state_disk_path: PathBuf,
         docker_compose_hash: String,
+        cvm_files: CvmFiles,
     ) -> VmSpec {
-        let CvmFiles { base_disk, kernel, verity_root_hash, verity_disk } =
-            if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
+        let CvmFiles { kernel, base_disk, verity_root_hash, verity_disk, .. } = cvm_files;
         let kernel_args =
-            KernelArgs { filesystem_root_hash: verity_root_hash, docker_compose_hash: &docker_compose_hash };
+            KernelArgs { filesystem_root_hash: &verity_root_hash, docker_compose_hash: &docker_compose_hash };
         VmSpec {
             cpu: workload.cpus,
             ram_mib: workload.memory_mb,
             hard_disks: vec![
-                HardDiskSpec { path: base_disk.clone(), format: HardDiskFormat::Qcow2 },
-                HardDiskSpec { path: verity_disk.clone(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: base_disk, format: HardDiskFormat::Qcow2 },
+                HardDiskSpec { path: verity_disk, format: HardDiskFormat::Raw },
                 HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw },
             ],
             cdrom_iso_path: Some(iso_path),
@@ -79,7 +84,7 @@ impl DefaultVmService {
     }
 
     async fn create_state_disk(&self, workload: &Workload) -> Result<PathBuf, StartVmError> {
-        let disk_name = format!("{}.raw", workload.id);
+        let disk_name = format!("{}.state.raw", workload.id);
         let disk_path = self.state_path.join(disk_name);
         if disk_path.exists() {
             return Ok(disk_path);
@@ -88,6 +93,20 @@ impl DefaultVmService {
             .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_space_gb)
             .await
             .map_err(|e| StartVmError(format!("failed to create state disk: {e}")))?;
+        Ok(disk_path)
+    }
+
+    async fn copy_disk(
+        &self,
+        workload: &Workload,
+        original_disk: &Path,
+        disk_type: &str,
+    ) -> Result<PathBuf, StartVmError> {
+        let disk_name = format!("{}.{disk_type}.qcow2", workload.id);
+        let disk_path = self.state_path.join(disk_name);
+        fs::copy(original_disk, &disk_path)
+            .await
+            .map_err(|e| StartVmError(format!("failed to copy {disk_type} disk: {e}")))?;
         Ok(disk_path)
     }
 
@@ -134,9 +153,19 @@ impl VmService for DefaultVmService {
             }
             None => {
                 info!("Creating disks for VM {id}");
+                let cvm_files = if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
                 let (iso_path, docker_compose_hash) = self.create_application_iso(&workload).await?;
                 let state_disk = self.create_state_disk(&workload).await?;
-                let spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash);
+                let base_disk = self.copy_disk(&workload, &cvm_files.base_disk, "base").await?;
+                let verity_disk = self.copy_disk(&workload, &cvm_files.verity_disk, "verity").await?;
+                let cvm_files = CvmFiles {
+                    kernel: cvm_files.kernel.clone(),
+                    base_disk,
+                    verity_disk,
+                    verity_root_hash: cvm_files.verity_root_hash.clone(),
+                };
+
+                let spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash, cvm_files);
                 let worker =
                     VmWorker::spawn(id, self.vm_client.clone(), self.nilcc_api_client.clone(), spec, socket_path);
                 workers.insert(id, worker);
@@ -182,9 +211,15 @@ mod tests {
         services::disk::MockDiskService,
     };
     use mockall::predicate::eq;
+    use tempfile::{tempdir, TempDir};
+
+    struct Context {
+        service: DefaultVmService,
+        state_path: TempDir,
+    }
 
     struct Builder {
-        state_path: PathBuf,
+        state_path: TempDir,
         vm_client: MockVmClient,
         nilcc_api_client: MockNilccApiClient,
         disk_service: MockDiskService,
@@ -192,39 +227,42 @@ mod tests {
     }
 
     impl Builder {
-        async fn build(self) -> DefaultVmService {
+        async fn build(self) -> Context {
             let Self { state_path, vm_client, nilcc_api_client, disk_service, cvm_config } = self;
             let args = VmServiceArgs {
-                state_path,
+                state_path: state_path.path().into(),
                 vm_client: Arc::new(vm_client),
                 nilcc_api_client: Arc::new(nilcc_api_client),
                 disk_service: Box::new(disk_service),
                 cvm_config,
             };
-            DefaultVmService::new(args).await.expect("failed to build")
+            let service = DefaultVmService::new(args).await.expect("failed to build");
+            Context { service, state_path }
         }
     }
 
     impl Default for Builder {
         fn default() -> Self {
+            let state_path = tempdir().expect("failed to create tempdir");
+            let base_path = state_path.path().to_path_buf();
             Self {
-                state_path: PathBuf::from("/tmp"),
+                state_path,
                 vm_client: Default::default(),
                 nilcc_api_client: Default::default(),
                 disk_service: Default::default(),
                 cvm_config: CvmConfig {
-                    initrd: "/initrd".into(),
-                    bios: "/bios".into(),
+                    initrd: base_path.join("initrd"),
+                    bios: base_path.join("bios"),
                     cpu: CvmFiles {
-                        base_disk: "/cpu/base-disk".into(),
-                        kernel: "/cpu/kernel".into(),
-                        verity_disk: "/cpu/verity-disk".into(),
+                        base_disk: base_path.join("cpu-base-disk"),
+                        kernel: base_path.join("cpu-kernel"),
+                        verity_disk: base_path.join("cpu-verity-disk"),
                         verity_root_hash: "cpu-root-hash".into(),
                     },
                     gpu: CvmFiles {
-                        base_disk: "/gpu/base-disk".into(),
-                        kernel: "/gpu/kernel".into(),
-                        verity_disk: "/gpu/verity-disk".into(),
+                        base_disk: base_path.join("gpu-base-disk"),
+                        kernel: base_path.join("gpu-kernel"),
+                        verity_disk: base_path.join("gpu-verity-disk"),
                         verity_root_hash: "gpu-root-hash".into(),
                     },
                 },
@@ -250,9 +288,14 @@ mod tests {
             domain: "example.com".into(),
         };
         let mut builder = Builder::default();
+        let base_disk_contents = b"totally a disk";
+        let verity_disk_contents = b"totally a disk";
+        fs::write(&builder.cvm_config.cpu.base_disk, base_disk_contents).await.expect("failed to write");
+        fs::write(&builder.cvm_config.cpu.verity_disk, verity_disk_contents).await.expect("failed to write");
+
         let id = workload.id;
-        let base_path = builder.state_path.display();
-        let state_disk_path = PathBuf::from(format!("{base_path}/{id}.raw"));
+        let base_path = builder.state_path.path().display();
+        let state_disk_path = PathBuf::from(format!("{base_path}/{id}.state.raw"));
 
         builder.disk_service.expect_create_application_iso().return_once(move |_, _| Ok(()));
         builder
@@ -260,8 +303,18 @@ mod tests {
             .expect_create_disk()
             .with(eq(state_disk_path), eq(HardDiskFormat::Raw), eq(1))
             .return_once(move |_, _, _| Ok(()));
+        builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
+        builder.nilcc_api_client.expect_report_vm_event().return_once(move |_, _| Ok(()));
 
-        let service = builder.build().await;
-        service.start_vm(workload).await.expect("failed to start");
+        let ctx = builder.build().await;
+        ctx.service.start_vm(workload).await.expect("failed to start");
+
+        let found_base_disk_contents =
+            fs::read(ctx.state_path.path().join(format!("{id}.base.qcow2"))).await.expect("failed to read base disk");
+        let found_verity_disk_contents = fs::read(ctx.state_path.path().join(format!("{id}.verity.qcow2")))
+            .await
+            .expect("failed to read verity disk");
+        assert_eq!(base_disk_contents, found_base_disk_contents.as_slice());
+        assert_eq!(verity_disk_contents, found_verity_disk_contents.as_slice());
     }
 }
