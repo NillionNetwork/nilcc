@@ -51,6 +51,7 @@ describe("Metal Instance", () => {
       ...body,
       updatedAt: undefined,
       createdAt: undefined,
+      lastSeenAt: undefined,
       token: myMetalInstance.token,
     };
     expect(cleanBody).toEqual(myMetalInstance);
@@ -83,8 +84,38 @@ describe("Metal Instance", () => {
       ...body,
       updatedAt: undefined,
       createdAt: undefined,
+      lastSeenAt: undefined,
       token: myMetalInstance.token,
     };
     expect(cleanBody).toEqual(updatedMetalInstance);
+  });
+
+  it("should update the last seen timestamp after a heartbeat", async ({
+    expect,
+    metalInstanceClient,
+    userClient,
+  }) => {
+    await metalInstanceClient.register(myMetalInstance);
+    const originalResponse = await userClient.getMetalInstance({
+      id: myMetalInstance.id,
+    });
+    expect(originalResponse.response.status).equals(200);
+    const originalBody = await originalResponse.parse_body();
+    const lastSeen = new Date(originalBody.lastSeenAt);
+    // sleep for a little bit
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const heartbeatResponse = await metalInstanceClient.heartbeat({
+      id: myMetalInstance.id,
+    });
+    expect(heartbeatResponse.status).equals(200);
+
+    // now the last seen timestamp should be larger
+    const response = await userClient.getMetalInstance({
+      id: myMetalInstance.id,
+    });
+    const body = await response.parse_body();
+    const currentLastSeen = new Date(body.lastSeenAt);
+    expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
   });
 });

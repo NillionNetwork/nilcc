@@ -26,6 +26,7 @@ export const metalInstanceMapper = {
       gpuModel: metalInstance.gpuModel ?? undefined,
       createdAt: metalInstance.createdAt.toISOString(),
       updatedAt: metalInstance.updatedAt.toISOString(),
+      lastSeenAt: metalInstance.lastSeenAt.toISOString(),
     };
   },
 };

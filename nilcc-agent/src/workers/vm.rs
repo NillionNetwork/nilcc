@@ -2,6 +2,7 @@ use crate::clients::{
     nilcc_api::{NilccApiClient, VmEvent},
     qemu::{QemuClientError, VmClient, VmSpec},
 };
+use metrics::{counter, gauge};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use strum::EnumDiscriminants;
 use tokio::{
@@ -69,6 +70,7 @@ impl VmWorker {
         match self.vm_client.start_vm(self.spec.clone(), &self.socket_path).await {
             Ok(()) => {
                 info!("VM started successfully");
+                gauge!("vms_running_total").increment(1);
                 self.submit_event(VmEvent::Started).await;
             }
             Err(QemuClientError::VmAlreadyRunning) => {
@@ -76,12 +78,14 @@ impl VmWorker {
             }
             Err(e) => {
                 error!("Failed to start VM: {e}");
+                counter!("vm_start_errors_total").increment(1);
                 self.submit_event(VmEvent::FailedToStart { error: e.to_string() }).await;
             }
         }
     }
 
     async fn delete_vm(&self) {
+        info!("Shutting down VM");
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
                 // Process all disks and the ISO at once
@@ -98,9 +102,11 @@ impl VmWorker {
             }
             Err(QemuClientError::VmNotRunning) => warn!("VM was not running"),
             Err(e) => {
+                counter!("vm_stop_errors_total").increment(1);
                 error!("Failed to stop VM: {e}");
             }
-        }
+        };
+        gauge!("vms_running_total").decrement(1);
     }
 
     async fn handle_tick(&self) {

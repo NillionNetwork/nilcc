@@ -22,6 +22,9 @@ pub trait NilccApiClient: Send + Sync {
 
     /// Report an event that occurred for a VM.
     async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()>;
+
+    /// Send a heartbeat to the API.
+    async fn heartbeat(&self) -> anyhow::Result<()>;
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -115,6 +118,12 @@ impl NilccApiClient for HttpNilccApiClient {
         let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
         self.send_request(Method::POST, url, &payload).await.context("Failed to submit event")
     }
+
+    async fn heartbeat(&self) -> anyhow::Result<()> {
+        let url = self.make_url("/api/v1/metal-instances/~/heartbeat");
+        let payload = HeartbeatRequest { id: self.agent_id };
+        self.send_request(Method::POST, url, &payload).await.context("Failed to submit heartbeat")
+    }
 }
 
 pub struct DummyNilccApiClient;
@@ -133,6 +142,11 @@ impl NilccApiClient for DummyNilccApiClient {
 
     async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
         info!("Reporting VM event for {workload_id}: {event:?}");
+        Ok(())
+    }
+
+    async fn heartbeat(&self) -> anyhow::Result<()> {
+        info!("Reporting heartbeat");
         Ok(())
     }
 }
@@ -167,4 +181,10 @@ struct VmEventRequest {
     agent_id: Uuid,
     workload_id: Uuid,
     event: VmEvent,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HeartbeatRequest {
+    id: Uuid,
 }

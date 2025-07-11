@@ -4,6 +4,7 @@ import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
+  type HeartbeatRequest,
   type RegisterMetalInstanceRequest,
   type SubmitEventRequest,
 } from "#/metal-instance/metal-instance.dto";
@@ -167,6 +168,13 @@ export class MetalInstanceClient extends TestClient {
 
   async register(body: RegisterMetalInstanceRequest): Promise<Response> {
     return await this.request(PathsV1.metalInstance.register, {
+      method: "POST",
+      body,
+    });
+  }
+
+  async heartbeat(body: HeartbeatRequest): Promise<Response> {
+    return await this.request(PathsV1.metalInstance.heartbeat, {
       method: "POST",
       body,
     });

@@ -9,6 +9,7 @@ import { paramsValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import {
   GetMetalInstanceResponse,
+  HeartbeatRequest,
   ListMetalInstancesResponse,
   RegisterMetalInstanceRequest,
 } from "#/metal-instance/metal-instance.dto";
@@ -39,6 +40,35 @@ export function register(options: ControllerOptions) {
     async (c) => {
       const payload = c.req.valid("json");
       await bindings.services.metalInstance.createOrUpdate(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
+      return c.body(null);
+    },
+  );
+}
+
+export function heartbeat(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.metalInstance.heartbeat,
+    describeRoute({
+      tags: ["Metal-Instance"],
+      summary: "Report this metal instance as being online",
+      responses: {
+        200: {
+          description: "The heartbeat was processed successfully",
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.metalInstanceApiKey),
+    zValidator("json", HeartbeatRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const payload = c.req.valid("json");
+      await bindings.services.metalInstance.heartbeat(
         bindings,
         payload,
         c.get("txQueryRunner"),

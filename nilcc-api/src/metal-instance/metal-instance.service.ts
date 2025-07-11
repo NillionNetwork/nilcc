@@ -9,7 +9,10 @@ import {
   UpdateEntityError,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type { RegisterMetalInstanceRequest } from "./metal-instance.dto";
+import type {
+  HeartbeatRequest,
+  RegisterMetalInstanceRequest,
+} from "./metal-instance.dto";
 import { MetalInstanceEntity } from "./metal-instance.entity";
 
 export class MetalInstanceService {
@@ -53,14 +56,31 @@ export class MetalInstanceService {
   @mapError((e) => new CreateOrUpdateEntityError(MetalInstanceEntity, e))
   async createOrUpdate(
     bindings: AppBindings,
-    metalInstance: RegisterMetalInstanceRequest,
+    request: RegisterMetalInstanceRequest,
     tx?: QueryRunner,
   ) {
-    const maybeMetalInstance = await this.read(bindings, metalInstance.id, tx);
+    const maybeMetalInstance = await this.read(bindings, request.id, tx);
     if (maybeMetalInstance) {
-      return this.update(bindings, metalInstance, maybeMetalInstance, tx);
+      return this.update(bindings, request, maybeMetalInstance, tx);
     }
-    return this.create(bindings, metalInstance, tx);
+    return this.create(bindings, request, tx);
+  }
+
+  async heartbeat(
+    bindings: AppBindings,
+    request: HeartbeatRequest,
+    tx?: QueryRunner,
+  ) {
+    const metalInstance = await this.read(bindings, request.id, tx);
+    if (metalInstance === null) {
+      throw new FindEntityError(
+        MetalInstanceEntity,
+        "metal instance not found",
+      );
+    }
+    const repository = this.getRepository(bindings, tx);
+    metalInstance.lastSeenAt = new Date();
+    await repository.save(metalInstance);
   }
 
   async findWithFreeResources(
@@ -121,6 +141,7 @@ export class MetalInstanceService {
     currentMetalInstance.gpus = metalInstance.gpus;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
     currentMetalInstance.updatedAt = new Date();
+    currentMetalInstance.lastSeenAt = new Date();
     await repository.save(currentMetalInstance);
   }
 
@@ -148,6 +169,7 @@ export class MetalInstanceService {
       gpuModel: request.gpuModel,
       createdAt: now,
       updatedAt: now,
+      lastSeenAt: now,
     });
     bindings.services.dns.metalInstances.createRecord(
       request.id,
