@@ -29,6 +29,12 @@ jobs:
         with:
           submodules: 'true'
 
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Build cvm-agent
+        run: cargo build --release -p cvm-agent
+
       - name: Build guest kernel
         run: artifacts/kernel/build.sh guest
 
