@@ -24,6 +24,7 @@ use nilcc_agent::{
         workload::{DefaultWorkloadService, WorkloadServiceArgs},
     },
     version,
+    workers::heartbeat::HeartbeatWorker,
 };
 use rustls_acme::{caches::DirCache, AcmeConfig};
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -189,6 +190,9 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     info!("Registering with API");
     nilcc_api_client.register(&config.api, &system_resources, public_ip).await.context("Failed to register")?;
+
+    info!("Starting heartbeat worker");
+    HeartbeatWorker::spawn(nilcc_api_client.clone());
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
     let vm_service = DefaultVmService::new(VmServiceArgs {

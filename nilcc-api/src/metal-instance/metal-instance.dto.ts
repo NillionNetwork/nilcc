@@ -25,6 +25,13 @@ export type RegisterMetalInstanceRequest = z.infer<
   typeof RegisterMetalInstanceRequest
 >;
 
+export const HeartbeatRequest = z
+  .object({
+    id: Uuid,
+  })
+  .openapi({ ref: "HeartbeatRequest" });
+export type HeartbeatRequest = z.infer<typeof HeartbeatRequest>;
+
 export const GetMetalInstanceResponse = z
   .object({
     id: Uuid,
@@ -38,6 +45,7 @@ export const GetMetalInstanceResponse = z
     gpuModel: z.string().optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
+    lastSeenAt: z.string().datetime(),
   })
   .openapi({
     ref: "GetMetalInstanceResponse",

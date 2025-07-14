@@ -53,4 +53,7 @@ export class MetalInstanceEntity {
 
   @Column({ type: "timestamp" })
   updatedAt: Date;
+
+  @Column({ type: "timestamp" })
+  lastSeenAt: Date;
 }
