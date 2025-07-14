@@ -86,3 +86,7 @@ After the boot process is completed, the `cvm-agent` program (which is currently
 These two files are passed in simultaneously so that all containers are started on the same network and need no tweaks 
 to have connectivity between them. This means, for example, that Caddy can direct traffic directly to container `foo` 
 without doing any setup to bridge the networks between them.
+
+# Build process
+
+See more about the build process in [here](artifacts/README.md).
