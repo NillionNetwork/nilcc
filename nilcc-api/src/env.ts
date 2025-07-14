@@ -78,6 +78,7 @@ export const EnvVarsSchema = z.object({
   metalInstancesDnsZone: z.string(),
   metalInstancesEndpointScheme: z.enum(["http", "https"]).default("https"),
   metalInstancesEndpointPort: z.number().default(443),
+  metalInstancesIdleThresholdSeconds: z.number().default(120),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -99,6 +100,7 @@ declare global {
       APP_METAL_INSTANCES_DNS_ZONE: string;
       APP_METAL_INSTANCES_ENDPOINT_SCHEME: string;
       APP_METAL_INSTANCES_ENDPOINT_PORT: number;
+      APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS: number;
     }
   }
 }
@@ -176,6 +178,8 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     metalInstancesEndpointPort: Number(
       process.env.APP_METAL_INSTANCES_ENDPOINT_PORT,
     ),
+    metalInstancesIdleThresholdSeconds:
+      process.env.APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS,
   });
 
   return {

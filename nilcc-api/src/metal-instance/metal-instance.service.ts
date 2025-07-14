@@ -96,6 +96,13 @@ export class MetalInstanceService {
     const repository = this.getRepository(bindings, tx);
     const queryBuilder = repository
       .createQueryBuilder("metalInstance")
+      .where(
+        "EXTRACT(EPOCH FROM (:now - metalInstance.lastSeenAt)) < :threshold",
+        {
+          now: new Date(),
+          threshold: bindings.config.metalInstancesIdleThresholdSeconds,
+        },
+      )
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
       .having(
