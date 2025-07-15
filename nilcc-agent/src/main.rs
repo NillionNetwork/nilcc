@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     clients::{
+        cvm_agent::DefaultCvmAgentClient,
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::QemuClient,
     },
@@ -13,7 +14,7 @@ use nilcc_agent::{
         workload::{SqliteWorkloadRepository, WorkloadRepository},
     },
     resources::SystemResources,
-    routes::{build_router, AppState, Services},
+    routes::{build_router, AppState, Clients, Services},
     services::{
         disk::{
             ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, ExternalFile,
@@ -195,6 +196,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     HeartbeatWorker::spawn(nilcc_api_client.clone());
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
+    let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client,
         nilcc_api_client,
@@ -214,6 +216,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     .context("Creating workload service")?;
     let state = AppState {
         services: Services { workload: Arc::new(workload_service) },
+        clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
     };
     let router = build_router(state, config.api.token);

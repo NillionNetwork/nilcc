@@ -11,8 +11,7 @@ CREATE TABLE workloads (
   cpus INT NOT NULL,
   gpus TEXT NOT NULL,
   disk_space_gb INT NOT NULL,
-  proxy_http_port INT NOT NULL,
-  proxy_https_port INT NOT NULL,
+  ports TEXT NOT NULL,
   domain VARCHAR(255) NOT NULL,
   created_at DATETIME WITH TIMEZONE NOT NULL,
   updated_at DATETIME WITH TIMEZONE NOT NULL DEFAULT CURRENT_TIMESTAMP

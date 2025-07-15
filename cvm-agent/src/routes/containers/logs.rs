@@ -13,7 +13,6 @@ use validator::Validate;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContainersLogsRequest {
     container: String,
-    #[serde(default)]
     tail: bool,
     stream: OutputStream,
     #[validate(range(max = 1000))]

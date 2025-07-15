@@ -249,7 +249,7 @@ impl QemuClient {
             let fwd = spec
                 .port_forwarding
                 .iter()
-                .map(|(h, g)| format!("hostfwd=tcp::{h}-:{g}"))
+                .map(|(h, g)| format!("hostfwd=tcp:127.0.0.1:{h}-:{g}"))
                 .collect::<Vec<_>>()
                 .join(",");
             args.extend([
@@ -473,7 +473,7 @@ mod tests {
             "virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile=",
             // Port forward
             "-netdev",
-            "user,id=vmnic,hostfwd=tcp::8080-:80",
+            "user,id=vmnic,hostfwd=tcp:127.0.0.1:8080-:80",
             // GPUs
             "-device",
             "pcie-root-port,id=gpu1,bus=pcie.0",

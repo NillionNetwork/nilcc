@@ -1,6 +1,6 @@
 use crate::{
     routes::{AppState, Json, RequestHandlerError},
-    services::workload::{DeleteWorkloadError, DeleteWorkloadErrorDiscriminants},
+    services::workload::{WorkloadLookupError, WorkloadLookupErrorDiscriminants},
 };
 use axum::{
     extract::State,
@@ -24,17 +24,17 @@ pub(crate) async fn handler(
     Ok(Json(()))
 }
 
-pub(crate) struct HandlerError(DeleteWorkloadError);
+pub(crate) struct HandlerError(WorkloadLookupError);
 
 impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {
-        let discriminant = DeleteWorkloadErrorDiscriminants::from(&self.0);
+        let discriminant = WorkloadLookupErrorDiscriminants::from(&self.0);
         let (code, message) = match self.0 {
-            DeleteWorkloadError::Database(e) => {
+            WorkloadLookupError::Database(e) => {
                 error!("Failed to run queries: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
             }
-            DeleteWorkloadError::WorkloadNotFound => (StatusCode::PRECONDITION_FAILED, self.0.to_string()),
+            WorkloadLookupError::WorkloadNotFound => (StatusCode::NOT_FOUND, self.0.to_string()),
         };
         let response = RequestHandlerError::new(message, format!("{discriminant:?}"));
         (code, Json(response)).into_response()

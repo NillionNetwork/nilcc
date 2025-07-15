@@ -20,7 +20,7 @@ pub struct ProxiedVm {
 
 impl From<&Workload> for ProxiedVm {
     fn from(workload: &Workload) -> Self {
-        Self { id: workload.id, http_port: workload.proxy_http_port, https_port: workload.proxy_https_port }
+        Self { id: workload.id, http_port: workload.http_port(), https_port: workload.https_port() }
     }
 }
 

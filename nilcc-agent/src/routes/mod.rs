@@ -1,11 +1,12 @@
 use crate::auth::AuthLayer;
+use crate::clients::cvm_agent::CvmAgentClient;
 use crate::config::ResourceLimitsConfig;
 use crate::services::workload::WorkloadService;
 use axum::extract::Request;
 use axum::extract::{rejection::JsonRejection, FromRequest};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
 use convert_case::{Case, Casing};
 use serde::Serialize;
@@ -21,8 +22,14 @@ pub struct Services {
 }
 
 #[derive(Clone)]
+pub struct Clients {
+    pub cvm_agent: Arc<dyn CvmAgentClient>,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub services: Services,
+    pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
 }
 
@@ -32,6 +39,8 @@ pub fn build_router(state: AppState, token: String) -> Router {
         Router::new()
             .route("/workloads/create", post(workloads::create::handler))
             .route("/workloads/delete", post(workloads::delete::handler))
+            .route("/workloads/{workload_id}/containers/list", get(workloads::containers::list::handler))
+            .route("/workloads/{workload_id}/containers/logs", get(workloads::containers::logs::handler))
             .with_state(state)
             .layer(ServiceBuilder::new().layer(AuthLayer::new(token))),
     )
