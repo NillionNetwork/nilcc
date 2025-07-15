@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+  "cvm-agent",
   "nilcc-attester",
   "nilcc-agent",
   "nilcc-verifier",

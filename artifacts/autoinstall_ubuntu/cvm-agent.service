@@ -3,7 +3,7 @@ Description=Nillion CVM agent.
 
 [Service]
 Type=simple
-ExecStart=/opt/nillion/cvm-agent.sh
+ExecStart=/opt/nillion/cvm-agent /media/cvm-agent-entrypoint
 
 [Install]
 WantedBy=multi-user.target

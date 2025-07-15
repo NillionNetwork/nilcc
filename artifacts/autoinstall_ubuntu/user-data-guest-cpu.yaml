@@ -28,8 +28,8 @@ autoinstall:
     - curtin in-target -- apt purge -y linux-image-6.8* linux-headers-6.8* linux-tools-6.8*
     # Copy over cvm-agent.
     - curtin in-target -- mkdir /opt/nillion
-    - curtin in-target -- cp /cdrom/nillion/cvm-agent.sh /opt/nillion
-    - curtin in-target -- chmod +x /opt/nillion/cvm-agent.sh
+    - curtin in-target -- cp /cdrom/nillion/cvm-agent /opt/nillion
+    - curtin in-target -- chmod +x /opt/nillion/cvm-agent
     # Copy services config
     - curtin in-target -- cp -r /cdrom/nillion/services /opt/nillion
     # Configure cvm-agent to auto start.

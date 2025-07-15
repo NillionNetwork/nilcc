@@ -9,6 +9,9 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 [[ "$1" != "guest" && "$1" != "host" ]] && echo "Invalid argument, use 'guest' or 'host'" && exit 1
 [[ "$1" == "guest" && "$2" != "cpu" && "$2" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
 
+CVM_AGENT_PATH="${SCRIPT_PATH}/../../target/release/cvm-agent"
+[[ ! -f "$CVM_AGENT_PATH" ]] && echo "cvm-agent binary not found, run 'cargo build --release -p cvm-agent'" && exit 1
+
 TYPE=$1
 shift
 [[ "$TYPE" == "guest" ]] && SUBTYPE=$1 && shift
@@ -29,9 +32,9 @@ KERNEL_CHECK=($SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb)
 cp $SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb "$BUILD_PATH/kernel/"
 
 # Copy cvm-agent script and dependencies.
-cp $SCRIPT_PATH/../../cvm-agent/cvm-agent.sh "$BUILD_PATH/custom/"
-cp -r $SCRIPT_PATH/../../cvm-agent/services/ "$BUILD_PATH/custom/"
-cp $SCRIPT_PATH/cvm-agent.service "$BUILD_PATH/custom/"
+cp "$CVM_AGENT_PATH" "$BUILD_PATH/custom/"
+cp -r "$SCRIPT_PATH/../../cvm-agent/services/" "$BUILD_PATH/custom/"
+cp "$SCRIPT_PATH/cvm-agent.service" "$BUILD_PATH/custom/"
 
 # Store version and type so the VM can store this persistently.
 echo "$(git rev-parse --short HEAD)" >"$BUILD_PATH/custom/nilcc-version"
