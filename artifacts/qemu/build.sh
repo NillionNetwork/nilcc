@@ -28,7 +28,7 @@ fi
 
 cd ../..
 
-docker run --rm -v "$SCRIPT_PATH:/qemu" alpine sh -c "apk add bash; bash /qemu/docker_build.sh"
+docker run --rm -v "$SCRIPT_PATH:/qemu" alpine:3.22.0 sh -c "apk add bash; bash /qemu/docker_build.sh"
 docker run --rm -v "$SCRIPT_PATH:/qemu" ubuntu:24.04 sh -c "bash /qemu/docker_build_ovmf.sh"
 sudo chown -R $(whoami) $SCRIPT_PATH/build/
 
