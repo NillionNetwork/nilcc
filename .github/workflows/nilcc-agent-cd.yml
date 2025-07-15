@@ -24,7 +24,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: "arn:aws:iam::592920173613:role/nilcc-ci-nilcc-bucket"
+          role-to-assume: "arn:aws:iam::592920173613:role/github-runners-productionnilcc-ci-nilcc-bucket"
           aws-region: eu-west-1
 
       - name: Publish
