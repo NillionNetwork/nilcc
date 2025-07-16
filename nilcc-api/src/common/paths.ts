@@ -21,6 +21,10 @@ export const PathsV1 = {
     events: {
       submit: PathSchema.parse("/api/v1/workloads/~/events/submit"),
     },
+    containers: {
+      list: PathSchema.parse("/api/v1/workloads/~/containers/list"),
+      logs: PathSchema.parse("/api/v1/workloads/~/containers/logs"),
+    },
   },
   metalInstance: {
     register: PathSchema.parse("/api/v1/metal-instances/~/register"),

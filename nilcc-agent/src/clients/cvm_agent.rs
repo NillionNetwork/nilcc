@@ -2,7 +2,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::{
     container::Container,
-    logs::{ContainersLogsRequest, ContainersLogsResponse},
+    logs::{ContainerLogsRequest, ContainerLogsResponse},
 };
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Serialize};
@@ -13,11 +13,7 @@ use tracing::info;
 pub trait CvmAgentClient: Send + Sync {
     async fn list_containers(&self, cvm_agent_port: u16) -> anyhow::Result<Vec<Container>>;
 
-    async fn logs(
-        &self,
-        cvm_agent_port: u16,
-        request: &ContainersLogsRequest,
-    ) -> anyhow::Result<ContainersLogsResponse>;
+    async fn logs(&self, cvm_agent_port: u16, request: &ContainerLogsRequest) -> anyhow::Result<ContainerLogsResponse>;
 }
 
 pub struct DefaultCvmAgentClient {
@@ -56,11 +52,7 @@ impl CvmAgentClient for DefaultCvmAgentClient {
         self.get(cvm_agent_port, "/api/v1/containers/list", &()).await
     }
 
-    async fn logs(
-        &self,
-        cvm_agent_port: u16,
-        request: &ContainersLogsRequest,
-    ) -> anyhow::Result<ContainersLogsResponse> {
+    async fn logs(&self, cvm_agent_port: u16, request: &ContainerLogsRequest) -> anyhow::Result<ContainerLogsResponse> {
         self.get(cvm_agent_port, "/api/v1/containers/logs", &request).await
     }
 }

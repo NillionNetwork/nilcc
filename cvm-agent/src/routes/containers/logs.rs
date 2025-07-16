@@ -4,15 +4,15 @@ use axum::{
     Json,
 };
 use bollard::{query_parameters::LogsOptionsBuilder, Docker};
-use cvm_agent_models::logs::{ContainersLogsRequest, ContainersLogsResponse, OutputStream};
+use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream};
 use futures::StreamExt;
 use std::sync::Arc;
 
 pub(crate) async fn handler(
     docker: State<Arc<Docker>>,
-    request: Query<ContainersLogsRequest>,
-) -> Result<Json<ContainersLogsResponse>, StatusCode> {
-    let ContainersLogsRequest { container, tail, stream, max_lines } = request.0;
+    request: Query<ContainerLogsRequest>,
+) -> Result<Json<ContainerLogsResponse>, StatusCode> {
+    let ContainerLogsRequest { container, tail, stream, max_lines } = request.0;
     let mut builder = LogsOptionsBuilder::new();
     if tail {
         builder = builder.tail(&max_lines.to_string());
@@ -28,5 +28,5 @@ pub(crate) async fn handler(
         let output = output.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         lines.push(String::from_utf8_lossy(&output.into_bytes()).trim().to_string());
     }
-    Ok(Json(ContainersLogsResponse { lines }))
+    Ok(Json(ContainerLogsResponse { lines }))
 }

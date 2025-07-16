@@ -28,7 +28,7 @@ pub mod logs {
     /// A request to get the logs for a container.
     #[derive(Deserialize, Serialize, Validate)]
     #[serde(rename_all = "camelCase")]
-    pub struct ContainersLogsRequest {
+    pub struct ContainerLogsRequest {
         /// The container that we're pulling logs out of.
         pub container: String,
 
@@ -56,7 +56,7 @@ pub mod logs {
 
     /// The container logs response.
     #[derive(Deserialize, Serialize)]
-    pub struct ContainersLogsResponse {
+    pub struct ContainerLogsResponse {
         pub lines: Vec<String>,
     }
 }

@@ -22,7 +22,11 @@ import {
   CreateWorkloadRequest,
   CreateWorkloadResponse,
   GetWorkloadResponse,
+  ListContainersRequest,
+  ListContainersResponse,
   ListWorkloadsResponse,
+  WorkloadContainerLogsRequest,
+  WorkloadContainerLogsResponse,
 } from "./workload.dto";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -181,7 +185,7 @@ export function submitEvent(options: ControllerOptions) {
   app.post(
     PathsV1.workload.events.submit,
     describeRoute({
-      tags: ["Metal-Instance"],
+      tags: ["Metal-Instance", "Workload"],
       summary: "Report an event for a workload running inside a metal instance",
       description: "Reports an event and updates the state for the workload",
       responses: {
@@ -197,6 +201,72 @@ export function submitEvent(options: ControllerOptions) {
       const payload = c.req.valid("json");
       await bindings.services.workload.submitEvent(bindings, payload);
       return c.body(null);
+    },
+  );
+}
+
+export function listContainers(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.containers.list,
+    describeRoute({
+      tags: ["Workload"],
+      summary: "List the containers for a running workload",
+      responses: {
+        200: {
+          description: "The containers list is returned",
+          content: {
+            "application/json": {
+              schema: resolver(ListContainersResponse),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.metalInstanceApiKey),
+    zValidator("json", ListContainersRequest),
+    responseValidator(bindings, ListContainersResponse),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const containers = await bindings.services.workload.listContainers(
+        bindings,
+        payload,
+      );
+      return c.json(containers);
+    },
+  );
+}
+
+export function containerLogs(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.containers.logs,
+    describeRoute({
+      tags: ["Workload"],
+      summary: "Get the logs for a container",
+      responses: {
+        200: {
+          description: "The container logs",
+          content: {
+            "application/json": {
+              schema: resolver(WorkloadContainerLogsRequest),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.metalInstanceApiKey),
+    zValidator("json", WorkloadContainerLogsRequest),
+    responseValidator(bindings, WorkloadContainerLogsResponse),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const logs = await bindings.services.workload.containerLogs(
+        bindings,
+        payload,
+      );
+      return c.json(logs);
     },
   );
 }

@@ -1,4 +1,5 @@
 import type { QueryRunner, Repository } from "typeorm";
+import type { Container } from "#/clients/nilcc-agent.client";
 import {
   CreateEntityError,
   FindEntityError,
@@ -11,7 +12,11 @@ import {
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
-import type { CreateWorkloadRequest } from "./workload.dto";
+import type {
+  CreateWorkloadRequest,
+  ListContainersRequest,
+  WorkloadContainerLogsRequest,
+} from "./workload.dto";
 import { WorkloadEntity } from "./workload.entity";
 
 export class WorkloadService {
@@ -137,6 +142,49 @@ export class WorkloadService {
         break;
     }
     await workloadRepository.save(workload);
+  }
+
+  @mapError((e) => new SubmitEventError(e))
+  async listContainers(
+    bindings: AppBindings,
+    request: ListContainersRequest,
+    tx?: QueryRunner,
+  ): Promise<Array<Container>> {
+    const workloadRepository = this.getRepository(bindings, tx);
+    const workloads = await workloadRepository.find({
+      where: { id: request.workloadId },
+      relations: ["metalInstance"],
+    });
+    if (workloads.length !== 1) {
+      throw new Error("workload not found");
+    }
+    const workload = workloads[0];
+    return await bindings.services.nilccAgentClient.containers(
+      workload.metalInstance,
+      workload.id,
+    );
+  }
+
+  @mapError((e) => new SubmitEventError(e))
+  async containerLogs(
+    bindings: AppBindings,
+    request: WorkloadContainerLogsRequest,
+    tx?: QueryRunner,
+  ): Promise<Array<string>> {
+    const workloadRepository = this.getRepository(bindings, tx);
+    const workloads = await workloadRepository.find({
+      where: { id: request.workloadId },
+      relations: ["metalInstance"],
+    });
+    if (workloads.length !== 1) {
+      throw new Error("workload not found");
+    }
+    const workload = workloads[0];
+    return await bindings.services.nilccAgentClient.containerLogs(
+      workload.metalInstance,
+      workload.id,
+      request,
+    );
   }
 
   async createCnameForWorkload(
