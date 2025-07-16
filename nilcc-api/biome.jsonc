@@ -7,7 +7,13 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**/*.ts", "**/*.mjs", "**/*.json"]
+    "includes": [
+      "**/*.ts",
+      "**/*.mjs",
+      "**/*.json",
+      "!**/localstack_data/**",
+      "!**/postgres_data/**"
+    ]
   },
   "formatter": {
     "enabled": true,

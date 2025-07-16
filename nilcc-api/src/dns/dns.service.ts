@@ -145,7 +145,7 @@ export class LocalStackDnsService extends Route53DnsService {
     subdomain: string,
   ): Promise<Route53DnsService> {
     const route53 = new Route53Client({
-      endpoint: "http://localhost:4566",
+      endpoint: process.env.APP_LOCALSTACK_URI,
       region: "us-east-1", // LocalStack default region
       credentials: {
         accessKeyId: "test",
