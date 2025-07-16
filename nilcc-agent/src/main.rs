@@ -200,6 +200,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client,
         nilcc_api_client,
+        cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         cvm_config: config.cvm,

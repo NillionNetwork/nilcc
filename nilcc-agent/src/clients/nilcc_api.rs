@@ -30,7 +30,8 @@ pub trait NilccApiClient: Send + Sync {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum VmEvent {
-    Started,
+    Starting,
+    Running,
     Stopped,
     FailedToStart { error: String },
 }

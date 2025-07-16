@@ -9,8 +9,8 @@ import { createTestFixtureExtension } from "./fixture/it";
 describe("workload CRUD", () => {
   const { it, beforeAll, afterAll } = createTestFixtureExtension();
 
-  beforeAll(async (_ctx) => {});
-  afterAll(async (_ctx) => {});
+  beforeAll(async (_ctx) => { });
+  afterAll(async (_ctx) => { });
   let myWorkload: null | CreateWorkloadResponse = null;
 
   const createWorkloadRequest: CreateWorkloadRequest = {
@@ -139,7 +139,7 @@ services:
     const response = await userClient.submitEvent({
       agentId: myMetalInstance.id,
       workloadId: myWorkload.id,
-      event: { kind: "started" },
+      event: { kind: "starting" },
     });
     expect(response.status).toBe(200);
 
@@ -147,6 +147,6 @@ services:
       id: myWorkload.id,
     });
     const updatedWorkload = await updatedWorkloadResponse.parse_body();
-    expect(updatedWorkload.status).toBe("running");
+    expect(updatedWorkload.status).toBe("starting");
   });
 });
