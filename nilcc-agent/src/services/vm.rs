@@ -21,6 +21,8 @@ use tokio::{fs, sync::Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
 
+const CVM_AGENT_PORT: u16 = 59666;
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
@@ -73,7 +75,11 @@ impl DefaultVmService {
             ],
             cdrom_iso_path: Some(iso_path),
             gpus: workload.gpus.clone(),
-            port_forwarding: vec![(workload.proxy_http_port, 80), (workload.proxy_https_port, 443)],
+            port_forwarding: vec![
+                (workload.http_port(), 80),
+                (workload.https_port(), 443),
+                (workload.cvm_agent_port(), CVM_AGENT_PORT),
+            ],
             bios_path: Some(self.cvm_config.bios.clone()),
             initrd_path: Some(self.cvm_config.initrd.clone()),
             kernel_path: Some(kernel.clone()),
@@ -87,6 +93,7 @@ impl DefaultVmService {
         let disk_name = format!("{}.state.raw", workload.id);
         let disk_path = self.state_path.join(disk_name);
         if disk_path.exists() {
+            info!("Not creating state disk because it already exists");
             return Ok(disk_path);
         }
         self.disk_service
@@ -104,6 +111,10 @@ impl DefaultVmService {
     ) -> Result<PathBuf, StartVmError> {
         let disk_name = format!("{}.{disk_type}.qcow2", workload.id);
         let disk_path = self.state_path.join(disk_name);
+        if disk_path.exists() {
+            info!("Not copying base image because it already exists");
+            return Ok(disk_path);
+        }
         fs::copy(original_disk, &disk_path)
             .await
             .map_err(|e| StartVmError(format!("failed to copy {disk_type} disk: {e}")))?;
@@ -115,6 +126,7 @@ impl DefaultVmService {
         let iso_path = self.state_path.join(iso_name);
         let docker_compose_hash = hex::encode(Sha256::digest(&workload.docker_compose));
         if iso_path.exists() {
+            info!("Not creating ISO because it already exists");
             return Ok((iso_path, docker_compose_hash));
         }
         let environment_variables =
@@ -283,8 +295,7 @@ mod tests {
             cpus: 1,
             gpus: vec![],
             disk_space_gb: 1.try_into().unwrap(),
-            proxy_http_port: 1000,
-            proxy_https_port: 1001,
+            ports: [1000, 1001, 1002],
             domain: "example.com".into(),
         };
         let mut builder = Builder::default();

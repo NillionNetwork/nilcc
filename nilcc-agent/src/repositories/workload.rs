@@ -24,9 +24,23 @@ pub struct Workload {
     #[sqlx(json)]
     pub gpus: Vec<GpuAddress>,
     pub disk_space_gb: u32,
-    pub proxy_http_port: u16,
-    pub proxy_https_port: u16,
+    #[sqlx(json)]
+    pub ports: [u16; 3],
     pub domain: String,
+}
+
+impl Workload {
+    pub(crate) fn http_port(&self) -> u16 {
+        self.ports[0]
+    }
+
+    pub(crate) fn https_port(&self) -> u16 {
+        self.ports[1]
+    }
+
+    pub(crate) fn cvm_agent_port(&self) -> u16 {
+        self.ports[2]
+    }
 }
 
 impl fmt::Debug for Workload {
@@ -42,8 +56,7 @@ impl fmt::Debug for Workload {
             cpus,
             disk_space_gb,
             gpus,
-            proxy_http_port,
-            proxy_https_port,
+            ports,
             domain,
         } = self;
         // Hide this one since it can have sensitive data
@@ -59,8 +72,7 @@ impl fmt::Debug for Workload {
             .field("cpus", cpus)
             .field("disk_space_gb", disk_space_gb)
             .field("gpus", gpus)
-            .field("proxy_http_port", proxy_http_port)
-            .field("proxy_https_port", proxy_https_port)
+            .field("ports", ports)
             .field("domain", domain)
             .finish()
     }
@@ -136,12 +148,11 @@ INSERT INTO workloads (
     cpus,
     gpus,
     disk_space_gb,
-    proxy_http_port,
-    proxy_https_port,
+    ports,
     domain,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ";
         let Workload {
             id,
@@ -154,8 +165,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             cpus,
             disk_space_gb,
             gpus,
-            proxy_http_port,
-            proxy_https_port,
+            ports,
             domain,
         } = workload;
 
@@ -170,8 +180,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             .bind(cpus)
             .bind(sqlx::types::Json(gpus))
             .bind(disk_space_gb)
-            .bind(proxy_http_port)
-            .bind(proxy_https_port)
+            .bind(sqlx::types::Json(ports))
             .bind(domain)
             .bind(Utc::now())
             .execute(&self.pool)
@@ -226,8 +235,7 @@ mod tests {
             cpus: 1.try_into().unwrap(),
             disk_space_gb: 10.try_into().unwrap(),
             gpus: vec![GpuAddress("aa:bb".into())],
-            proxy_http_port: 1080,
-            proxy_https_port: 1443,
+            ports: [1080, 1443, 2000],
             domain: "example.com".into(),
         };
         repo.create(workload.clone()).await.expect("failed to insert");

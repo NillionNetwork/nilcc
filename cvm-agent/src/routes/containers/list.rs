@@ -1,17 +1,8 @@
 use axum::{extract::State, http::StatusCode, Json};
 use bollard::{query_parameters::ListContainersOptionsBuilder, secret::ContainerSummaryStateEnum, Docker};
-use serde::Serialize;
+use cvm_agent_models::container::Container;
 use std::sync::Arc;
 use tracing::error;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Container {
-    names: Vec<String>,
-    image: String,
-    image_id: String,
-    state: String,
-}
 
 pub(crate) async fn handler(docker: State<Arc<Docker>>) -> Result<Json<Vec<Container>>, StatusCode> {
     let options = ListContainersOptionsBuilder::new().all(true).build();

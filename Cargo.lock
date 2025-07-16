@@ -854,6 +854,7 @@ dependencies = [
  "axum",
  "bollard",
  "clap",
+ "cvm-agent-models",
  "futures",
  "serde",
  "serde_json",
@@ -861,6 +862,13 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "cvm-agent-models"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "validator",
 ]
 
@@ -2136,6 +2144,7 @@ dependencies = [
  "chrono",
  "clap",
  "convert_case",
+ "cvm-agent-models",
  "hex",
  "humantime",
  "humantime-serde",

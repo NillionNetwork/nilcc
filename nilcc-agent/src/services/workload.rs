@@ -18,7 +18,8 @@ use uuid::Uuid;
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
-    async fn delete_workload(&self, id: Uuid) -> Result<(), DeleteWorkloadError>;
+    async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
+    async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,7 +52,7 @@ impl From<WorkloadRepositoryError> for CreateWorkloadError {
 }
 
 #[derive(Debug, thiserror::Error, EnumDiscriminants)]
-pub enum DeleteWorkloadError {
+pub enum WorkloadLookupError {
     #[error("workload not found")]
     WorkloadNotFound,
 
@@ -59,7 +60,7 @@ pub enum DeleteWorkloadError {
     Database(WorkloadRepositoryError),
 }
 
-impl From<WorkloadRepositoryError> for DeleteWorkloadError {
+impl From<WorkloadRepositoryError> for WorkloadLookupError {
     fn from(e: WorkloadRepositoryError) -> Self {
         match e {
             WorkloadRepositoryError::WorkloadNotFound => Self::WorkloadNotFound,
@@ -135,7 +136,7 @@ impl DefaultWorkloadService {
                     return Err(CreateServiceError::CommittedGpuMissing(workload_id, gpu.clone()));
                 }
             }
-            for port in [workload.proxy_http_port, workload.proxy_https_port] {
+            for port in workload.ports {
                 if !ports.remove(&port) {
                     return Err(CreateServiceError::PortOutOfRange(port));
                 }
@@ -168,7 +169,8 @@ impl DefaultWorkloadService {
             domain,
         } = request;
         let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
-        let ports: Vec<u16> = resources.ports.iter().take(2).copied().collect();
+        let ports: Vec<_> = resources.ports.iter().take(3).copied().collect();
+        let ports = ports.try_into().expect("not enough ports");
 
         Workload {
             id,
@@ -181,8 +183,7 @@ impl DefaultWorkloadService {
             cpus,
             gpus,
             disk_space_gb,
-            proxy_http_port: ports[0],
-            proxy_https_port: ports[1],
+            ports,
             domain,
         }
     }
@@ -229,7 +230,7 @@ impl WorkloadService for DefaultWorkloadService {
         Ok(())
     }
 
-    async fn delete_workload(&self, id: Uuid) -> Result<(), DeleteWorkloadError> {
+    async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
         self.repository.find(id).await?;
 
@@ -238,6 +239,11 @@ impl WorkloadService for DefaultWorkloadService {
         self.proxy_service.stop_vm_proxy(id).await;
         self.vm_service.delete_vm(id).await;
         Ok(())
+    }
+
+    async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError> {
+        let workload = self.repository.find(workload_id).await?;
+        Ok(workload.cvm_agent_port())
     }
 }
 
@@ -322,8 +328,7 @@ mod tests {
             cpus: 1.try_into().unwrap(),
             disk_space_gb: 1.try_into().unwrap(),
             gpus: Default::default(),
-            proxy_http_port: 150,
-            proxy_https_port: 151,
+            ports: [150, 151, 152],
             domain: "example.com".into(),
         }
     }
@@ -346,11 +351,15 @@ mod tests {
         CreateServiceError::CommittedGpuMissing(Uuid::nil(), "addr2".into())
     )]
     #[case::http_port(
-        Workload { proxy_http_port: 50, ..make_workload() },
+        Workload { ports: [50, 150, 151], ..make_workload() },
         CreateServiceError::PortOutOfRange(50)
     )]
     #[case::https_port(
-        Workload { proxy_https_port: 50, ..make_workload() },
+        Workload { ports: [150, 50, 151], ..make_workload() },
+        CreateServiceError::PortOutOfRange(50)
+    )]
+    #[case::cvm_port_port(
+        Workload { ports: [150, 151, 50], ..make_workload() },
         CreateServiceError::PortOutOfRange(50)
     )]
     #[tokio::test]
@@ -385,8 +394,7 @@ mod tests {
             memory_mb: 1024,
             disk_space_gb: 10.try_into().unwrap(),
             gpus: vec!["addr1".into()],
-            proxy_http_port: 1000,
-            proxy_https_port: 1001,
+            ports: [1000, 1001, 1002],
             ..make_workload()
         };
         builder.existing_workloads = vec![workload.clone()];
@@ -434,8 +442,7 @@ mod tests {
             cpus: request.cpus,
             gpus: vec!["addr1".into()],
             disk_space_gb: request.disk_space_gb,
-            proxy_http_port: 100,
-            proxy_https_port: 101,
+            ports: [100, 101, 102],
             domain: request.domain.clone(),
         };
         let mut builder = Builder::default();

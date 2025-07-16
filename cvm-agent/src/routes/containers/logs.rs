@@ -4,33 +4,9 @@ use axum::{
     Json,
 };
 use bollard::{query_parameters::LogsOptionsBuilder, Docker};
+use cvm_agent_models::logs::{ContainersLogsRequest, ContainersLogsResponse, OutputStream};
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use validator::Validate;
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ContainersLogsRequest {
-    container: String,
-    #[serde(default)]
-    tail: bool,
-    stream: OutputStream,
-    #[validate(range(max = 1000))]
-    max_lines: usize,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum OutputStream {
-    Stdout,
-    Stderr,
-}
-
-#[derive(Serialize)]
-pub(crate) struct ContainersLogsResponse {
-    lines: Vec<String>,
-}
 
 pub(crate) async fn handler(
     docker: State<Arc<Docker>>,
