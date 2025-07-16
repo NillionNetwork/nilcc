@@ -4,6 +4,7 @@
 !/nilcc-agent
 !/nilcc-verifier
 !/cvm-agent
+!/crates
 !/Cargo.toml
 !/Cargo.lock
 !/artifacts/initramfs/build/kernel/kernel.deb

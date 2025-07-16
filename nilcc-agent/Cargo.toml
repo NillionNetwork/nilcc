@@ -39,6 +39,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["e
 uuid = { version = "1.17", features = ["serde", "v4"] }
 validator = { version = "0.20", features = ["derive"] }
 
+cvm-agent-models = { path = "../crates/cvm-agent-models" }
+
 [dev-dependencies]
 mockall = "0.13"
 rstest = { version = "0.25", default-features = false }

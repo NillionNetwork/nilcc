@@ -2,8 +2,9 @@
 resolver = "2"
 
 members = [
+  "crates/cvm-agent-models",
   "cvm-agent",
   "nilcc-attester",
   "nilcc-agent",
-  "nilcc-verifier",
+  "nilcc-verifier", 
 ]

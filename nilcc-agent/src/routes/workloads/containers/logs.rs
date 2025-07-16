@@ -1,11 +1,9 @@
-use crate::{
-    clients::cvm_agent::{ContainersLogsRequest, ContainersLogsResponse},
-    routes::{workloads::containers::CvmAgentHandlerError, AppState},
-};
+use crate::routes::{workloads::containers::CvmAgentHandlerError, AppState};
 use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use cvm_agent_models::logs::{ContainersLogsRequest, ContainersLogsResponse};
 use uuid::Uuid;
 
 pub(crate) async fn handler(

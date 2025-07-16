@@ -1,40 +1,12 @@
 use anyhow::Context;
 use async_trait::async_trait;
+use cvm_agent_models::{
+    container::Container,
+    logs::{ContainersLogsRequest, ContainersLogsResponse},
+};
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use tracing::info;
-use validator::Validate;
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Container {
-    names: Vec<String>,
-    image: String,
-    image_id: String,
-    state: String,
-}
-
-#[derive(Serialize, Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct ContainersLogsRequest {
-    container: String,
-    tail: bool,
-    stream: OutputStream,
-    #[validate(range(max = 1000))]
-    max_lines: usize,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum OutputStream {
-    Stdout,
-    Stderr,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ContainersLogsResponse {
-    lines: Vec<String>,
-}
 
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
