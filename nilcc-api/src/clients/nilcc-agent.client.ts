@@ -1,3 +1,4 @@
+import z from "zod";
 import { AgentRequestError } from "#/common/errors";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import type { WorkloadEntity } from "#/workload/workload.entity";
@@ -8,10 +9,22 @@ export interface NilccAgentClient {
     workload: WorkloadEntity,
     domain: string,
   ): Promise<void>;
+
   deleteWorkload(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
   ): Promise<void>;
+
+  containers(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<Array<Container>>;
+
+  containerLogs(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+    request: ContainerLogsRequest,
+  ): Promise<Array<string>>;
 }
 
 export class DefaultNilccAgentClient implements NilccAgentClient {
@@ -62,6 +75,33 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     await this.post(url, request, metalInstance);
   }
 
+  async containers(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<Array<Container>> {
+    const url = this.makeUrl(
+      metalInstance,
+      `/api/v1/workloads/${workloadId}/containers/list`,
+    );
+    return await this.get(url, metalInstance, Container.array());
+  }
+
+  async containerLogs(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+    request: ContainerLogsRequest,
+  ): Promise<Array<string>> {
+    const params: [string, string][] = Object.entries(request).map(
+      (key, value) => [String(key), String(value)],
+    );
+    const queryParams = new URLSearchParams(params).toString();
+    const url = this.makeUrl(
+      metalInstance,
+      `/api/v1/workloads/${workloadId}/containers/logs?${queryParams}`,
+    );
+    return await this.get(url, metalInstance, z.string().array());
+  }
+
   async post(
     url: string,
     request: unknown,
@@ -78,6 +118,24 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       const body = await response.json();
       throw new AgentRequestError(body);
     }
+  }
+
+  async get<T extends z.ZodTypeAny>(
+    url: string,
+    metalInstance: MetalInstanceEntity,
+    schema: T,
+  ): Promise<z.infer<T>> {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${metalInstance.token}`,
+      },
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      throw new AgentRequestError(body);
+    }
+    return schema.parse(body) as z.infer<T>;
   }
 }
 
@@ -98,3 +156,20 @@ type CreateWorkloadRequest = {
 type DeleteWorkloadRequest = {
   id: string;
 };
+
+export const Container = z.object({
+  names: z.array(z.string()),
+  image: z.string(),
+  image_id: z.string(),
+  state: z.string(),
+});
+
+export type Container = z.infer<typeof Container>;
+
+export const ContainerLogsRequest = z.object({
+  container: z.string(),
+  tail: z.boolean(),
+  stream: z.enum(["stdout", "stderr"]),
+  max_lines: z.number().int().max(1000),
+});
+export type ContainerLogsRequest = z.infer<typeof ContainerLogsRequest>;

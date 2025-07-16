@@ -3,14 +3,14 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use cvm_agent_models::logs::{ContainersLogsRequest, ContainersLogsResponse};
+use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse};
 use uuid::Uuid;
 
 pub(crate) async fn handler(
     state: State<AppState>,
     path: Path<Uuid>,
-    request: Query<ContainersLogsRequest>,
-) -> Result<Json<ContainersLogsResponse>, CvmAgentHandlerError> {
+    request: Query<ContainerLogsRequest>,
+) -> Result<Json<ContainerLogsResponse>, CvmAgentHandlerError> {
     let port = state.services.workload.cvm_agent_port(path.0).await?;
     state
         .clients
