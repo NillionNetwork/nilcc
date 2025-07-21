@@ -1,4 +1,5 @@
 use crate::clients::{
+    cvm_agent::CvmAgentClient,
     nilcc_api::{NilccApiClient, VmEvent},
     qemu::{QemuClientError, VmClient, VmSpec},
 };
@@ -16,26 +17,52 @@ use uuid::Uuid;
 
 const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 
+pub(crate) struct VmWorkerArgs {
+    pub(crate) workload_id: Uuid,
+    pub(crate) vm_client: Arc<dyn VmClient>,
+    pub(crate) nilcc_api_client: Arc<dyn NilccApiClient>,
+    pub(crate) cvm_agent_client: Arc<dyn CvmAgentClient>,
+    pub(crate) cvm_agent_port: u16,
+    pub(crate) spec: VmSpec,
+    pub(crate) socket_path: PathBuf,
+}
+
 pub(crate) struct VmWorker {
     workload_id: Uuid,
     vm_client: Arc<dyn VmClient>,
     nilcc_api_client: Arc<dyn NilccApiClient>,
+    cvm_agent_client: Arc<dyn CvmAgentClient>,
+    cvm_agent_port: u16,
     spec: VmSpec,
     socket_path: PathBuf,
     receiver: Receiver<WorkerCommand>,
+    vm_state: VmState,
 }
 
 impl VmWorker {
-    pub(crate) fn spawn(
-        workload_id: Uuid,
-        vm_client: Arc<dyn VmClient>,
-        nilcc_api_client: Arc<dyn NilccApiClient>,
-        spec: VmSpec,
-        socket_path: PathBuf,
-    ) -> VmWorkerHandle {
+    pub(crate) fn spawn(args: VmWorkerArgs) -> VmWorkerHandle {
+        let VmWorkerArgs {
+            workload_id,
+            vm_client,
+            nilcc_api_client,
+            spec,
+            socket_path,
+            cvm_agent_client,
+            cvm_agent_port,
+        } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
-            let worker = VmWorker { workload_id, vm_client, nilcc_api_client, spec, socket_path, receiver };
+            let worker = VmWorker {
+                workload_id,
+                vm_client,
+                nilcc_api_client,
+                cvm_agent_client,
+                cvm_agent_port,
+                spec,
+                socket_path,
+                receiver,
+                vm_state: VmState::Starting,
+            };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
         VmWorkerHandle { sender, join_handle }
@@ -65,16 +92,18 @@ impl VmWorker {
         info!("Exiting run loop");
     }
 
-    async fn start_vm(&self) {
+    async fn start_vm(&mut self) {
         info!("Attempting to start VM");
         match self.vm_client.start_vm(self.spec.clone(), &self.socket_path).await {
             Ok(()) => {
                 info!("VM started successfully");
                 gauge!("vms_running_total").increment(1);
-                self.submit_event(VmEvent::Started).await;
+                self.submit_event(VmEvent::Starting).await;
+                self.vm_state = VmState::Starting;
             }
             Err(QemuClientError::VmAlreadyRunning) => {
                 info!("VM was already running, ignoring");
+                self.vm_state = VmState::Starting;
             }
             Err(e) => {
                 error!("Failed to start VM: {e}");
@@ -84,7 +113,7 @@ impl VmWorker {
         }
     }
 
-    async fn delete_vm(&self) {
+    async fn delete_vm(&mut self) {
         info!("Shutting down VM");
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
@@ -98,6 +127,7 @@ impl VmWorker {
                     }
                 }
                 self.submit_event(VmEvent::Stopped).await;
+                self.vm_state = VmState::Stopped;
                 info!("VM stopped")
             }
             Err(QemuClientError::VmNotRunning) => warn!("VM was not running"),
@@ -109,16 +139,30 @@ impl VmWorker {
         gauge!("vms_running_total").decrement(1);
     }
 
-    async fn handle_tick(&self) {
-        if self.vm_client.is_vm_running(&self.socket_path).await {
+    async fn handle_tick(&mut self) {
+        if !self.vm_client.is_vm_running(&self.socket_path).await {
+            warn!("VM is no longer running, starting it again");
+            self.submit_event(VmEvent::Stopped).await;
+            self.start_vm().await;
             return;
         }
-        warn!("VM is no longer running, starting it again");
-        self.submit_event(VmEvent::Stopped).await;
-        self.start_vm().await;
+
+        if !matches!(self.vm_state, VmState::Running) {
+            info!("Checking health of CVM agent");
+            match self.cvm_agent_client.check_health(self.cvm_agent_port).await {
+                Ok(()) => {
+                    info!("CVM agent is running");
+                    self.vm_state = VmState::Running;
+                    self.submit_event(VmEvent::Running).await;
+                }
+                Err(e) => {
+                    warn!("Failed to check CVM agent health: {e:#}");
+                }
+            }
+        }
     }
 
-    async fn handle_command(&self, command: WorkerCommand) {
+    async fn handle_command(&mut self, command: WorkerCommand) {
         let discriminant = WorkerCommandDiscriminants::from(&command);
         info!("Received {discriminant:?} command");
         match command {
@@ -132,6 +176,12 @@ impl VmWorker {
             error!("Failed to submit event to API: {e}");
         }
     }
+}
+
+enum VmState {
+    Starting,
+    Running,
+    Stopped,
 }
 
 pub(crate) struct VmWorkerHandle {
@@ -160,7 +210,7 @@ enum WorkerCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clients::{nilcc_api::MockNilccApiClient, qemu::MockVmClient};
+    use crate::clients::{cvm_agent::MockCvmAgentClient, nilcc_api::MockNilccApiClient, qemu::MockVmClient};
     use mockall::predicate::eq;
 
     fn make_spec() -> VmSpec {
@@ -192,7 +242,7 @@ mod tests {
 
         nilcc_api_client
             .expect_report_vm_event()
-            .with(eq(id), eq(VmEvent::Started))
+            .with(eq(id), eq(VmEvent::Starting))
             .once()
             .return_once(move |_, _| Ok(()));
         nilcc_api_client
@@ -201,8 +251,17 @@ mod tests {
             .once()
             .return_once(move |_, _| Ok(()));
 
+        let args = VmWorkerArgs {
+            workload_id: id,
+            vm_client: Arc::new(vm_client),
+            nilcc_api_client: Arc::new(nilcc_api_client),
+            cvm_agent_client: Arc::new(MockCvmAgentClient::default()),
+            cvm_agent_port: 5555,
+            spec,
+            socket_path: socket,
+        };
         let join_handle = {
-            let handle = VmWorker::spawn(id, Arc::new(vm_client), Arc::new(nilcc_api_client), spec, socket);
+            let handle = VmWorker::spawn(args);
             handle.delete_vm().await;
             handle.join_handle
         };

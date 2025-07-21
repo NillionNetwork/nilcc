@@ -1,12 +1,13 @@
 use crate::{
     clients::{
+        cvm_agent::CvmAgentClient,
         nilcc_api::NilccApiClient,
         qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
     },
     config::{CvmConfig, CvmFiles},
     repositories::workload::Workload,
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
-    workers::vm::{VmWorker, VmWorkerHandle},
+    workers::vm::{VmWorker, VmWorkerArgs, VmWorkerHandle},
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -34,6 +35,7 @@ pub struct VmServiceArgs {
     pub state_path: PathBuf,
     pub vm_client: Arc<dyn VmClient>,
     pub nilcc_api_client: Arc<dyn NilccApiClient>,
+    pub cvm_agent_client: Arc<dyn CvmAgentClient>,
     pub disk_service: Box<dyn DiskService>,
     pub cvm_config: CvmConfig,
 }
@@ -41,6 +43,7 @@ pub struct VmServiceArgs {
 pub struct DefaultVmService {
     vm_client: Arc<dyn VmClient>,
     nilcc_api_client: Arc<dyn NilccApiClient>,
+    cvm_agent_client: Arc<dyn CvmAgentClient>,
     disk_service: Box<dyn DiskService>,
     workers: Mutex<HashMap<Uuid, VmWorkerHandle>>,
     state_path: PathBuf,
@@ -49,9 +52,18 @@ pub struct DefaultVmService {
 
 impl DefaultVmService {
     pub async fn new(args: VmServiceArgs) -> anyhow::Result<Self> {
-        let VmServiceArgs { state_path, vm_client, nilcc_api_client, disk_service, cvm_config } = args;
+        let VmServiceArgs { state_path, vm_client, nilcc_api_client, cvm_agent_client, disk_service, cvm_config } =
+            args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
-        Ok(Self { vm_client, nilcc_api_client, disk_service, workers: Default::default(), state_path, cvm_config })
+        Ok(Self {
+            vm_client,
+            nilcc_api_client,
+            cvm_agent_client,
+            disk_service,
+            workers: Default::default(),
+            state_path,
+            cvm_config,
+        })
     }
 
     fn create_vm_spec(
@@ -178,8 +190,16 @@ impl VmService for DefaultVmService {
                 };
 
                 let spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash, cvm_files);
-                let worker =
-                    VmWorker::spawn(id, self.vm_client.clone(), self.nilcc_api_client.clone(), spec, socket_path);
+                let args = VmWorkerArgs {
+                    workload_id: id,
+                    vm_client: self.vm_client.clone(),
+                    nilcc_api_client: self.nilcc_api_client.clone(),
+                    cvm_agent_client: self.cvm_agent_client.clone(),
+                    cvm_agent_port: workload.cvm_agent_port(),
+                    spec,
+                    socket_path,
+                };
+                let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
                 Ok(())
             }
@@ -219,7 +239,7 @@ pub struct StartVmError(String);
 mod tests {
     use super::*;
     use crate::{
-        clients::{nilcc_api::MockNilccApiClient, qemu::MockVmClient},
+        clients::{cvm_agent::MockCvmAgentClient, nilcc_api::MockNilccApiClient, qemu::MockVmClient},
         services::disk::MockDiskService,
     };
     use mockall::predicate::eq;
@@ -234,17 +254,20 @@ mod tests {
         state_path: TempDir,
         vm_client: MockVmClient,
         nilcc_api_client: MockNilccApiClient,
+        cvm_agent_client: MockCvmAgentClient,
+
         disk_service: MockDiskService,
         cvm_config: CvmConfig,
     }
 
     impl Builder {
         async fn build(self) -> Context {
-            let Self { state_path, vm_client, nilcc_api_client, disk_service, cvm_config } = self;
+            let Self { state_path, vm_client, nilcc_api_client, cvm_agent_client, disk_service, cvm_config } = self;
             let args = VmServiceArgs {
                 state_path: state_path.path().into(),
                 vm_client: Arc::new(vm_client),
                 nilcc_api_client: Arc::new(nilcc_api_client),
+                cvm_agent_client: Arc::new(cvm_agent_client),
                 disk_service: Box::new(disk_service),
                 cvm_config,
             };
@@ -261,6 +284,7 @@ mod tests {
                 state_path,
                 vm_client: Default::default(),
                 nilcc_api_client: Default::default(),
+                cvm_agent_client: Default::default(),
                 disk_service: Default::default(),
                 cvm_config: CvmConfig {
                     initrd: base_path.join("initrd"),

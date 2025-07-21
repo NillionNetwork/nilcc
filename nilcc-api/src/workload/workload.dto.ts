@@ -34,7 +34,7 @@ export type CreateWorkloadRequest = z.infer<typeof CreateWorkloadRequest>;
 
 export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   id: Uuid,
-  status: z.enum(["scheduled", "running", "stopped", "error"]),
+  status: z.enum(["scheduled", "starting", "running", "stopped", "error"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 }).openapi({ ref: "CreateWorkloadResponse" });

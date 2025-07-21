@@ -60,8 +60,9 @@ export type ListMetalInstancesResponse = z.infer<
 >;
 
 export const WorkloadEvent = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("started") }),
+  z.object({ kind: z.literal("starting") }),
   z.object({ kind: z.literal("stopped") }),
+  z.object({ kind: z.literal("running") }),
   z.object({ kind: z.literal("failedToStart"), error: z.string() }),
 ]);
 export type WorkloadEvent = z.infer<typeof WorkloadEvent>;

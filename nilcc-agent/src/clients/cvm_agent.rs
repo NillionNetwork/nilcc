@@ -14,6 +14,8 @@ pub trait CvmAgentClient: Send + Sync {
     async fn list_containers(&self, cvm_agent_port: u16) -> anyhow::Result<Vec<Container>>;
 
     async fn logs(&self, cvm_agent_port: u16, request: &ContainerLogsRequest) -> anyhow::Result<ContainerLogsResponse>;
+
+    async fn check_health(&self, cvm_agent_port: u16) -> anyhow::Result<()>;
 }
 
 pub struct DefaultCvmAgentClient {
@@ -54,5 +56,9 @@ impl CvmAgentClient for DefaultCvmAgentClient {
 
     async fn logs(&self, cvm_agent_port: u16, request: &ContainerLogsRequest) -> anyhow::Result<ContainerLogsResponse> {
         self.get(cvm_agent_port, "/api/v1/containers/logs", &request).await
+    }
+
+    async fn check_health(&self, cvm_agent_port: u16) -> anyhow::Result<()> {
+        self.get(cvm_agent_port, "/api/v1/health", &()).await
     }
 }

@@ -131,7 +131,10 @@ export class WorkloadService {
       throw new Error("workload not found");
     }
     switch (request.event.kind) {
-      case "started":
+      case "starting":
+        workload.status = "starting";
+        break;
+      case "running":
         workload.status = "running";
         break;
       case "stopped":
