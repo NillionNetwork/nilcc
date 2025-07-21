@@ -7,6 +7,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use axum_valid::Valid;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
@@ -68,7 +69,7 @@ pub(crate) struct CreateWorkloadResponse {
 
 pub(crate) async fn handler(
     state: State<AppState>,
-    request: Json<CreateWorkloadRequest>,
+    request: Valid<Json<CreateWorkloadRequest>>,
 ) -> Result<Json<CreateWorkloadResponse>, HandlerError> {
     let limits = &state.resource_limits;
     let checks = [
@@ -83,7 +84,7 @@ pub(crate) async fn handler(
     }
 
     let id = request.id;
-    state.services.workload.create_workload(request.0).await?;
+    state.services.workload.create_workload(request.0 .0).await?;
     Ok(Json(CreateWorkloadResponse { id }))
 }
 

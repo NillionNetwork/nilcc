@@ -416,6 +416,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-valid"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3881b4b05ede123ff3c82f41c63e47425443556365b47b2ba4d05098a5bd2645"
+dependencies = [
+ "axum",
+ "validator",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -852,6 +862,7 @@ name = "cvm-agent"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "axum-valid",
  "bollard",
  "clap",
  "cvm-agent-models",
@@ -2141,6 +2152,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-server",
+ "axum-valid",
  "chrono",
  "clap",
  "convert_case",

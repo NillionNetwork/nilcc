@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use axum_valid::Valid;
 use bollard::{query_parameters::LogsOptionsBuilder, Docker};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream};
 use futures::StreamExt;
@@ -10,9 +11,9 @@ use std::sync::Arc;
 
 pub(crate) async fn handler(
     docker: State<Arc<Docker>>,
-    request: Query<ContainerLogsRequest>,
+    request: Valid<Query<ContainerLogsRequest>>,
 ) -> Result<Json<ContainerLogsResponse>, StatusCode> {
-    let ContainerLogsRequest { container, tail, stream, max_lines } = request.0;
+    let ContainerLogsRequest { container, tail, stream, max_lines } = request.0 .0;
     let mut builder = LogsOptionsBuilder::new();
     if tail {
         builder = builder.tail(&max_lines.to_string());

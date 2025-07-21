@@ -8,11 +8,13 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
+use axum_valid::{HasValidate, HasValidateArgs};
 use convert_case::{Case, Casing};
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
 use tower::ServiceBuilder;
+use validator::ValidateArgs;
 
 pub(crate) mod workloads;
 
@@ -102,5 +104,21 @@ where
 {
     fn into_response(self) -> axum::response::Response {
         axum::Json(self.0).into_response()
+    }
+}
+
+// `axum_valid` support for `Json`/`validator`
+
+impl<T> HasValidate for Json<T> {
+    type Validate = T;
+    fn get_validate(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<'v, T: ValidateArgs<'v>> HasValidateArgs<'v> for Json<T> {
+    type ValidateArgs = T;
+    fn get_validate_args(&self) -> &Self::ValidateArgs {
+        &self.0
     }
 }
