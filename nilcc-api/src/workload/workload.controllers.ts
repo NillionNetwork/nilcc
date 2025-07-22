@@ -24,6 +24,8 @@ import {
   GetWorkloadResponse,
   ListContainersRequest,
   ListContainersResponse,
+  ListWorkloadEventsRequest,
+  ListWorkloadEventsResponse,
   ListWorkloadsResponse,
   WorkloadContainerLogsRequest,
   WorkloadContainerLogsResponse,
@@ -197,10 +199,48 @@ export function submitEvent(options: ControllerOptions) {
     }),
     apiKey(bindings.config.metalInstanceApiKey),
     zValidator("json", SubmitEventRequest),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      await bindings.services.workload.submitEvent(bindings, payload);
+      await bindings.services.workload.submitEvent(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
       return c.body(null);
+    },
+  );
+}
+
+export function listEvents(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.events.list,
+    describeRoute({
+      tags: ["Metal-Instance", "Workload"],
+      summary: "List the events for a workload",
+      responses: {
+        200: {
+          description: "Event list returned successfully",
+          content: {
+            "application/json": {
+              schema: resolver(ListWorkloadEventsResponse),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.userApiKey),
+    zValidator("json", ListWorkloadEventsRequest),
+    responseValidator(bindings, ListWorkloadEventsResponse),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const events = await bindings.services.workload.listEvents(
+        bindings,
+        payload,
+      );
+      return c.json({ events });
     },
   );
 }

@@ -148,5 +148,15 @@ services:
     });
     const updatedWorkload = await updatedWorkloadResponse.parse_body();
     expect(updatedWorkload.status).toBe("starting");
+
+    const eventsResponse = await userClient.getWorkloadEvents({
+      workloadId: myWorkload.id,
+    });
+    expect(eventsResponse.response.status).toBe(200);
+
+    const eventsBody = await eventsResponse.parse_body();
+    expect(eventsBody.events).toHaveLength(2);
+    const eventKinds = eventsBody.events.map((e) => e.details.kind);
+    expect(eventKinds).toEqual(["created", "starting"]);
   });
 });

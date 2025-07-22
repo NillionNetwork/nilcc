@@ -1,23 +1,32 @@
 import type { QueryRunner, Repository } from "typeorm";
+import { v4 as uuidv4 } from "uuid";
 import type { Container } from "#/clients/nilcc-agent.client";
 import {
+  ContainerLogsError,
   CreateEntityError,
   FindEntityError,
   GetRepositoryError,
   InstancesNotAvailable,
+  ListContainersError,
+  ListWorkloadEventsError,
   mapError,
   RemoveEntityError,
   SubmitEventError,
 } from "#/common/errors";
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
-import type { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
+import type {
+  SubmitEventRequest,
+  WorkloadEventKind,
+} from "#/metal-instance/metal-instance.dto";
 import type {
   CreateWorkloadRequest,
   ListContainersRequest,
+  ListWorkloadEventsRequest,
   WorkloadContainerLogsRequest,
+  WorkloadEvent,
 } from "./workload.dto";
-import { WorkloadEntity } from "./workload.entity";
+import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
 
 export class WorkloadService {
   @mapError((e) => new GetRepositoryError(e))
@@ -61,6 +70,7 @@ export class WorkloadService {
 
     // Assign the first available metal instance to the workload
     const repository = this.getRepository(bindings, tx);
+    const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
     const now = new Date();
     const entity = repository.create({
       ...workload,
@@ -69,6 +79,15 @@ export class WorkloadService {
       updatedAt: now,
     });
     const createdWorkload = await repository.save(entity);
+
+    const event: WorkloadEventEntity = {
+      id: uuidv4(),
+      workload: entity,
+      event: "created",
+      timestamp: new Date(),
+    };
+    await eventRepository.save(event);
+
     const domain = await this.createCnameForWorkload(
       bindings,
       createdWorkload.id,
@@ -121,9 +140,10 @@ export class WorkloadService {
   async submitEvent(
     bindings: AppBindings,
     request: SubmitEventRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ): Promise<void> {
     const workloadRepository = this.getRepository(bindings, tx);
+    const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
     const workload = await workloadRepository.findOneBy({
       id: request.workloadId,
     });
@@ -144,10 +164,62 @@ export class WorkloadService {
         workload.status = "error";
         break;
     }
+    let details: string | undefined;
+    if (request.event.kind === "failedToStart") {
+      details = request.event.error;
+    }
+    const event: WorkloadEventEntity = {
+      id: uuidv4(),
+      workload,
+      event: request.event.kind,
+      details,
+      timestamp: new Date(),
+    };
     await workloadRepository.save(workload);
+    await eventRepository.save(event);
   }
 
-  @mapError((e) => new SubmitEventError(e))
+  @mapError((e) => new ListWorkloadEventsError(e))
+  async listEvents(
+    bindings: AppBindings,
+    request: ListWorkloadEventsRequest,
+  ): Promise<Array<WorkloadEvent>> {
+    const repository = this.getRepository(bindings);
+    const workloads = await repository.find({
+      where: { id: request.workloadId },
+      relations: ["events"],
+    });
+    if (workloads.length === 0) {
+      throw new Error("workload not found");
+    }
+    return workloads[0].events.map((event) => {
+      let details: WorkloadEventKind;
+      switch (event.event) {
+        case "created":
+          details = { kind: "created" };
+          break;
+        case "starting":
+          details = { kind: "starting" };
+          break;
+        case "running":
+          details = { kind: "running" };
+          break;
+        case "stopped":
+          details = { kind: "stopped" };
+          break;
+        case "failedToStart":
+          details = { kind: "failedToStart", error: event.details || "" };
+          break;
+      }
+      return {
+        id: event.id,
+        details,
+        timestamp: event.timestamp.toISOString(),
+      };
+    });
+  }
+
+  @mapError((e) => new ListContainersError(e))
   async listContainers(
     bindings: AppBindings,
     request: ListContainersRequest,
@@ -168,7 +240,7 @@ export class WorkloadService {
     );
   }
 
-  @mapError((e) => new SubmitEventError(e))
+  @mapError((e) => new ContainerLogsError(e))
   async containerLogs(
     bindings: AppBindings,
     request: WorkloadContainerLogsRequest,

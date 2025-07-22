@@ -7,4 +7,5 @@ export function buildWorkloadRouter(options: ControllerOptions): void {
   WorkloadController.read(options);
   WorkloadController.remove(options);
   WorkloadController.submitEvent(options);
+  WorkloadController.listEvents(options);
 }

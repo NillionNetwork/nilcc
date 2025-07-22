@@ -150,6 +150,18 @@ export class SubmitEventError extends AppError {
   tag = "SubmitEventError";
 }
 
+export class ListWorkloadEventsError extends AppError {
+  tag = "ListWorkloadEventsError";
+}
+
+export class ListContainersError extends AppError {
+  tag = "ListContainersError";
+}
+
+export class ContainerLogsError extends AppError {
+  tag = "ContainerLogsError";
+}
+
 export class HttpError extends AppError {
   tag = "HttpError";
   statusCode: ContentfulStatusCode;

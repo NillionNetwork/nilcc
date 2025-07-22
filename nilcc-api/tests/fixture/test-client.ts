@@ -12,6 +12,8 @@ import {
   type CreateWorkloadRequest,
   CreateWorkloadResponse,
   GetWorkloadResponse,
+  type ListWorkloadEventsRequest,
+  ListWorkloadEventsResponse,
   ListWorkloadsResponse,
 } from "#/workload/workload.dto";
 
@@ -112,20 +114,14 @@ export class UserClient extends TestClient {
         method: "GET",
       },
     );
-    return new ParseableResponse<GetWorkloadResponse>(
-      response,
-      GetWorkloadResponse,
-    );
+    return new ParseableResponse(response, GetWorkloadResponse);
   }
 
   async listWorkloads(): Promise<ParseableResponse<ListWorkloadsResponse>> {
     const response = await this.request(PathsV1.workload.list, {
       method: "GET",
     });
-    return new ParseableResponse<ListWorkloadsResponse>(
-      response,
-      ListWorkloadsResponse,
-    );
+    return new ParseableResponse(response, ListWorkloadsResponse);
   }
 
   async deleteWorkload(params: { id: string }): Promise<Response> {
@@ -142,10 +138,7 @@ export class UserClient extends TestClient {
         method: "GET",
       },
     );
-    return new ParseableResponse<GetMetalInstanceResponse>(
-      response,
-      GetMetalInstanceResponse,
-    );
+    return new ParseableResponse(response, GetMetalInstanceResponse);
   }
 
   async submitEvent(request: SubmitEventRequest) {
@@ -156,6 +149,16 @@ export class UserClient extends TestClient {
         "x-api-key": this.bindings.config.metalInstanceApiKey,
       },
     });
+  }
+
+  async getWorkloadEvents(
+    request: ListWorkloadEventsRequest,
+  ): Promise<ParseableResponse<ListWorkloadEventsResponse>> {
+    const response = await this.request(PathsV1.workload.events.list, {
+      method: "POST",
+      body: request,
+    });
+    return new ParseableResponse(response, ListWorkloadEventsResponse);
   }
 }
 

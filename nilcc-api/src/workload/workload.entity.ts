@@ -1,4 +1,10 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import {
+  Column,
+  Entity,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from "typeorm";
 import { z } from "zod";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
@@ -65,11 +71,7 @@ export class WorkloadEntity {
   @Column({ type: "int" })
   disk: number;
 
-  @Column({
-    type: "enum",
-    enum: ["scheduled", "starting", "running", "stopped", "error"],
-    default: "scheduled",
-  })
+  @Column({ type: "varchar", default: "scheduled" })
   status: "scheduled" | "starting" | "running" | "stopped" | "error";
 
   @ManyToOne(
@@ -78,9 +80,37 @@ export class WorkloadEntity {
   )
   metalInstance: MetalInstanceEntity;
 
+  @OneToMany(
+    () => WorkloadEventEntity,
+    (events) => events.workload,
+  )
+  events: WorkloadEventEntity[];
+
   @Column({ type: "timestamp" })
   createdAt: Date;
 
   @Column({ type: "timestamp" })
   updatedAt: Date;
+}
+
+@Entity()
+export class WorkloadEventEntity {
+  @PrimaryGeneratedColumn("uuid")
+  id: string;
+
+  @ManyToOne(
+    () => WorkloadEntity,
+    (workload) => workload.events,
+    { onDelete: "CASCADE" },
+  )
+  workload: WorkloadEntity;
+
+  @Column({ type: "varchar" })
+  event: "created" | "starting" | "running" | "stopped" | "failedToStart";
+
+  @Column({ type: "varchar", nullable: true })
+  details?: string;
+
+  @Column({ type: "timestamp" })
+  timestamp: Date;
 }
