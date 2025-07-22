@@ -135,11 +135,13 @@ async function buildServices(
       config.workloadsDnsZone,
       config.workloadsDnsDomain,
       config,
+      log,
     ),
     metalInstances: await createDnsService(
       config.metalInstancesDnsZone,
       config.metalInstancesDnsDomain,
       config,
+      log,
     ),
   };
   log.debug("Using DNS service: %s", dns.workloads.constructor.name);
@@ -192,6 +194,7 @@ async function createDnsService(
   zone: string,
   subdomain: string,
   config: EnvVars,
+  log: Logger,
 ): Promise<DnsService> {
   const localstackEnabled = hasFeatureFlag(
     config.enabledFeatures,
@@ -199,5 +202,5 @@ async function createDnsService(
   );
   return localstackEnabled
     ? await LocalStackDnsService.create(zone, subdomain)
-    : await Route53DnsService.create(zone, subdomain);
+    : await Route53DnsService.create(zone, subdomain, log);
 }

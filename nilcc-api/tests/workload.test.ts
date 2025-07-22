@@ -9,8 +9,8 @@ import { createTestFixtureExtension } from "./fixture/it";
 describe("workload CRUD", () => {
   const { it, beforeAll, afterAll } = createTestFixtureExtension();
 
-  beforeAll(async (_ctx) => { });
-  afterAll(async (_ctx) => { });
+  beforeAll(async (_ctx) => {});
+  afterAll(async (_ctx) => {});
   let myWorkload: null | CreateWorkloadResponse = null;
 
   const createWorkloadRequest: CreateWorkloadRequest = {
