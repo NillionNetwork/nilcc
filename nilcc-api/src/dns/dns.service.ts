@@ -6,6 +6,7 @@ import {
   Route53Client,
   type RRType,
 } from "@aws-sdk/client-route-53";
+import type { Logger } from "pino";
 import { mapError } from "#/common/errors";
 import { CreateRecordError, DeleteRecordError } from "#/dns/dns.errors";
 
@@ -35,23 +36,14 @@ export class Route53DnsService implements DnsService {
   static async create(
     zone: string,
     subdomain: string,
-    options?: {
-      endpoint?: string;
-      region?: string;
-      credentials?: { accessKeyId: string; secretAccessKey: string };
-    },
+    log: Logger,
   ): Promise<Route53DnsService> {
-    let route53: Route53Client;
-    if (options) {
-      route53 = new Route53Client(options);
-    } else {
-      route53 = new Route53Client();
-    }
+    const route53 = new Route53Client();
     if (!subdomain.endsWith(zone)) {
       throw new Error(`${subdomain} isn't a subdomain of ${zone}`);
     }
 
-    const zoneId = await Route53DnsService.findHostedZone(route53, zone);
+    const zoneId = await Route53DnsService.findHostedZone(route53, zone, log);
     return new Route53DnsService(zone, subdomain, zoneId, route53);
   }
 
@@ -109,21 +101,32 @@ export class Route53DnsService implements DnsService {
   private static async findHostedZone(
     route53: Route53Client,
     subdomain: string,
+    log: Logger,
   ): Promise<string> {
-    const command = new ListHostedZonesCommand({});
-    const response = await route53.send(command);
-    if (!response.HostedZones) {
-      throw Error(`Hosted zone not found: ${subdomain}`);
-    }
+    let marker: string | undefined;
+    while (true) {
+      log.info(
+        `Trying to find hosted zone for domain ${subdomain} using marker ${marker}`,
+      );
+      const command: ListHostedZonesCommand = new ListHostedZonesCommand({
+        Marker: marker,
+      });
+      const response = await route53.send(command);
+      if (!response.HostedZones) {
+        throw Error(`Hosted zone not found: ${subdomain}`);
+      }
 
-    const hostedZone = response.HostedZones.find(
-      (z) => z.Name === `${subdomain}.`,
-    );
-    if (!hostedZone || !hostedZone.Id) {
-      throw Error(`Hosted zone not found: ${subdomain}`);
+      const hostedZone = response.HostedZones.find(
+        (z) => z.Name === `${subdomain}.`,
+      );
+      if (hostedZone?.Id) {
+        return hostedZone.Id;
+      }
+      if (response.NextMarker === undefined) {
+        throw Error(`Hosted zone not found: ${subdomain}`);
+      }
+      marker = response.NextMarker;
     }
-
-    return hostedZone.Id;
   }
 
   private async findDomain(zoneId: string, domain: string, recordType: RRType) {
