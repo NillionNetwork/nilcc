@@ -20,6 +20,7 @@ export const PathsV1 = {
     remove: PathSchema.parse("/api/v1/workloads/:id"),
     events: {
       submit: PathSchema.parse("/api/v1/workloads/~/events/submit"),
+      list: PathSchema.parse("/api/v1/workloads/~/events/list"),
     },
     containers: {
       list: PathSchema.parse("/api/v1/workloads/~/containers/list"),
