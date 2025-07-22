@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: "arn:aws:iam::592920173613:role/github-runners-productionnilcc-ci-nilcc-ecr"
+          role-to-assume: "arn:aws:iam::054037142884:role/nilcc-github"
           aws-region: "us-east-1"
 
       - uses: aws-actions/amazon-ecr-login@v2
