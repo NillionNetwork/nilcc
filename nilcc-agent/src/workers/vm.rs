@@ -132,11 +132,27 @@ impl VmWorker {
             }
             Err(QemuClientError::VmNotRunning) => warn!("VM was not running"),
             Err(e) => {
-                counter!("vm_stop_errors_total").increment(1);
+                counter!("vm_action_errors_total", "action" => "stop").increment(1);
                 error!("Failed to stop VM: {e}");
             }
         };
         gauge!("vms_running_total").decrement(1);
+    }
+
+    async fn restart_vm(&mut self) {
+        info!("Shutting down VM");
+        match self.vm_client.stop_vm(&self.socket_path, true).await {
+            Ok(_) => {
+                info!("VM is stopped and will be brought up on next tick");
+            }
+            Err(QemuClientError::VmNotRunning) => {
+                warn!("VM was not running and will be started on next tick");
+            }
+            Err(e) => {
+                counter!("vm_action_errors_total", "action" => "restart").increment(1);
+                error!("Failed to stop VM: {e}");
+            }
+        }
     }
 
     async fn handle_tick(&mut self) {
@@ -167,6 +183,7 @@ impl VmWorker {
         info!("Received {discriminant:?} command");
         match command {
             WorkerCommand::DeleteVm => self.delete_vm().await,
+            WorkerCommand::RestartVm => self.restart_vm().await,
         }
     }
 
@@ -195,6 +212,10 @@ impl VmWorkerHandle {
         self.send_command(WorkerCommand::DeleteVm).await;
     }
 
+    pub(crate) async fn restart_vm(&self) {
+        self.send_command(WorkerCommand::RestartVm).await;
+    }
+
     async fn send_command(&self, command: WorkerCommand) {
         if self.sender.send(command).await.is_err() {
             error!("Worker receiver dropped");
@@ -205,6 +226,7 @@ impl VmWorkerHandle {
 #[derive(Debug, EnumDiscriminants)]
 enum WorkerCommand {
     DeleteVm,
+    RestartVm,
 }
 
 #[cfg(test)]

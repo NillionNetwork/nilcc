@@ -41,6 +41,7 @@ pub fn build_router(state: AppState, token: String) -> Router {
         Router::new()
             .route("/workloads/create", post(workloads::create::handler))
             .route("/workloads/delete", post(workloads::delete::handler))
+            .route("/workloads/restart", post(workloads::restart::handler))
             .route("/workloads/{workload_id}/containers/list", get(workloads::containers::list::handler))
             .route("/workloads/{workload_id}/containers/logs", get(workloads::containers::logs::handler))
             .with_state(state)

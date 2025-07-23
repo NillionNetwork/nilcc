@@ -7,14 +7,14 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct DeleteWorkloadRequest {
+pub(crate) struct RestartWorkloadRequest {
     pub(crate) id: Uuid,
 }
 
 pub(crate) async fn handler(
     state: State<AppState>,
-    request: Json<DeleteWorkloadRequest>,
+    request: Json<RestartWorkloadRequest>,
 ) -> Result<Json<()>, WorkloadLookupError> {
-    state.services.workload.delete_workload(request.id).await?;
+    state.services.workload.restart_workload(request.id).await?;
     Ok(Json(()))
 }

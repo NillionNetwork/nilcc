@@ -1,10 +1,9 @@
+use crate::routes::{Json, RequestHandlerError};
+use crate::services::workload::WorkloadLookupError;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use strum::EnumDiscriminants;
 use tracing::error;
-
-use crate::routes::{Json, RequestHandlerError};
-use crate::services::workload::WorkloadLookupError;
 
 pub(crate) mod list;
 pub(crate) mod logs;
@@ -20,6 +19,7 @@ impl From<WorkloadLookupError> for CvmAgentHandlerError {
         match e {
             WorkloadLookupError::WorkloadNotFound => Self::WorkloadNotFound,
             WorkloadLookupError::Database(e) => Self::Internal(e.to_string()),
+            WorkloadLookupError::Internal(e) => Self::Internal(e.to_string()),
         }
     }
 }

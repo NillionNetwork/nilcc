@@ -19,6 +19,7 @@ use uuid::Uuid;
 pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
+    async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError>;
 }
 
@@ -58,6 +59,9 @@ pub enum WorkloadLookupError {
 
     #[error("database: {0}")]
     Database(WorkloadRepositoryError),
+
+    #[error("internal: {0}")]
+    Internal(String),
 }
 
 impl From<WorkloadRepositoryError> for WorkloadLookupError {
@@ -238,6 +242,13 @@ impl WorkloadService for DefaultWorkloadService {
         self.repository.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
         self.vm_service.delete_vm(id).await;
+        Ok(())
+    }
+
+    async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
+        // Make sure it exists first
+        self.repository.find(id).await?;
+        self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         Ok(())
     }
 

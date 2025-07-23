@@ -29,7 +29,12 @@ const CVM_AGENT_PORT: u16 = 59666;
 pub trait VmService: Send + Sync {
     async fn start_vm(&self, workload: Workload) -> Result<(), StartVmError>;
     async fn delete_vm(&self, id: Uuid);
+    async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("vm is not managed by any worker")]
+pub struct VmNotManaged;
 
 pub struct VmServiceArgs {
     pub state_path: PathBuf,
@@ -214,6 +219,20 @@ impl VmService for DefaultVmService {
             }
             None => {
                 error!("VM {id} is not being managed by any worker");
+            }
+        }
+    }
+
+    async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged> {
+        let workers = self.workers.lock().await;
+        match workers.get(&id) {
+            Some(worker) => {
+                worker.restart_vm().await;
+                Ok(())
+            }
+            None => {
+                error!("VM {id} is not being managed by any worker");
+                Err(VmNotManaged)
             }
         }
     }
