@@ -1,3 +1,9 @@
+{
+    servers {
+        protocols h1 h2
+    }
+}
+
 (ssl_config) {
     tls {
         protocols tls1.2 tls1.3

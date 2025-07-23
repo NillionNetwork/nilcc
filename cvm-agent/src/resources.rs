@@ -42,7 +42,13 @@ mod tests {
             api: ContainerMetadata { container: "api".into(), port: 1337 },
         };
         let caddyfile = Resources::render(&metadata).caddyfile;
-        let expected = "(ssl_config) {
+        let expected = "{
+    servers {
+        protocols h1 h2
+    }
+}
+
+(ssl_config) {
     tls {
         protocols tls1.2 tls1.3
     }
