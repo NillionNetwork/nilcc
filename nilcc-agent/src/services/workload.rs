@@ -1,7 +1,6 @@
 use crate::{
     repositories::workload::{Workload, WorkloadRepository, WorkloadRepositoryError},
     resources::{GpuAddress, SystemResources},
-    routes::workloads::create::CreateWorkloadRequest,
     services::{
         proxy::{ProxiedVm, ProxyService},
         vm::{StartVmError, VmService},
@@ -9,6 +8,7 @@ use crate::{
     workers::vm::InitialVmState,
 };
 use async_trait::async_trait;
+use nilcc_agent_models::workloads::create::CreateWorkloadRequest;
 use std::{collections::BTreeSet, io, ops::Range};
 use strum::EnumDiscriminants;
 use tokio::sync::Mutex;

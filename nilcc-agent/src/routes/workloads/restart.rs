@@ -3,13 +3,7 @@ use crate::{
     services::workload::WorkloadLookupError,
 };
 use axum::extract::State;
-use serde::Deserialize;
-use uuid::Uuid;
-
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct RestartWorkloadRequest {
-    pub(crate) id: Uuid,
-}
+use nilcc_agent_models::workloads::restart::RestartWorkloadRequest;
 
 pub(crate) async fn handler(
     state: State<AppState>,
