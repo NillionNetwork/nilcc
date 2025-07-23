@@ -17,6 +17,12 @@ use uuid::Uuid;
 
 const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 
+#[derive(Debug, PartialEq)]
+pub enum InitialVmState {
+    Enabled,
+    Disabled,
+}
+
 pub(crate) struct VmWorkerArgs {
     pub(crate) workload_id: Uuid,
     pub(crate) vm_client: Arc<dyn VmClient>,
@@ -25,6 +31,7 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) cvm_agent_port: u16,
     pub(crate) spec: VmSpec,
     pub(crate) socket_path: PathBuf,
+    pub(crate) state: InitialVmState,
 }
 
 pub(crate) struct VmWorker {
@@ -49,9 +56,14 @@ impl VmWorker {
             socket_path,
             cvm_agent_client,
             cvm_agent_port,
+            state,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
+            let vm_state = match state {
+                InitialVmState::Enabled => VmState::Starting,
+                InitialVmState::Disabled => VmState::Disabled,
+            };
             let worker = VmWorker {
                 workload_id,
                 vm_client,
@@ -61,7 +73,7 @@ impl VmWorker {
                 spec,
                 socket_path,
                 receiver,
-                vm_state: VmState::Starting,
+                vm_state,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -69,7 +81,11 @@ impl VmWorker {
     }
 
     async fn run(mut self) {
-        self.start_vm().await;
+        if matches!(self.vm_state, VmState::Disabled) {
+            info!("Not starting VM because it's disabled");
+        } else {
+            self.start_vm().await;
+        }
 
         let mut ticker = interval(WATCH_INTERVAL);
         // If we miss a tick, shift the ticks to be aligned with when we called `Interval::tick`.
@@ -94,7 +110,7 @@ impl VmWorker {
 
     async fn start_vm(&mut self) {
         info!("Attempting to start VM");
-        match self.vm_client.start_vm(self.spec.clone(), &self.socket_path).await {
+        match self.vm_client.start_vm(&self.socket_path, self.spec.clone()).await {
             Ok(()) => {
                 info!("VM started successfully");
                 gauge!("vms_running_total").increment(1);
@@ -117,17 +133,6 @@ impl VmWorker {
         info!("Shutting down VM");
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
-                // Process all disks and the ISO at once
-                let paths = self.spec.hard_disks.iter().map(|s| &s.path).chain(self.spec.cdrom_iso_path.as_ref());
-                for path in paths {
-                    let disk_display = path.display();
-                    info!("Deleting disk {disk_display}");
-                    if let Err(e) = fs::remove_file(&path).await {
-                        error!("Failed to delete disk {disk_display}: {e}");
-                    }
-                }
-                self.submit_event(VmEvent::Stopped).await;
-                self.vm_state = VmState::Stopped;
                 info!("VM stopped")
             }
             Err(QemuClientError::VmNotRunning) => warn!("VM was not running"),
@@ -136,6 +141,17 @@ impl VmWorker {
                 error!("Failed to stop VM: {e}");
             }
         };
+        // Process all disks and the ISO at once
+        let paths = self.spec.hard_disks.iter().map(|s| &s.path).chain(self.spec.cdrom_iso_path.as_ref());
+        for path in paths {
+            let disk_display = path.display();
+            info!("Deleting disk {disk_display}");
+            if let Err(e) = fs::remove_file(&path).await {
+                error!("Failed to delete disk {disk_display}: {e}");
+            }
+        }
+        self.submit_event(VmEvent::Stopped).await;
+        self.vm_state = VmState::Stopped;
         gauge!("vms_running_total").decrement(1);
     }
 
@@ -155,7 +171,30 @@ impl VmWorker {
         }
     }
 
+    async fn stop_vm(&mut self) {
+        info!("Shutting down VM");
+        match self.vm_client.stop_vm(&self.socket_path, true).await {
+            Ok(_) => {
+                self.vm_state = VmState::Disabled;
+                info!("VM is stopped");
+            }
+            Err(QemuClientError::VmNotRunning) => {
+                self.vm_state = VmState::Disabled;
+                warn!("VM was not running");
+            }
+            Err(e) => {
+                counter!("vm_action_errors_total", "action" => "stop").increment(1);
+                error!("Failed to stop VM: {e}");
+            }
+        }
+    }
+
     async fn handle_tick(&mut self) {
+        if matches!(self.vm_state, VmState::Disabled) {
+            info!("Ignoring tick because VM is paused");
+            return;
+        }
+
         if !self.vm_client.is_vm_running(&self.socket_path).await {
             warn!("VM is no longer running, starting it again");
             self.submit_event(VmEvent::Stopped).await;
@@ -182,8 +221,10 @@ impl VmWorker {
         let discriminant = WorkerCommandDiscriminants::from(&command);
         info!("Received {discriminant:?} command");
         match command {
-            WorkerCommand::DeleteVm => self.delete_vm().await,
-            WorkerCommand::RestartVm => self.restart_vm().await,
+            WorkerCommand::Delete => self.delete_vm().await,
+            WorkerCommand::Restart => self.restart_vm().await,
+            WorkerCommand::Stop => self.stop_vm().await,
+            WorkerCommand::Start => self.start_vm().await,
         }
     }
 
@@ -199,6 +240,7 @@ enum VmState {
     Starting,
     Running,
     Stopped,
+    Disabled,
 }
 
 pub(crate) struct VmWorkerHandle {
@@ -209,11 +251,19 @@ pub(crate) struct VmWorkerHandle {
 
 impl VmWorkerHandle {
     pub(crate) async fn delete_vm(&self) {
-        self.send_command(WorkerCommand::DeleteVm).await;
+        self.send_command(WorkerCommand::Delete).await;
     }
 
     pub(crate) async fn restart_vm(&self) {
-        self.send_command(WorkerCommand::RestartVm).await;
+        self.send_command(WorkerCommand::Restart).await;
+    }
+
+    pub(crate) async fn stop_vm(&self) {
+        self.send_command(WorkerCommand::Stop).await;
+    }
+
+    pub(crate) async fn start_vm(&self) {
+        self.send_command(WorkerCommand::Start).await;
     }
 
     async fn send_command(&self, command: WorkerCommand) {
@@ -225,8 +275,10 @@ impl VmWorkerHandle {
 
 #[derive(Debug, EnumDiscriminants)]
 enum WorkerCommand {
-    DeleteVm,
-    RestartVm,
+    Delete,
+    Restart,
+    Stop,
+    Start,
 }
 
 #[cfg(test)]
@@ -259,7 +311,7 @@ mod tests {
         let socket = PathBuf::from("/tmp/vm.sock");
         let mut vm_client = MockVmClient::default();
         let mut nilcc_api_client = MockNilccApiClient::default();
-        vm_client.expect_start_vm().with(eq(spec.clone()), eq(socket.clone())).once().return_once(move |_, _| Ok(()));
+        vm_client.expect_start_vm().with(eq(socket.clone()), eq(spec.clone())).once().return_once(move |_, _| Ok(()));
         vm_client.expect_stop_vm().with(eq(socket.clone()), eq(true)).once().return_once(move |_, _| Ok(()));
 
         nilcc_api_client
@@ -281,6 +333,7 @@ mod tests {
             cvm_agent_port: 5555,
             spec,
             socket_path: socket,
+            state: InitialVmState::Enabled,
         };
         let join_handle = {
             let handle = VmWorker::spawn(args);
