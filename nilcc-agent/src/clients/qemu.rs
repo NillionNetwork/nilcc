@@ -125,7 +125,7 @@ pub type Result<T> = std::result::Result<T, QemuClientError>;
 pub trait VmClient: Send + Sync {
     /// Start a VM with the given spec that we will be able to talk to via the socket in the given
     /// path.
-    async fn start_vm(&self, spec: VmSpec, socket_path: &Path) -> Result<()>;
+    async fn start_vm(&self, socket_path: &Path, spec: VmSpec) -> Result<()>;
 
     /// Restart a VM.
     async fn restart_vm(&self, socket_path: &Path) -> Result<()>;
@@ -331,7 +331,7 @@ impl QemuClient {
 #[async_trait]
 impl VmClient for QemuClient {
     /// Start an existing (stopped) VM.
-    async fn start_vm(&self, spec: VmSpec, socket_path: &Path) -> Result<()> {
+    async fn start_vm(&self, socket_path: &Path, spec: VmSpec) -> Result<()> {
         if self.is_vm_running(socket_path).await {
             return Err(QemuClientError::VmAlreadyRunning);
         }
@@ -522,7 +522,7 @@ mod tests {
         let socket_path = store.path().join("vm.sock");
 
         // Start it and make sure it's running
-        client.start_vm(spec, &socket_path).await.unwrap();
+        client.start_vm(&socket_path, spec).await.unwrap();
         assert!(client.is_vm_running(&socket_path).await);
 
         // Stop is and make sure it's not running anymore.

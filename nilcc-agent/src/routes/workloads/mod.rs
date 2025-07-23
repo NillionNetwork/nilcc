@@ -8,6 +8,8 @@ pub(crate) mod containers;
 pub(crate) mod create;
 pub(crate) mod delete;
 pub(crate) mod restart;
+pub(crate) mod start;
+pub(crate) mod stop;
 
 impl IntoResponse for WorkloadLookupError {
     fn into_response(self) -> Response {

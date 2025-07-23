@@ -6,6 +6,7 @@ use crate::{
         proxy::{ProxiedVm, ProxyService},
         vm::{StartVmError, VmService},
     },
+    workers::vm::InitialVmState,
 };
 use async_trait::async_trait;
 use std::{collections::BTreeSet, io, ops::Range};
@@ -20,6 +21,8 @@ pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
+    async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
+    async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError>;
 }
 
@@ -150,7 +153,8 @@ impl DefaultWorkloadService {
             disk_space_gb =
                 disk_space_gb.checked_sub(workload.disk_space_gb).ok_or(CreateServiceError::OvercommittedDiskSpace)?;
             info!("Starting existing workload {workload_id}");
-            vm_service.start_vm(workload).await?;
+            let initial_state = if workload.enabled { InitialVmState::Enabled } else { InitialVmState::Disabled };
+            vm_service.create_vm(workload, initial_state).await?;
         }
         let gpus = gpus.into_iter().collect();
         let ports = ports.into_iter().collect();
@@ -189,6 +193,7 @@ impl DefaultWorkloadService {
             disk_space_gb,
             ports,
             domain,
+            enabled: true,
         }
     }
 }
@@ -223,7 +228,7 @@ impl WorkloadService for DefaultWorkloadService {
 
         info!("Scheduling VM {id}");
         let proxied_vm = ProxiedVm::from(&workload);
-        self.vm_service.start_vm(workload).await?;
+        self.vm_service.create_vm(workload, InitialVmState::Enabled).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
 
         resources.cpus -= cpus;
@@ -249,6 +254,30 @@ impl WorkloadService for DefaultWorkloadService {
         // Make sure it exists first
         self.repository.find(id).await?;
         self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
+        let workload = self.repository.find(id).await?;
+        if !workload.enabled {
+            info!("Workload {id} is already disabled");
+            return Ok(());
+        }
+        info!("Disabling workload {id}");
+        self.vm_service.disable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        self.repository.set_enabled(id, false).await?;
+        Ok(())
+    }
+
+    async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
+        let workload = self.repository.find(id).await?;
+        if workload.enabled {
+            info!("Workload {id} is already enabled");
+            return Ok(());
+        }
+        info!("Enabling workload {id}");
+        self.vm_service.enable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        self.repository.set_enabled(id, true).await?;
         Ok(())
     }
 
@@ -341,6 +370,7 @@ mod tests {
             gpus: Default::default(),
             ports: [150, 151, 152],
             domain: "example.com".into(),
+            enabled: true,
         }
     }
 
@@ -410,7 +440,12 @@ mod tests {
         };
         builder.existing_workloads = vec![workload.clone()];
         // We should start this VM as part of the startup process
-        builder.vm_service.expect_start_vm().with(eq(workload)).once().return_once(move |_| Ok(()));
+        builder
+            .vm_service
+            .expect_create_vm()
+            .with(eq(workload), eq(InitialVmState::Enabled))
+            .once()
+            .return_once(move |_, _| Ok(()));
 
         let service = builder.build().await;
         let resources = service.resources.lock().await;
@@ -455,6 +490,7 @@ mod tests {
             disk_space_gb: request.disk_space_gb,
             ports: [100, 101, 102],
             domain: request.domain.clone(),
+            enabled: true,
         };
         let mut builder = Builder::default();
         let id = workload.id;
@@ -466,7 +502,12 @@ mod tests {
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
         builder.repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
-        builder.vm_service.expect_start_vm().with(eq(workload)).once().return_once(|_| Ok(()));
+        builder
+            .vm_service
+            .expect_create_vm()
+            .with(eq(workload), eq(InitialVmState::Enabled))
+            .once()
+            .return_once(|_, _| Ok(()));
         builder
             .proxy_service
             .expect_start_vm_proxy()

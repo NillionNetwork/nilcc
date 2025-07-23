@@ -21,6 +21,7 @@ pub struct Workload {
     pub public_container_port: u16,
     pub memory_mb: u32,
     pub cpus: u32,
+    pub enabled: bool,
     #[sqlx(json)]
     pub gpus: Vec<GpuAddress>,
     pub disk_space_gb: u32,
@@ -58,6 +59,7 @@ impl fmt::Debug for Workload {
             gpus,
             ports,
             domain,
+            enabled: running,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -74,6 +76,7 @@ impl fmt::Debug for Workload {
             .field("gpus", gpus)
             .field("ports", ports)
             .field("domain", domain)
+            .field("running", running)
             .finish()
     }
 }
@@ -100,6 +103,9 @@ pub trait WorkloadRepository: Send + Sync {
 
     /// Delete a workload.
     async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
+
+    /// Set the `enabled` column for a workload.
+    async fn set_enabled(&self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -150,9 +156,10 @@ INSERT INTO workloads (
     disk_space_gb,
     ports,
     domain,
+    enabled,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ";
         let Workload {
             id,
@@ -167,6 +174,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             gpus,
             ports,
             domain,
+            enabled,
         } = workload;
 
         sqlx::query(query)
@@ -182,6 +190,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             .bind(disk_space_gb)
             .bind(sqlx::types::Json(ports))
             .bind(domain)
+            .bind(enabled)
             .bind(Utc::now())
             .execute(&self.pool)
             .await?;
@@ -209,6 +218,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         sqlx::query(query).bind(id).execute(&self.pool).await?;
         Ok(())
     }
+
+    async fn set_enabled(&self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET enabled = ? WHERE id = ?";
+        sqlx::query(query).bind(value).bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -222,7 +237,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lookup() {
+    async fn crud() {
         let repo = make_repo().await;
         let workload = Workload {
             id: Uuid::new_v4(),
@@ -237,6 +252,7 @@ mod tests {
             gpus: vec![GpuAddress("aa:bb".into())],
             ports: [1080, 1443, 2000],
             domain: "example.com".into(),
+            enabled: true,
         };
         repo.create(workload.clone()).await.expect("failed to insert");
 
@@ -244,6 +260,9 @@ mod tests {
         assert_eq!(found, workload);
 
         let found = repo.list().await.expect("failed to find");
-        assert_eq!(found, &[workload]);
+        assert_eq!(found, &[workload.clone()]);
+
+        repo.set_enabled(workload.id, false).await.expect("failed to update");
+        assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
     }
 }

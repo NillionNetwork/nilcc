@@ -25,7 +25,7 @@ pub struct DefaultCvmAgentClient {
 impl DefaultCvmAgentClient {
     pub fn new() -> anyhow::Result<Self> {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(5))
             .build()
             .context("Failed to build reqwest client")?;
         Ok(Self { client })
