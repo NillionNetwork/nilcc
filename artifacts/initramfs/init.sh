@@ -1,5 +1,4 @@
 #!/bin/sh
-
 set -e
 
 log() {
@@ -103,6 +102,12 @@ if [ "$ACTUAL_HASH" != "$DOCKER_COMPOSE_HASH" ]; then
 fi
 
 log "Docker compose hash matches expected one: ${ACTUAL_HASH}"
+
+# Configure NVIDIA GPU for confidential computing if available
+if command -v nvidia-smi >/dev/null 2>&1; then
+  log "Configuring NVIDIA GPU for confidential computing"
+  nvidia-smi conf-compute -srs 1 || log "Failed to configure GPU for confidential computing"
+fi
 
 mount --move /proc $MNT_DIR/proc
 mount --move /sys $MNT_DIR/sys
