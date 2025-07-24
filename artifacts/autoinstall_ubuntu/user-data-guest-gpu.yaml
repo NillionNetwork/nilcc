@@ -23,8 +23,11 @@ autoinstall:
 
   late-commands:
     - curtin in-target -- dpkg -i /cdrom/packages/*.deb
+    - curtin in-target -- bash -c 'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg'
+    - curtin in-target -- bash -c 'curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list'
     - curtin in-target -- apt-get update
-    - curtin in-target -- apt-get -y install nvidia-driver-550-server-open docker-compose-v2
+    - curtin in-target -- apt-get -y install nvidia-driver-550-server-open docker-compose-v2 nvidia-container-toolkit
+    - curtin in-target -- bash -c 'nvidia-ctk runtime configure --runtime=docker'
     - curtin in-target -- bash -c 'echo "install nvidia /sbin/modprobe ecdsa_generic ecdh; /sbin/modprobe --ignore-install nvidia" > /etc/modprobe.d/nvidia-lkca.conf'
     - curtin in-target -- sed -i "/^ExecStart=/d" /usr/lib/systemd/system/nvidia-persistenced.service
     - curtin in-target -- bash -c 'echo "ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --uvm-persistence-mode --verbose" >> /usr/lib/systemd/system/nvidia-persistenced.service'
