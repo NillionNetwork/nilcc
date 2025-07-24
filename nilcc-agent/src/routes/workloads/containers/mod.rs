@@ -12,6 +12,7 @@ pub(crate) mod logs;
 pub(crate) enum CvmAgentHandlerError {
     Internal(String),
     WorkloadNotFound,
+    ContainerNotFound,
 }
 
 impl From<WorkloadLookupError> for CvmAgentHandlerError {
@@ -33,6 +34,7 @@ impl IntoResponse for CvmAgentHandlerError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".to_string())
             }
             Self::WorkloadNotFound => (StatusCode::NOT_FOUND, "workload not found".into()),
+            Self::ContainerNotFound => (StatusCode::NOT_FOUND, "container not found".into()),
         };
         let response = RequestHandlerError::new(message, format!("{discriminant:?}"));
         (code, Json(response)).into_response()

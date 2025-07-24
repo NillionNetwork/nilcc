@@ -4,7 +4,10 @@ use axum::{
     Json,
 };
 use axum_valid::Valid;
-use bollard::{query_parameters::LogsOptionsBuilder, Docker};
+use bollard::{
+    query_parameters::{InspectContainerOptionsBuilder, LogsOptionsBuilder},
+    Docker,
+};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream};
 use futures::StreamExt;
 use std::sync::Arc;
@@ -22,6 +25,10 @@ pub(crate) async fn handler(
         OutputStream::Stdout => builder.stdout(true),
         OutputStream::Stderr => builder.stderr(true),
     };
+
+    if docker.inspect_container(&container, Some(InspectContainerOptionsBuilder::new().build())).await.is_err() {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     let mut lines = Vec::new();
     let mut stream = docker.logs(&container, Some(builder.build())).take(max_lines);
