@@ -1,6 +1,10 @@
 use crate::api::ApiClient;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use cvm_agent_models::{
+    container::Container,
+    logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
+};
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
@@ -38,6 +42,19 @@ enum Command {
 
     /// Restart a workload.
     Restart(RestartArgs),
+
+    /// Container commands.
+    #[clap(subcommand)]
+    Containers(ContainersCommand),
+}
+
+#[derive(Subcommand)]
+enum ContainersCommand {
+    /// List the running containers in
+    List(ListContainersArgs),
+
+    /// Get logs for a container.
+    Logs(ContainerLogsArgs),
 }
 
 #[derive(Args)]
@@ -105,6 +122,35 @@ struct StartArgs {
 struct RestartArgs {
     /// The identifier of the workload to be restarted.
     id: Uuid,
+}
+
+#[derive(Args)]
+struct ListContainersArgs {
+    /// The identifier of the workload to list containers for.
+    id: Uuid,
+}
+
+#[derive(Args)]
+struct ContainerLogsArgs {
+    /// The identifier of the workload to get logs from.
+    id: Uuid,
+
+    /// The container to pull logs from
+    #[clap(short, long)]
+    container: String,
+
+    /// Whether to get stderr logs. By default stdout logs are fetched.
+    #[clap(long)]
+    stderr: bool,
+
+    /// Whether to fetch logs from the head of the stream. By default logs are fetched from the
+    /// tail.
+    #[clap(long)]
+    head: bool,
+
+    /// The maximum number of lines to get.
+    #[clap(long, default_value_t = 1000)]
+    max_lines: usize,
 }
 
 #[derive(Clone)]
@@ -175,7 +221,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
     };
     let response: CreateWorkloadResponse = client.post("/api/v1/workloads/create", &request)?;
     let CreateWorkloadResponse { id } = response;
-    println!("Workload id {id} launched");
+    println!("Workload {id} launched");
     Ok(())
 }
 
@@ -211,6 +257,26 @@ fn restart(client: ApiClient, args: RestartArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn list_containers(client: ApiClient, args: ListContainersArgs) -> anyhow::Result<()> {
+    let ListContainersArgs { id } = args;
+    let containers: Vec<Container> = client.get(&format!("/api/v1/workloads/{id}/containers/list"))?;
+    let containers = serde_json::to_string_pretty(&containers).expect("failed to serialize");
+    println!("{containers}");
+    Ok(())
+}
+
+fn container_logs(client: ApiClient, args: ContainerLogsArgs) -> anyhow::Result<()> {
+    let ContainerLogsArgs { id, container, head, stderr, max_lines } = args;
+    let stream = if stderr { OutputStream::Stderr } else { OutputStream::Stdout };
+    let request = ContainerLogsRequest { container, tail: !head, stream, max_lines };
+    let response: ContainerLogsResponse =
+        client.get_query(&format!("/api/v1/workloads/{id}/containers/logs"), &request)?;
+    for line in response.lines {
+        println!("{line}");
+    }
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
     let Cli { url, api_key, command } = cli;
@@ -222,6 +288,10 @@ fn main() {
         Command::Start(args) => start(client, args),
         Command::Stop(args) => stop(client, args),
         Command::Restart(args) => restart(client, args),
+        Command::Containers(command) => match command {
+            ContainersCommand::List(args) => list_containers(client, args),
+            ContainersCommand::Logs(args) => container_logs(client, args),
+        },
     };
     if let Err(e) = result {
         eprintln!("Failed to run command: {e:#}");

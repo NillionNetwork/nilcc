@@ -1,6 +1,6 @@
 use nilcc_agent_models::errors::RequestHandlerError;
 use reqwest::{
-    blocking::{Client, ClientBuilder},
+    blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -28,6 +28,32 @@ impl ApiClient {
     {
         let url = self.make_url(path);
         let response = self.client.post(url).json(request).send()?;
+        Self::handle_response(response)
+    }
+
+    pub fn get<O>(&self, path: &str) -> Result<O, RequestError>
+    where
+        O: DeserializeOwned,
+    {
+        let url = self.make_url(path);
+        let response = self.client.get(url).send()?;
+        Self::handle_response(response)
+    }
+
+    pub fn get_query<T, O>(&self, path: &str, query: &T) -> Result<O, RequestError>
+    where
+        T: Serialize,
+        O: DeserializeOwned,
+    {
+        let url = self.make_url(path);
+        let response = self.client.get(url).query(query).send()?;
+        Self::handle_response(response)
+    }
+
+    fn handle_response<O>(response: Response) -> Result<O, RequestError>
+    where
+        O: DeserializeOwned,
+    {
         if response.status().is_success() {
             Ok(response.json()?)
         } else {
