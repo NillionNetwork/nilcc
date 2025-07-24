@@ -19,6 +19,7 @@ use uuid::Uuid;
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
+    async fn list_workloads(&self) -> Result<Vec<Workload>, WorkloadLookupError>;
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
@@ -237,6 +238,10 @@ impl WorkloadService for DefaultWorkloadService {
         resources.memory_mb -= memory_mb;
         resources.disk_space_gb -= disk_space_gb;
         Ok(())
+    }
+
+    async fn list_workloads(&self) -> Result<Vec<Workload>, WorkloadLookupError> {
+        Ok(self.repository.list().await?)
     }
 
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {

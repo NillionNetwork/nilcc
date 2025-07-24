@@ -64,6 +64,22 @@ pub mod workloads {
         }
     }
 
+    pub mod list {
+        use super::*;
+
+        #[derive(Clone, Debug, Serialize, Deserialize)]
+        pub struct ListWorkloadsRequest {
+            pub id: Uuid,
+        }
+
+        #[derive(Clone, Debug, Serialize, Deserialize)]
+        pub struct WorkloadSummary {
+            pub id: Uuid,
+            pub enabled: bool,
+            pub domain: String,
+        }
+    }
+
     pub mod delete {
         use super::*;
 

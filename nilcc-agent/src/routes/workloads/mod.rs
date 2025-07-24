@@ -7,6 +7,7 @@ use tracing::error;
 pub(crate) mod containers;
 pub(crate) mod create;
 pub(crate) mod delete;
+pub(crate) mod list;
 pub(crate) mod restart;
 pub(crate) mod start;
 pub(crate) mod stop;

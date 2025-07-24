@@ -8,6 +8,7 @@ use cvm_agent_models::{
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
+    list::WorkloadSummary,
 };
 use std::{fs, path::PathBuf, process::exit, str::FromStr};
 use uuid::Uuid;
@@ -30,6 +31,9 @@ struct Cli {
 enum Command {
     /// Launch a workload.
     Launch(LaunchArgs),
+
+    /// List workloads.
+    List,
 
     /// Delete a workload.
     Delete(DeleteArgs),
@@ -225,6 +229,13 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn list(client: ApiClient) -> anyhow::Result<()> {
+    let workloads: Vec<WorkloadSummary> = client.get("/api/v1/workloads/list")?;
+    let containers = serde_json::to_string_pretty(&workloads).expect("failed to serialize");
+    println!("{containers}");
+    Ok(())
+}
+
 fn delete(client: ApiClient, args: DeleteArgs) -> anyhow::Result<()> {
     let DeleteArgs { id } = args;
     let request = DeleteWorkloadRequest { id };
@@ -284,6 +295,7 @@ fn main() {
     let client = ApiClient::new(url, &api_key);
     let result = match command {
         Command::Launch(args) => launch(client, args),
+        Command::List => list(client),
         Command::Delete(args) => delete(client, args),
         Command::Start(args) => start(client, args),
         Command::Stop(args) => stop(client, args),
