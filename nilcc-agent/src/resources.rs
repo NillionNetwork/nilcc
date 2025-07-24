@@ -170,6 +170,11 @@ impl IsPublic for Ipv4Addr {
         // TODO: use `Ipv4Addr::is_global` when stabilized
         let octets = self.octets();
 
+        // 127.0.0.0/8
+        if octets[0] == 127 {
+            return false;
+        }
+
         // 10.0.0.0/8
         if octets[0] == 10 {
             return false;
@@ -187,6 +192,11 @@ impl IsPublic for Ipv4Addr {
 
         // 172.16.0.0/12
         if octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31 {
+            return false;
+        }
+
+        // 100.64.0.0/10
+        if octets[0] == 100 && (octets[1] & 0xc0) == 64 {
             return false;
         }
 
