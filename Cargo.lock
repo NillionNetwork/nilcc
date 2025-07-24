@@ -2155,7 +2155,6 @@ dependencies = [
  "axum-valid",
  "chrono",
  "clap",
- "convert_case",
  "cvm-agent-models",
  "hex",
  "humantime",
@@ -2163,9 +2162,9 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
+ "nilcc-agent-models",
  "once_cell",
  "qapi",
- "regex",
  "reqwest",
  "rstest",
  "rustls-acme",
@@ -2186,6 +2185,31 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-test",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "nilcc-agent-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "nilcc-agent-models",
+ "reqwest",
+ "serde",
+ "thiserror 2.0.12",
+ "uuid",
+]
+
+[[package]]
+name = "nilcc-agent-models"
+version = "0.1.0"
+dependencies = [
+ "convert_case",
+ "regex",
+ "serde",
+ "serde_with",
  "uuid",
  "validator",
 ]

@@ -1,9 +1,10 @@
-use crate::routes::{Json, RequestHandlerError};
+use crate::routes::Json;
 use axum::body::Body;
 use axum::http::header::AUTHORIZATION;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{extract::Request, response::Response};
+use nilcc_agent_models::errors::RequestHandlerError;
 use std::convert::Infallible;
 use std::{
     pin::Pin,

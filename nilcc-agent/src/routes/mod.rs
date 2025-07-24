@@ -9,7 +9,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use axum_valid::{HasValidate, HasValidateArgs};
-use convert_case::{Case, Casing};
+use nilcc_agent_models::errors::RequestHandlerError;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -49,23 +49,6 @@ pub fn build_router(state: AppState, token: String) -> Router {
             .with_state(state)
             .layer(ServiceBuilder::new().layer(AuthLayer::new(token))),
     )
-}
-
-/// An error when handling a request.
-#[derive(Debug, Serialize)]
-pub struct RequestHandlerError {
-    /// A descriptive message about the error that was encountered.
-    pub(crate) message: String,
-
-    /// The error code.
-    pub(crate) error_code: String,
-}
-
-impl RequestHandlerError {
-    pub(crate) fn new(message: impl Into<String>, error_code: impl AsRef<str>) -> Self {
-        let error_code = error_code.as_ref().to_case(Case::UpperSnake);
-        Self { message: message.into(), error_code }
-    }
 }
 
 /// A type that behaves like `axum::Json` but provides JSON structured errors when parsing fails.

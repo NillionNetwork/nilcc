@@ -1,0 +1,51 @@
+use nilcc_agent_models::errors::RequestHandlerError;
+use reqwest::{
+    blocking::{Client, ClientBuilder},
+    header::{HeaderMap, HeaderName, HeaderValue},
+};
+use serde::{de::DeserializeOwned, Serialize};
+
+pub struct ApiClient {
+    base_url: String,
+    client: Client,
+}
+
+impl ApiClient {
+    pub fn new(base_url: String, api_key: &str) -> Self {
+        let mut headers = HeaderMap::new();
+        let mut api_key = HeaderValue::from_str(&format!("Bearer {api_key}")).expect("invalid API key");
+        api_key.set_sensitive(true);
+        headers.insert(HeaderName::from_static("authorization"), api_key);
+
+        let client = ClientBuilder::new().default_headers(headers).build().expect("failed to build client");
+        Self { base_url, client }
+    }
+
+    pub fn post<T, O>(&self, path: &str, request: &T) -> Result<O, RequestError>
+    where
+        T: Serialize,
+        O: DeserializeOwned,
+    {
+        let url = self.make_url(path);
+        let response = self.client.post(url).json(request).send()?;
+        if response.status().is_success() {
+            Ok(response.json()?)
+        } else {
+            let err: RequestHandlerError = response.json()?;
+            Err(RequestError::Handler { code: err.error_code, details: err.message })
+        }
+    }
+
+    fn make_url(&self, path: &str) -> String {
+        format!("{}{path}", self.base_url)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RequestError {
+    #[error("sending request: {0}")]
+    Request(#[from] reqwest::Error),
+
+    #[error("api error, code = {code}, details = {details}")]
+    Handler { code: String, details: String },
+}

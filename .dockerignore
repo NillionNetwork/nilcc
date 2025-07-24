@@ -2,6 +2,7 @@
 
 !/nilcc-attester
 !/nilcc-agent
+!/nilcc-agent-cli
 !/nilcc-verifier
 !/cvm-agent
 !/crates
