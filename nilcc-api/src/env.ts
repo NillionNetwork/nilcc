@@ -98,9 +98,9 @@ declare global {
       APP_WORKLOADS_DNS_DOMAIN: string;
       APP_METAL_INSTANCES_DNS_DOMAIN: string;
       APP_METAL_INSTANCES_DNS_ZONE: string;
-      APP_METAL_INSTANCES_ENDPOINT_SCHEME: string;
-      APP_METAL_INSTANCES_ENDPOINT_PORT: number;
-      APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS: number;
+      APP_METAL_INSTANCES_ENDPOINT_SCHEME: string | undefined;
+      APP_METAL_INSTANCES_ENDPOINT_PORT: string | undefined;
+      APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS: string | undefined;
     }
   }
 }
@@ -163,6 +163,8 @@ async function buildServices(
 }
 
 export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
+  const tryNumber = (n: string | undefined) =>
+    n !== undefined ? Number(n) : undefined;
   const config = EnvVarsSchema.parse({
     dbUri: process.env.APP_DB_URI,
     enabledFeatures: process.env.APP_ENABLED_FEATURES,
@@ -177,11 +179,12 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     metalInstancesDnsDomain: process.env.APP_METAL_INSTANCES_DNS_DOMAIN,
     metalInstancesEndpointScheme:
       process.env.APP_METAL_INSTANCES_ENDPOINT_SCHEME,
-    metalInstancesEndpointPort: Number(
+    metalInstancesEndpointPort: tryNumber(
       process.env.APP_METAL_INSTANCES_ENDPOINT_PORT,
     ),
-    metalInstancesIdleThresholdSeconds:
+    metalInstancesIdleThresholdSeconds: tryNumber(
       process.env.APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS,
+    ),
   });
 
   return {
