@@ -1,13 +1,18 @@
 use anyhow::Context;
-use serde::Deserialize;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use serde::{Deserialize, Serialize};
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    path::PathBuf,
+};
 
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
     pub nilcc_version: String,
-    pub vm_type: String,
+    pub vm_type: VmType,
+    #[serde(default = "default_gpu_attester_path")]
+    pub gpu_attester_path: PathBuf,
 }
 
 impl Config {
@@ -33,7 +38,18 @@ impl Default for ServerConfig {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VmType {
+    Cpu,
+    Gpu,
+}
+
 fn default_bind_endpoint() -> SocketAddr {
     // 0.0.0.0:8080
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 8080))
+}
+
+fn default_gpu_attester_path() -> PathBuf {
+    "/opt/nillion/gpu-attester/main.py".into()
 }
