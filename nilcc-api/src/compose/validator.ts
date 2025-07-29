@@ -81,7 +81,7 @@ export class DockerComposeValidator {
     const validate = ajv.compile(DockerComposeSchema as Schema);
     if (!validate(parsedData)) {
       throw new InvalidDockerCompose(
-        `malformed docker compose: ${validate.errors}`,
+        `malformed docker compose: ${JSON.stringify(validate.errors)}`,
       );
     }
     const result = DockerComposePolicy.safeParse(parsedData);
