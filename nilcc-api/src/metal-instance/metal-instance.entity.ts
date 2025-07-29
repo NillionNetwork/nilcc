@@ -1,9 +1,9 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, PrimaryColumn } from "typeorm";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
 @Entity()
 export class MetalInstanceEntity {
-  @PrimaryGeneratedColumn("uuid")
+  @PrimaryColumn({ type: "uuid" })
   id: string;
 
   @Column({ type: "varchar" })
