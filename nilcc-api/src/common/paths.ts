@@ -33,4 +33,7 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/metal-instances/:id"),
     list: PathSchema.parse("/api/v1/metal-instances"),
   },
+  system: {
+    health: PathSchema.parse("/health"),
+  },
 } as const;
