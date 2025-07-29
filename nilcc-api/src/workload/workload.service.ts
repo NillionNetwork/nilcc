@@ -74,6 +74,7 @@ export class WorkloadService {
     const now = new Date();
     const entity = repository.create({
       ...workload,
+      id: uuidv4(),
       metalInstance,
       createdAt: now,
       updatedAt: now,

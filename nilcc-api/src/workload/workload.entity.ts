@@ -1,16 +1,10 @@
-import {
-  Column,
-  Entity,
-  ManyToOne,
-  OneToMany,
-  PrimaryGeneratedColumn,
-} from "typeorm";
+import { Column, Entity, ManyToOne, OneToMany, PrimaryColumn } from "typeorm";
 import { z } from "zod";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
 @Entity()
 export class WorkloadEntity {
-  @PrimaryGeneratedColumn("uuid")
+  @PrimaryColumn({ type: "uuid" })
   id: string;
 
   @Column({ type: "varchar" })
@@ -95,7 +89,7 @@ export class WorkloadEntity {
 
 @Entity()
 export class WorkloadEventEntity {
-  @PrimaryGeneratedColumn("uuid")
+  @PrimaryColumn({ type: "uuid" })
   id: string;
 
   @ManyToOne(
