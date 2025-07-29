@@ -63,7 +63,7 @@ export type AppBindings = {
 };
 
 export const EnvVarsSchema = z.object({
-  dbUri: z.string().startsWith("psql://"),
+  dbUri: z.string().startsWith("postgres://"),
   enabledFeatures: z
     .string()
     .transform((d) => d.split(",").map((e) => e.trim())),
