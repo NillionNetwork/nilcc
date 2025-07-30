@@ -10,5 +10,6 @@
 !/Cargo.lock
 !/artifacts/initramfs/build/kernel/kernel.deb
 !/artifacts/initramfs/init.sh
+**/.venv
 target
 

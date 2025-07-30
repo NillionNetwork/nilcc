@@ -1,0 +1,9 @@
+[project]
+name = "gpu-attester"
+version = "0.1.0"
+description = "Nvidia GPU attester"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "nv-attestation-sdk==2.4.0"
+]
