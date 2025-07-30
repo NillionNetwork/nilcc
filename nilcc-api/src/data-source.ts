@@ -1,3 +1,10 @@
+import {
+  type EntityMetadata,
+  type EntitySubscriberInterface,
+  EventSubscriber,
+  type InsertEvent,
+  type LoadEvent,
+} from "typeorm";
 import "reflect-metadata";
 import type { Context, Next } from "hono";
 import type { Logger } from "pino";
@@ -22,6 +29,7 @@ export async function buildDataSource(
     type: "postgres",
     url: config.dbUri,
     entities: [WorkloadEntity, MetalInstanceEntity, WorkloadEventEntity],
+    subscribers: [NullToUndefinedSubscriber],
     synchronize,
     logging: false,
   });
@@ -56,4 +64,32 @@ export function transactionMiddleware(dataSource: DataSource) {
       await queryRunner.release();
     }
   };
+}
+
+// Map nulls to undefined, see https://github.com/typeorm/typeorm/issues/2934
+@EventSubscriber()
+export class NullToUndefinedSubscriber implements EntitySubscriberInterface {
+  afterLoad?(_entity: object, event?: LoadEvent<object>) {
+    if (!event) {
+      return;
+    }
+    this.handleEvent(event);
+  }
+
+  afterInsert(event: InsertEvent<object>) {
+    this.handleEvent(event);
+  }
+
+  handleEvent(event: { entity: object; metadata: EntityMetadata }) {
+    const eventEntity = event.entity;
+    for (const col of event.metadata.columns) {
+      if (!col.isNullable) {
+        continue;
+      }
+      const val = Reflect.get(eventEntity, col.propertyName);
+      if (val === null) {
+        Reflect.set(eventEntity, col.propertyName, undefined);
+      }
+    }
+  }
 }
