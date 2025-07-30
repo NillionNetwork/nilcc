@@ -27,7 +27,7 @@ export class WorkloadEntity {
         value
           ? z.record(z.string(), z.string()).parse(value) &&
             JSON.stringify(value)
-          : null,
+          : undefined,
       from: (value?: string) => (value ? JSON.parse(value) : {}),
     },
   })
@@ -41,7 +41,7 @@ export class WorkloadEntity {
         value
           ? z.record(z.string(), z.string()).parse(value) &&
             JSON.stringify(value)
-          : null,
+          : undefined,
       from: (value?: string) => (value ? JSON.parse(value) : {}),
     },
   })
