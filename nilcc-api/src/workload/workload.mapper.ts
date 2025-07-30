@@ -2,7 +2,10 @@ import type { CreateWorkloadResponse } from "#/workload/workload.dto";
 import type { WorkloadEntity } from "#/workload/workload.entity";
 
 export const workloadMapper = {
-  entityToResponse(workload: WorkloadEntity): CreateWorkloadResponse {
+  entityToResponse(
+    workload: WorkloadEntity,
+    workloadsDomain: string,
+  ): CreateWorkloadResponse {
     return {
       id: workload.id,
       name: workload.name,
@@ -17,6 +20,7 @@ export const workloadMapper = {
       gpus: workload.gpus,
       disk: workload.disk,
       status: workload.status,
+      domain: `${workload.id}.${workloadsDomain}`,
       createdAt: workload.createdAt.toISOString(),
       updatedAt: workload.updatedAt.toISOString(),
     };
