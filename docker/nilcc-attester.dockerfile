@@ -1,7 +1,7 @@
-FROM rust:1.86 AS build
+FROM rust:1.86-alpine AS build
 
 WORKDIR /opt/nillion
-RUN apt update && apt install -y git
+RUN apk add --no-cache musl-dev git
 
 COPY . .
 RUN cargo build --release --locked -p nilcc-attester
@@ -15,7 +15,7 @@ COPY --from=build /opt/nillion/nilcc-attester/gpu-attester /opt/nillion/gpu-atte
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/nillion/.venv
 
-RUN apk add curl && uv sync --project gpu-attester
+RUN apk add --no-cache curl && uv sync --project gpu-attester
 
 ENTRYPOINT ["uv", "run", "/opt/nillion/nilcc-attester"]
 
