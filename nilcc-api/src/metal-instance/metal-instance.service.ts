@@ -57,7 +57,7 @@ export class MetalInstanceService {
   async createOrUpdate(
     bindings: AppBindings,
     request: RegisterMetalInstanceRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ) {
     const maybeMetalInstance = await this.read(bindings, request.id, tx);
     if (maybeMetalInstance) {
@@ -69,7 +69,7 @@ export class MetalInstanceService {
   async heartbeat(
     bindings: AppBindings,
     request: HeartbeatRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ) {
     const metalInstance = await this.read(bindings, request.id, tx);
     if (metalInstance === null) {
@@ -130,7 +130,7 @@ export class MetalInstanceService {
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
     currentMetalInstance: MetalInstanceEntity,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
@@ -156,7 +156,7 @@ export class MetalInstanceService {
   async create(
     bindings: AppBindings,
     request: RegisterMetalInstanceRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
     const now = new Date();
