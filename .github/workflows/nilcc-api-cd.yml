@@ -1,4 +1,4 @@
-name: nilcc API CD
+name: nilcc-api docker
 
 on:
   push:
