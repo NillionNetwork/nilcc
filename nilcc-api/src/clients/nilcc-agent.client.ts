@@ -52,7 +52,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       id: workload.id,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars,
-      externalFiles: workload.files,
+      files: workload.files,
       publicContainerName: workload.serviceToExpose,
       publicContainerPort: workload.servicePortToExpose,
       memoryMb: workload.memory,
@@ -112,6 +112,8 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       body: JSON.stringify(request),
       headers: {
         Authorization: `Bearer ${metalInstance.token}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
       },
     });
     if (!response.ok) {
@@ -143,7 +145,7 @@ type CreateWorkloadRequest = {
   id: string;
   dockerCompose: string;
   envVars?: Record<string, string>;
-  externalFiles?: Record<string, string>;
+  files?: Record<string, string>;
   publicContainerName: string;
   publicContainerPort: number;
   memoryMb: number;
