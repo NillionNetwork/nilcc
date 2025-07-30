@@ -28,7 +28,7 @@ export class WorkloadEntity {
           ? z.record(z.string(), z.string()).parse(value) &&
             JSON.stringify(value)
           : undefined,
-      from: (value?: string) => (value ? JSON.parse(value) : {}),
+      from: (value?: string) => (value ? JSON.parse(value) : undefined),
     },
   })
   envVars?: Record<string, string>;
@@ -42,7 +42,7 @@ export class WorkloadEntity {
           ? z.record(z.string(), z.string()).parse(value) &&
             JSON.stringify(value)
           : undefined,
-      from: (value?: string) => (value ? JSON.parse(value) : {}),
+      from: (value?: string) => (value ? JSON.parse(value) : undefined),
     },
   })
   files?: Record<string, string>;
