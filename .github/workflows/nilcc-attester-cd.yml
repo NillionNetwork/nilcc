@@ -1,4 +1,4 @@
-name: CD - Publish Docker Image to ECR
+name: nilcc-attester docker
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: nilcc-agent CD
+name: nilcc-agent docker
 on:
   push:
     branches:
