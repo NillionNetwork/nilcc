@@ -274,7 +274,7 @@ export class WorkloadService {
       metalInstanceDomain,
       "CNAME",
     );
-    return metalInstanceDomain;
+    return `${workloadId}.${bindings.config.workloadsDnsDomain}`;
   }
 
   async removeCnameForWorkload(

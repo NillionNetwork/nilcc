@@ -81,6 +81,9 @@ services:
     );
     myWorkload = await myWorkloadResponse.parse_body();
     expect(myWorkload.name).equals(createWorkloadRequest.name);
+    expect(myWorkload.domain).equals(
+      `${myWorkload.id}.workloads.public.localhost`,
+    );
   });
 
   it("should fail to create a workload if it doesn't fit in the metal instance", async ({

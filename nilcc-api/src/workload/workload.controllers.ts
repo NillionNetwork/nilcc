@@ -67,7 +67,12 @@ export function create(options: ControllerOptions): void {
           payload,
           c.get("txQueryRunner"),
         );
-        return c.json(workloadMapper.entityToResponse(workload));
+        return c.json(
+          workloadMapper.entityToResponse(
+            workload,
+            bindings.config.workloadsDnsDomain,
+          ),
+        );
       } catch (e: unknown) {
         if (
           e instanceof CreateEntityError &&
@@ -109,7 +114,14 @@ export function list(options: ControllerOptions): void {
     responseValidator(bindings, CreateWorkloadResponse.array()),
     async (c) => {
       const workloads = await bindings.services.workload.list(bindings);
-      return c.json(workloads.map(workloadMapper.entityToResponse));
+      return c.json(
+        workloads.map((w) =>
+          workloadMapper.entityToResponse(
+            w,
+            bindings.config.workloadsDnsDomain,
+          ),
+        ),
+      );
     },
   );
 }
@@ -147,7 +159,12 @@ export function read(options: ControllerOptions): void {
       if (!workload) {
         return c.notFound();
       }
-      return c.json(workloadMapper.entityToResponse(workload));
+      return c.json(
+        workloadMapper.entityToResponse(
+          workload,
+          bindings.config.workloadsDnsDomain,
+        ),
+      );
     },
   );
 }
