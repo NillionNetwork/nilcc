@@ -43,8 +43,12 @@ export function transactionMiddleware(dataSource: DataSource) {
       c.set("txQueryRunner", queryRunner);
 
       await next();
-
-      await queryRunner.commitTransaction();
+      const statusCode = c.res.status;
+      if (statusCode >= 200 && statusCode < 300) {
+        await queryRunner.commitTransaction();
+      } else {
+        await queryRunner.rollbackTransaction();
+      }
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
