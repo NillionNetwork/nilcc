@@ -43,19 +43,19 @@ export class WorkloadService {
   @mapError((e) => new CreateEntityError(WorkloadEntity, e))
   async create(
     bindings: AppBindings,
-    workload: CreateWorkloadRequest,
+    request: CreateWorkloadRequest,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
     const validator = new DockerComposeValidator();
-    validator.validate(workload.dockerCompose, workload.serviceToExpose);
+    validator.validate(request.dockerCompose, request.serviceToExpose);
 
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(
         {
-          cpus: workload.cpus,
-          memory: workload.memory,
-          disk: workload.disk,
-          gpus: workload.gpus,
+          cpus: request.cpus,
+          memory: request.memory,
+          disk: request.disk,
+          gpus: request.gpus,
         },
         bindings,
         tx,
@@ -73,7 +73,7 @@ export class WorkloadService {
     const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
     const now = new Date();
     const entity = repository.create({
-      ...workload,
+      ...request,
       id: uuidv4(),
       metalInstance,
       createdAt: now,
