@@ -45,7 +45,7 @@ frontend https_frontend
 # nilcc-agent backend
 backend agent-backend 
     mode tcp
-    server nilcc-agent {{ agent_domain }} check
+    server nilcc-agent 127.0.0.1:{{ agent_port }} check
 
 {%- for backend in backends %}
 

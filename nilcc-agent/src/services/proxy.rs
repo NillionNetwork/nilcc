@@ -38,22 +38,24 @@ pub trait ProxyService: Send + Sync {
 }
 
 pub struct ProxyServiceArgs {
-    pub config_file_path: String,
+    pub config_file_path: PathBuf,
     pub master_socket_path: PathBuf,
     pub timeouts: SniProxyConfigTimeouts,
     pub dns_subdomain: String,
     pub agent_domain: String,
+    pub agent_port: u16,
     pub max_connections: u64,
     pub proxied_vms: Vec<ProxiedVm>,
     pub reload_config: bool,
 }
 
 pub struct HaProxyProxyService {
-    config_file_path: String,
+    config_file_path: PathBuf,
     master_socket_path: PathBuf,
     timeouts: SniProxyConfigTimeouts,
     dns_subdomain: String,
     agent_domain: String,
+    agent_port: u16,
     max_connections: u64,
     reload_config: bool,
     proxied_vms: Mutex<BTreeMap<Uuid, ProxiedVm>>,
@@ -67,6 +69,7 @@ impl HaProxyProxyService {
             timeouts,
             dns_subdomain,
             agent_domain,
+            agent_port,
             max_connections,
             proxied_vms,
             reload_config,
@@ -78,6 +81,7 @@ impl HaProxyProxyService {
             timeouts,
             dns_subdomain,
             agent_domain,
+            agent_port,
             max_connections,
             reload_config,
             proxied_vms: proxied_vms.into(),
@@ -88,7 +92,7 @@ impl HaProxyProxyService {
         info!("Reloading HA proxy config");
         let mut socket =
             UnixSocket::new_stream()?.connect(&self.master_socket_path).await.context("Connecting to master socket")?;
-        socket.write_all(b"reload").await?;
+        socket.write_all(b"reload\n").await?;
         Ok(())
     }
 
@@ -121,6 +125,7 @@ impl HaProxyProxyService {
             max_connections: self.max_connections,
             timeouts: self.timeouts.clone(),
             agent_domain: self.agent_domain.clone(),
+            agent_port: self.agent_port,
             backends,
         };
         info!("Persisting HA proxy config using {} VMs as backends", context.backends.len());
@@ -170,6 +175,7 @@ struct SniProxyTemplateContext {
     timeouts: SniProxyConfigTimeouts,
     backends: Vec<ProxyBackend>,
     agent_domain: String,
+    agent_port: u16,
 }
 
 impl SniProxyTemplateContext {
@@ -228,7 +234,7 @@ frontend https_frontend
 # nilcc-agent backend
 backend agent-backend 
     mode tcp
-    server nilcc-agent agent1.example.com check
+    server nilcc-agent 127.0.0.1:8080 check
 
 # VM foo backend servers
 backend backend-http-foo
@@ -246,6 +252,7 @@ backend backend-https-foo
             max_connections: 100000,
             timeouts: SniProxyConfigTimeouts { connect: 5000, server: 50000, client: 50000 },
             agent_domain: "agent1.example.com".into(),
+            agent_port: 8080,
             backends: vec![ProxyBackend {
                 id: "foo".into(),
                 domain: "foo.nilcc.com".into(),

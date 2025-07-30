@@ -27,6 +27,7 @@ pub mod workloads {
 
         #[serde_as]
         #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+        #[serde(rename_all = "camelCase")]
         pub struct CreateWorkloadRequest {
             pub id: Uuid,
 
@@ -59,6 +60,7 @@ pub mod workloads {
         }
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct CreateWorkloadResponse {
             pub id: Uuid,
         }
@@ -68,11 +70,13 @@ pub mod workloads {
         use super::*;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct ListWorkloadsRequest {
             pub id: Uuid,
         }
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct WorkloadSummary {
             pub id: Uuid,
             pub enabled: bool,
@@ -84,6 +88,7 @@ pub mod workloads {
         use super::*;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct DeleteWorkloadRequest {
             pub id: Uuid,
         }
@@ -93,6 +98,7 @@ pub mod workloads {
         use super::*;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct StartWorkloadRequest {
             pub id: Uuid,
         }
@@ -102,6 +108,7 @@ pub mod workloads {
         use super::*;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct StopWorkloadRequest {
             pub id: Uuid,
         }
@@ -111,6 +118,7 @@ pub mod workloads {
         use super::*;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
         pub struct RestartWorkloadRequest {
             pub id: Uuid,
         }
@@ -122,6 +130,7 @@ pub mod errors {
 
     /// An error when handling a request.
     #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct RequestHandlerError {
         /// A descriptive message about the error that was encountered.
         pub message: String,

@@ -127,7 +127,7 @@ pub struct SniProxyConfig {
     pub end_port_range: u16,
 
     /// The path to the HAProxy configuration file.
-    pub config_file_path: String,
+    pub config_file_path: PathBuf,
 
     /// The path to the HA proxy master socket.
     #[serde(default = "ha_proxy_master_socket_path")]
