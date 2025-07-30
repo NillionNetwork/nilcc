@@ -30,7 +30,8 @@ use nilcc_agent::{
 use rustls_acme::{caches::DirCache, AcmeConfig};
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use tokio::signal;
-use tracing::{debug, info, level_filters::LevelFilter};
+use tokio_stream::StreamExt;
+use tracing::{debug, error, info, level_filters::LevelFilter};
 
 const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(10);
 
@@ -174,16 +175,17 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
     let proxied_vms = existing_workloads.iter().map(Into::into).collect();
     let proxy_service = HaProxyProxyService::new(ProxyServiceArgs {
-        config_file_path: config.sni_proxy.config_file_path,
+        config_file_path: config.sni_proxy.config_file_path.clone(),
         master_socket_path: config.sni_proxy.master_socket_path,
         timeouts: config.sni_proxy.timeouts,
         dns_subdomain: config.sni_proxy.dns_subdomain,
         agent_domain: config.api.domain.clone(),
+        agent_port: config.api.bind_endpoint.port(),
         max_connections: config.sni_proxy.max_connections,
         proxied_vms,
         reload_config: config.sni_proxy.reload_config,
     });
-    info!("Storing current proxy config");
+    info!("Storing current proxy config into {}", config.sni_proxy.config_file_path.display());
     proxy_service.persist_current_config().await.context("Failed to store current proxy config")?;
 
     info!("Finding public IPv4 address");
@@ -228,11 +230,27 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let server = axum_server::bind(config.api.bind_endpoint).handle(handle);
     let result = match config.tls {
         Some(tls) => {
-            let state = AcmeConfig::new([config.api.domain])
+            info!(
+                "Setting up TLS certificate generation, using domain = {}, cert cache = {}, ACME contact = {}",
+                config.api.domain,
+                tls.cert_cache.display(),
+                tls.acme_contact
+            );
+            let mut state = AcmeConfig::new([config.api.domain])
                 .contact([format!("mailto:{}", tls.acme_contact)])
                 .cache(DirCache::new(tls.cert_cache.clone()))
+                .directory_lets_encrypt(true)
                 .state();
             let acceptor = state.axum_acceptor(state.default_rustls_config());
+            // Spin up a task that polls the ACME cert generation future
+            tokio::spawn(async move {
+                loop {
+                    match state.next().await.unwrap() {
+                        Ok(event) => info!("ACME event: {event:?}"),
+                        Err(e) => error!("ACME error: {e:?}"),
+                    }
+                }
+            });
             server.acceptor(acceptor).serve(router.into_make_service()).await
         }
         None => server.serve(router.into_make_service()).await,

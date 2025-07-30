@@ -36,7 +36,7 @@ pub struct AppState {
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {
-    Router::new().nest(
+    Router::new().route("/health", get(health)).nest(
         "/api/v1",
         Router::new()
             .route("/workloads/create", post(workloads::create::handler))
@@ -50,6 +50,10 @@ pub fn build_router(state: AppState, token: String) -> Router {
             .with_state(state)
             .layer(ServiceBuilder::new().layer(AuthLayer::new(token))),
     )
+}
+
+async fn health() -> impl IntoResponse {
+    (StatusCode::OK, "OK")
 }
 
 /// A type that behaves like `axum::Json` but provides JSON structured errors when parsing fails.
