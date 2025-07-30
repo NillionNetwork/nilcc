@@ -14,7 +14,7 @@ import {
   RemoveEntityError,
   UpdateEntityError,
 } from "#/common/errors";
-import { hasFeatureFlag } from "#/env";
+import { type AppEnv, hasFeatureFlag } from "#/env";
 
 export type ApiSuccessResponse<T> = {
   data: T;
@@ -31,7 +31,7 @@ export const ApiErrorResponse = z
   .openapi({ ref: "ApiErrorResponse" });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
 
-export function errorHandler(e: unknown, c: Context) {
+export function errorHandler(e: unknown, c: Context<AppEnv>) {
   const toResponse = (
     e: Error | null,
     errors: string[],
@@ -43,6 +43,9 @@ export function errorHandler(e: unknown, c: Context) {
       !hasFeatureFlag(c.env.config.enabledFeatures, "http-error-stacktrace")
     ) {
       errorsTrace = undefined;
+    }
+    if (statusCode === StatusCodes.INTERNAL_SERVER_ERROR) {
+      c.env.log.error(`Failed to handle request: ${JSON.stringify(e)}`);
     }
     const payload: ApiErrorResponse = {
       ts: Temporal.Now.instant().toString(),
