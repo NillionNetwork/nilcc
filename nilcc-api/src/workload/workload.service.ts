@@ -32,7 +32,7 @@ export class WorkloadService {
   @mapError((e) => new GetRepositoryError(e))
   getRepository(
     bindings: AppBindings,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ): Repository<WorkloadEntity> {
     if (tx) {
       return tx.manager.getRepository(WorkloadEntity);
@@ -103,8 +103,11 @@ export class WorkloadService {
   }
 
   @mapError((e) => new FindEntityError(WorkloadEntity, e))
-  async list(bindings: AppBindings): Promise<WorkloadEntity[]> {
-    const repository = this.getRepository(bindings);
+  async list(
+    bindings: AppBindings,
+    tx: QueryRunner,
+  ): Promise<WorkloadEntity[]> {
+    const repository = this.getRepository(bindings, tx);
     return await repository.find();
   }
 
@@ -112,14 +115,19 @@ export class WorkloadService {
   async read(
     bindings: AppBindings,
     workloadId: string,
+    tx: QueryRunner,
   ): Promise<WorkloadEntity | null> {
-    const repository = this.getRepository(bindings);
+    const repository = this.getRepository(bindings, tx);
     return await repository.findOneBy({ id: workloadId });
   }
 
   @mapError((e) => new RemoveEntityError(WorkloadEntity, e))
-  async remove(bindings: AppBindings, workloadId: string): Promise<boolean> {
-    const workloadRepository = this.getRepository(bindings);
+  async remove(
+    bindings: AppBindings,
+    workloadId: string,
+    tx: QueryRunner,
+  ): Promise<boolean> {
+    const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({
       where: { id: workloadId },
       relations: ["metalInstance"],
@@ -184,8 +192,9 @@ export class WorkloadService {
   async listEvents(
     bindings: AppBindings,
     request: ListWorkloadEventsRequest,
+    tx: QueryRunner,
   ): Promise<Array<WorkloadEvent>> {
-    const repository = this.getRepository(bindings);
+    const repository = this.getRepository(bindings, tx);
     const workloads = await repository.find({
       where: { id: request.workloadId },
       relations: ["events"],
@@ -224,7 +233,7 @@ export class WorkloadService {
   async listContainers(
     bindings: AppBindings,
     request: ListContainersRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ): Promise<Array<Container>> {
     const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({
@@ -245,7 +254,7 @@ export class WorkloadService {
   async containerLogs(
     bindings: AppBindings,
     request: WorkloadContainerLogsRequest,
-    tx?: QueryRunner,
+    tx: QueryRunner,
   ): Promise<Array<string>> {
     const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({

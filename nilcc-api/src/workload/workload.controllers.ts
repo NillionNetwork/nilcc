@@ -112,8 +112,12 @@ export function list(options: ControllerOptions): void {
     }),
     apiKey(bindings.config.userApiKey),
     responseValidator(bindings, CreateWorkloadResponse.array()),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
-      const workloads = await bindings.services.workload.list(bindings);
+      const workloads = await bindings.services.workload.list(
+        bindings,
+        c.get("txQueryRunner"),
+      );
       return c.json(
         workloads.map((w) =>
           workloadMapper.entityToResponse(
@@ -149,12 +153,14 @@ export function read(options: ControllerOptions): void {
     }),
     apiKey(bindings.config.userApiKey),
     paramsValidator(idParamSchema),
+    transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
       const params = c.req.valid("param");
       const workload = await bindings.services.workload.read(
         bindings,
         params.id,
+        c.get("txQueryRunner"),
       );
       if (!workload) {
         return c.notFound();
@@ -185,11 +191,13 @@ export function remove(options: ControllerOptions): void {
     }),
     apiKey(bindings.config.userApiKey),
     paramsValidator(idParamSchema),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
       const workloadId = c.req.valid("param").id;
       const deleted = await bindings.services.workload.remove(
         bindings,
         workloadId,
+        c.get("txQueryRunner"),
       );
       if (!deleted) {
         return c.notFound();
@@ -250,12 +258,14 @@ export function listEvents(options: ControllerOptions) {
     }),
     apiKey(bindings.config.userApiKey),
     zValidator("json", ListWorkloadEventsRequest),
+    transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListWorkloadEventsResponse),
     async (c) => {
       const payload = c.req.valid("json");
       const events = await bindings.services.workload.listEvents(
         bindings,
         payload,
+        c.get("txQueryRunner"),
       );
       return c.json({ events });
     },
@@ -283,12 +293,14 @@ export function listContainers(options: ControllerOptions) {
     }),
     apiKey(bindings.config.metalInstanceApiKey),
     zValidator("json", ListContainersRequest),
+    transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListContainersResponse),
     async (c) => {
       const payload = c.req.valid("json");
       const containers = await bindings.services.workload.listContainers(
         bindings,
         payload,
+        c.get("txQueryRunner"),
       );
       return c.json(containers);
     },
@@ -316,12 +328,14 @@ export function containerLogs(options: ControllerOptions) {
     }),
     apiKey(bindings.config.metalInstanceApiKey),
     zValidator("json", WorkloadContainerLogsRequest),
+    transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, WorkloadContainerLogsResponse),
     async (c) => {
       const payload = c.req.valid("json");
       const logs = await bindings.services.workload.containerLogs(
         bindings,
         payload,
+        c.get("txQueryRunner"),
       );
       return c.json(logs);
     },
