@@ -1,11 +1,15 @@
 import { describeRoute } from "hono-openapi";
-import { resolver, validator as zValidator } from "hono-openapi/zod";
+import { resolver } from "hono-openapi/zod";
 import z from "zod";
 import { apiKey } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { paramsValidator, responseValidator } from "#/common/zod-utils";
+import {
+  pathValidator,
+  payloadValidator,
+  responseValidator,
+} from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import {
   GetMetalInstanceResponse,
@@ -34,7 +38,7 @@ export function register(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", RegisterMetalInstanceRequest),
+    payloadValidator(RegisterMetalInstanceRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
@@ -65,7 +69,7 @@ export function heartbeat(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", HeartbeatRequest),
+    payloadValidator(HeartbeatRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
@@ -99,7 +103,7 @@ export function read(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.userApiKey),
-    paramsValidator(idParamSchema),
+    pathValidator(idParamSchema),
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
       const id = c.req.param("id");

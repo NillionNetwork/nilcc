@@ -1,20 +1,18 @@
 import { describeRoute } from "hono-openapi";
-import { resolver, validator as zValidator } from "hono-openapi/zod";
-import { StatusCodes } from "http-status-codes";
+import { resolver } from "hono-openapi/zod";
 import z from "zod";
 import { apiKey } from "#/common/auth";
-import {
-  CreateEntityError,
-  HttpError,
-  InstancesNotAvailable,
-} from "#/common/errors";
 import {
   OpenApiSpecCommonErrorResponses,
   OpenApiSpecEmptySuccessResponses,
 } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { paramsValidator, responseValidator } from "#/common/zod-utils";
+import {
+  pathValidator,
+  payloadValidator,
+  responseValidator,
+} from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import { workloadMapper } from "#/workload/workload.mapper";
 import {
@@ -50,35 +48,22 @@ export function create(options: ControllerOptions): void {
       },
     }),
     apiKey(bindings.config.userApiKey),
-    zValidator("json", CreateWorkloadRequest),
+    payloadValidator(CreateWorkloadRequest),
     responseValidator(bindings, CreateWorkloadResponse),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      try {
-        const workload = await bindings.services.workload.create(
-          bindings,
-          payload,
-          c.get("txQueryRunner"),
-        );
-        return c.json(
-          workloadMapper.entityToResponse(
-            workload,
-            bindings.config.workloadsDnsDomain,
-          ),
-        );
-      } catch (e: unknown) {
-        if (
-          e instanceof CreateEntityError &&
-          e.cause instanceof InstancesNotAvailable
-        ) {
-          throw new HttpError({
-            message: "No available instances to create workload",
-            statusCode: StatusCodes.SERVICE_UNAVAILABLE,
-          });
-        }
-        throw e;
-      }
+      const workload = await bindings.services.workload.create(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
+      return c.json(
+        workloadMapper.entityToResponse(
+          workload,
+          bindings.config.workloadsDnsDomain,
+        ),
+      );
     },
   );
 }
@@ -146,7 +131,7 @@ export function read(options: ControllerOptions): void {
       },
     }),
     apiKey(bindings.config.userApiKey),
-    paramsValidator(idParamSchema),
+    pathValidator(idParamSchema),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, GetWorkloadResponse),
     async (c) => {
@@ -185,7 +170,7 @@ export function remove(options: ControllerOptions): void {
       },
     }),
     apiKey(bindings.config.userApiKey),
-    zValidator("json", DeleteWorkloadRequest),
+    payloadValidator(DeleteWorkloadRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const workloadId = c.req.valid("json").id;

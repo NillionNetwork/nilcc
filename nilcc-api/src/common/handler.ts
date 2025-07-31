@@ -3,17 +3,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
-import {
-  AgentRequestError,
-  CreateEntityError,
-  DataValidationError,
-  FindEntityError,
-  GetRepositoryError,
-  HttpError,
-  InvalidDockerCompose,
-  RemoveEntityError,
-  UpdateEntityError,
-} from "#/common/errors";
+import { AppError } from "#/common/errors";
 import { type AppEnv, hasFeatureFlag } from "#/env";
 
 export type ApiSuccessResponse<T> = {
@@ -24,9 +14,10 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 export const ApiErrorResponse = z
   .object({
-    errors: z.array(z.string()),
+    error: z.any(),
+    kind: z.string(),
     ts: z.string(),
-    errorsTrace: z.string().optional(),
+    stackTrace: z.string().optional(),
   })
   .openapi({ ref: "ApiErrorResponse" });
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
@@ -34,8 +25,9 @@ export type ApiErrorResponse = z.infer<typeof ApiErrorResponse>;
 export function errorHandler(e: unknown, c: Context<AppEnv>) {
   const toResponse = (
     e: Error | null,
-    errors: string[],
     statusCode: ContentfulStatusCode,
+    rawError: string,
+    kind?: string,
   ): Response => {
     let errorsTrace = e ? new TraceableError(e).toString() : undefined;
     errorsTrace && c.env.log.debug(errorsTrace);
@@ -44,41 +36,39 @@ export function errorHandler(e: unknown, c: Context<AppEnv>) {
     ) {
       errorsTrace = undefined;
     }
+    let error = rawError;
+    // On internal error simply log the error and return a generic error so as to not leak any data.
     if (statusCode === StatusCodes.INTERNAL_SERVER_ERROR) {
       c.env.log.error(`Failed to handle request: ${JSON.stringify(e)}`);
+      error = "Internal error";
     }
     const payload: ApiErrorResponse = {
       ts: Temporal.Now.instant().toString(),
-      errors,
-      errorsTrace,
+      error,
+      kind: kind || "INTERNAL",
+      stackTrace: errorsTrace,
     };
     return c.json(payload, statusCode);
   };
 
-  if (e instanceof DataValidationError || e instanceof InvalidDockerCompose) {
-    return toResponse(e, e.humanize(), StatusCodes.BAD_REQUEST);
-  }
-
-  if (e instanceof HttpError) {
-    return toResponse(e, e.humanize(), e.statusCode);
-  }
-
-  if (
-    e instanceof GetRepositoryError ||
-    e instanceof CreateEntityError ||
-    e instanceof FindEntityError ||
-    e instanceof UpdateEntityError ||
-    e instanceof RemoveEntityError ||
-    e instanceof AgentRequestError
-  ) {
-    return toResponse(e, e.humanize(), StatusCodes.INTERNAL_SERVER_ERROR);
+  if (e instanceof AppError) {
+    return toResponse(e, e.statusCode, e.message, e.kind);
   }
 
   if (e instanceof Error) {
-    return toResponse(e, [e.message], StatusCodes.INTERNAL_SERVER_ERROR);
+    return toResponse(
+      e,
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      e.message,
+      "INTERNAL",
+    );
   }
-  // Default error
-  return toResponse(null, ["Unknown Error"], StatusCodes.INTERNAL_SERVER_ERROR);
+  return toResponse(
+    null,
+    StatusCodes.INTERNAL_SERVER_ERROR,
+    "Internal error",
+    "INTERNAL",
+  );
 }
 
 class TraceableError {

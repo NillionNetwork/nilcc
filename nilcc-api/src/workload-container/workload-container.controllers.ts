@@ -1,11 +1,10 @@
-import { zValidator } from "@hono/zod-validator";
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { apiKey } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { responseValidator } from "#/common/zod-utils";
+import { payloadValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import {
   ListContainersRequest,
@@ -36,7 +35,7 @@ export function listContainers(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", ListContainersRequest),
+    payloadValidator(ListContainersRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListContainersResponse),
     async (c) => {
@@ -73,7 +72,7 @@ export function containerLogs(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", WorkloadContainerLogsRequest),
+    payloadValidator(WorkloadContainerLogsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, WorkloadContainerLogsResponse),
     async (c) => {

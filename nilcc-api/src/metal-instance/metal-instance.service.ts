@@ -1,13 +1,4 @@
 import type { QueryRunner, Repository } from "typeorm";
-import {
-  CreateEntityError,
-  CreateOrUpdateEntityError,
-  FindEntityError,
-  GetRepositoryError,
-  mapError,
-  RemoveEntityError,
-  UpdateEntityError,
-} from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
   HeartbeatRequest,
@@ -16,7 +7,6 @@ import type {
 import { MetalInstanceEntity } from "./metal-instance.entity";
 
 export class MetalInstanceService {
-  @mapError((e) => new GetRepositoryError(e))
   getRepository(
     bindings: AppBindings,
     tx?: QueryRunner,
@@ -27,13 +17,11 @@ export class MetalInstanceService {
     return bindings.dataSource.getRepository(MetalInstanceEntity);
   }
 
-  @mapError((e) => new FindEntityError(MetalInstanceEntity, e))
   async list(bindings: AppBindings): Promise<MetalInstanceEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError(MetalInstanceEntity, e))
   async read(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -43,7 +31,6 @@ export class MetalInstanceService {
     return await repository.findOneBy({ id: metalInstanceId });
   }
 
-  @mapError((e) => new RemoveEntityError(MetalInstanceEntity, e))
   async remove(
     bindings: AppBindings,
     metalInstanceId: string,
@@ -53,7 +40,6 @@ export class MetalInstanceService {
     return result.affected ? result.affected > 0 : false;
   }
 
-  @mapError((e) => new CreateOrUpdateEntityError(MetalInstanceEntity, e))
   async createOrUpdate(
     bindings: AppBindings,
     request: RegisterMetalInstanceRequest,
@@ -73,10 +59,7 @@ export class MetalInstanceService {
   ) {
     const metalInstance = await this.read(bindings, request.id, tx);
     if (metalInstance === null) {
-      throw new FindEntityError(
-        MetalInstanceEntity,
-        "metal instance not found",
-      );
+      throw new Error("metal instance not found");
     }
     const repository = this.getRepository(bindings, tx);
     metalInstance.lastSeenAt = new Date();
@@ -125,7 +108,6 @@ export class MetalInstanceService {
     return await queryBuilder.getMany();
   }
 
-  @mapError((e) => new UpdateEntityError(MetalInstanceEntity, e))
   async update(
     bindings: AppBindings,
     metalInstance: RegisterMetalInstanceRequest,
@@ -152,7 +134,6 @@ export class MetalInstanceService {
     await repository.save(currentMetalInstance);
   }
 
-  @mapError((e) => new CreateEntityError(MetalInstanceEntity, e))
   async create(
     bindings: AppBindings,
     request: RegisterMetalInstanceRequest,
