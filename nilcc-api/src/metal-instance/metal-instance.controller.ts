@@ -22,11 +22,10 @@ export function register(options: ControllerOptions) {
   app.post(
     PathsV1.metalInstance.register,
     describeRoute({
-      tags: ["Metal-Instance"],
-      summary:
-        "Register a metal instance, will create it if it does not exist, or update it if it does",
+      tags: ["metal-instance"],
+      summary: "Register a metal instance",
       description:
-        "Registers a metal instance by creating it if it does not exist, or updating it if it does",
+        "This will create the metal instance if it's the first time it's registering, or it will update it if it already exists",
       responses: {
         200: {
           description: "Metal instance registered successfully",
@@ -54,8 +53,10 @@ export function heartbeat(options: ControllerOptions) {
   app.post(
     PathsV1.metalInstance.heartbeat,
     describeRoute({
-      tags: ["Metal-Instance"],
-      summary: "Report this metal instance as being online",
+      tags: ["metal-instance"],
+      summary: "Report a metal instance as being online",
+      description:
+        "This endpoint must be called periodically by every metal instance for them to be considered online by nilcc-api",
       responses: {
         200: {
           description: "The heartbeat was processed successfully",
@@ -83,9 +84,8 @@ export function read(options: ControllerOptions) {
   app.get(
     PathsV1.metalInstance.read,
     describeRoute({
-      tags: ["Metal-Instance"],
-      summary: "Get a metal instance by ID",
-      description: "Returns a metal instance by its ID",
+      tags: ["metal-instance"],
+      summary: "Get the details for a metal instance by ID",
       responses: {
         200: {
           description: "Workload found",
@@ -117,9 +117,8 @@ export function list(options: ControllerOptions) {
   app.get(
     PathsV1.metalInstance.list,
     describeRoute({
-      tags: ["Metal-Instance"],
+      tags: ["metal-instance"],
       summary: "List all metal instances",
-      description: "Returns a list of all metal instances",
       responses: {
         200: {
           description: "List of metal instances",

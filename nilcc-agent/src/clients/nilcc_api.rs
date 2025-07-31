@@ -98,7 +98,7 @@ impl NilccApiClient for HttpNilccApiClient {
         resources: &SystemResources,
         public_ip: Ipv4Addr,
     ) -> anyhow::Result<()> {
-        let url = self.make_url("/api/v1/metal-instances/~/register");
+        let url = self.make_url("/api/v1/metal-instances/register");
         let payload = RegisterRequest {
             id: self.agent_id,
             agent_version: agent_version().to_string(),
@@ -115,13 +115,13 @@ impl NilccApiClient for HttpNilccApiClient {
     }
 
     async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
-        let url = self.make_url("/api/v1/workloads/~/events/submit");
+        let url = self.make_url("/api/v1/workload-events/submit");
         let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
         self.send_request(Method::POST, url, &payload).await.context("Failed to submit event")
     }
 
     async fn heartbeat(&self) -> anyhow::Result<()> {
-        let url = self.make_url("/api/v1/metal-instances/~/heartbeat");
+        let url = self.make_url("/api/v1/metal-instances/heartbeat");
         let payload = HeartbeatRequest { id: self.agent_id };
         self.send_request(Method::POST, url, &payload).await.context("Failed to submit heartbeat")
     }
