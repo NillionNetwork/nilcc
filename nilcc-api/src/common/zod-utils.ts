@@ -4,7 +4,7 @@ import { StatusCodes } from "http-status-codes";
 import { Temporal } from "temporal-polyfill";
 import type { Schema } from "zod";
 import type { AppBindings } from "#/env";
-import { DataValidationError } from "./errors";
+import type { ApiErrorResponse } from "./handler";
 
 export function payloadValidator<T extends Schema>(schema: T) {
   return zValidator("json", schema, (result, c) => {
@@ -12,33 +12,27 @@ export function payloadValidator<T extends Schema>(schema: T) {
       return result.data;
     }
 
-    const errors = new DataValidationError({
-      issues: [result.error],
-      cause: null,
-    }).humanize();
-
-    return c.json(
-      { ts: Temporal.Now.instant().toString(), errors },
-      StatusCodes.BAD_REQUEST,
-    );
+    const response: ApiErrorResponse = {
+      kind: "INVALID_PAYLOAD",
+      error: result.error,
+      ts: Temporal.Now.instant().toString(),
+    };
+    return c.json(response, StatusCodes.BAD_REQUEST);
   });
 }
 
-export function paramsValidator<T extends Schema>(schema: T) {
+export function pathValidator<T extends Schema>(schema: T) {
   return zValidator("param", schema, (result, c) => {
     if (result.success) {
       return result.data;
     }
 
-    const errors = new DataValidationError({
-      issues: [result.error],
-      cause: null,
-    }).humanize();
-
-    return c.json(
-      { ts: Temporal.Now.instant().toString(), errors },
-      StatusCodes.BAD_REQUEST,
-    );
+    const response: ApiErrorResponse = {
+      kind: "INVALID_PATH",
+      error: result.error,
+      ts: Temporal.Now.instant().toString(),
+    };
+    return c.json(response, StatusCodes.BAD_REQUEST);
   });
 }
 
@@ -58,14 +52,12 @@ export function responseValidator<T extends Schema>(
     if (result.success) {
       return c;
     }
-    const errors = new DataValidationError({
-      issues: [result.error],
-      cause: null,
-    }).humanize();
+    const response: ApiErrorResponse = {
+      kind: "INVALID_RESPONSE",
+      error: result.error,
+      ts: Temporal.Now.instant().toString(),
+    };
 
-    return c.json(
-      { ts: Temporal.Now.instant().toString(), errors },
-      StatusCodes.INTERNAL_SERVER_ERROR,
-    );
+    return c.json(response, StatusCodes.INTERNAL_SERVER_ERROR);
   };
 }

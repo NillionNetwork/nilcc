@@ -1,9 +1,9 @@
 import { AppError } from "#/common/errors";
 
 export class CreateRecordError extends AppError {
-  tag = "CreateRecordError";
+  kind = "CreateRecordError";
 }
 
 export class DeleteRecordError extends AppError {
-  tag = "DeleteRecordError";
+  kind = "DeleteRecordError";
 }

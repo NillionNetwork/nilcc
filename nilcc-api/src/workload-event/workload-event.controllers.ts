@@ -1,11 +1,10 @@
-import { zValidator } from "@hono/zod-validator";
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { apiKey } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { responseValidator } from "#/common/zod-utils";
+import { payloadValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
 import {
@@ -30,7 +29,7 @@ export function submitEvent(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", SubmitEventRequest),
+    payloadValidator(SubmitEventRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
@@ -64,7 +63,7 @@ export function listEvents(options: ControllerOptions) {
       },
     }),
     apiKey(bindings.config.userApiKey),
-    zValidator("json", ListWorkloadEventsRequest),
+    payloadValidator(ListWorkloadEventsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListWorkloadEventsResponse),
     async (c) => {

@@ -1,18 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { Container } from "#/clients/nilcc-agent.client";
-import {
-  ContainerLogsError,
-  CreateEntityError,
-  FindEntityError,
-  GetRepositoryError,
-  InstancesNotAvailable,
-  ListContainersError,
-  ListWorkloadEventsError,
-  mapError,
-  RemoveEntityError,
-  SubmitEventError,
-} from "#/common/errors";
+import { InstancesNotAvailable } from "#/common/errors";
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type {
@@ -31,7 +20,6 @@ import type { CreateWorkloadRequest } from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
 
 export class WorkloadService {
-  @mapError((e) => new GetRepositoryError(e))
   getRepository(
     bindings: AppBindings,
     tx: QueryRunner,
@@ -42,7 +30,6 @@ export class WorkloadService {
     return bindings.dataSource.getRepository(WorkloadEntity);
   }
 
-  @mapError((e) => new CreateEntityError(WorkloadEntity, e))
   async create(
     bindings: AppBindings,
     request: CreateWorkloadRequest,
@@ -106,7 +93,6 @@ export class WorkloadService {
     return createdWorkload;
   }
 
-  @mapError((e) => new FindEntityError(WorkloadEntity, e))
   async list(
     bindings: AppBindings,
     tx: QueryRunner,
@@ -115,7 +101,6 @@ export class WorkloadService {
     return await repository.find();
   }
 
-  @mapError((e) => new FindEntityError(WorkloadEntity, e))
   async read(
     bindings: AppBindings,
     workloadId: string,
@@ -125,7 +110,6 @@ export class WorkloadService {
     return await repository.findOneBy({ id: workloadId });
   }
 
-  @mapError((e) => new RemoveEntityError(WorkloadEntity, e))
   async remove(
     bindings: AppBindings,
     workloadId: string,
@@ -149,7 +133,6 @@ export class WorkloadService {
     return true;
   }
 
-  @mapError((e) => new SubmitEventError(e))
   async submitEvent(
     bindings: AppBindings,
     request: SubmitEventRequest,
@@ -192,7 +175,6 @@ export class WorkloadService {
     await eventRepository.save(event);
   }
 
-  @mapError((e) => new ListWorkloadEventsError(e))
   async listEvents(
     bindings: AppBindings,
     request: ListWorkloadEventsRequest,
@@ -233,7 +215,6 @@ export class WorkloadService {
     });
   }
 
-  @mapError((e) => new ListContainersError(e))
   async listContainers(
     bindings: AppBindings,
     request: ListContainersRequest,
@@ -254,7 +235,6 @@ export class WorkloadService {
     );
   }
 
-  @mapError((e) => new ContainerLogsError(e))
   async containerLogs(
     bindings: AppBindings,
     request: WorkloadContainerLogsRequest,

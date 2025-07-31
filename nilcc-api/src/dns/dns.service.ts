@@ -7,8 +7,6 @@ import {
   type RRType,
 } from "@aws-sdk/client-route-53";
 import type { Logger } from "pino";
-import { mapError } from "#/common/errors";
-import { CreateRecordError, DeleteRecordError } from "#/dns/dns.errors";
 
 export interface DnsService {
   createRecord(domain: string, to: string, recordType: RRType): Promise<void>;
@@ -47,7 +45,6 @@ export class Route53DnsService implements DnsService {
     return new Route53DnsService(zone, subdomain, zoneId, route53);
   }
 
-  @mapError((e) => new CreateRecordError(e))
   async createRecord(
     domain: string,
     to: string,
@@ -73,7 +70,6 @@ export class Route53DnsService implements DnsService {
     await this.route53.send(command);
   }
 
-  @mapError((e) => new DeleteRecordError(e))
   async deleteRecord(domain: string, recordType: RRType): Promise<void> {
     const fullDomain = `${domain}.${this.subdomain}`;
     const domainData = await this.findDomain(
