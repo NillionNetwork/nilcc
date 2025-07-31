@@ -90,17 +90,17 @@ declare global {
       APP_DB_URI: string;
       APP_ENABLED_FEATURES: string;
       APP_LOG_LEVEL: string;
-      APP_METRICS_PORT?: number;
-      APP_HTTP_API_PORT: number;
+      APP_METRICS_PORT: string;
+      APP_HTTP_API_PORT: string;
       APP_METAL_INSTANCE_API_KEY: string;
       APP_USER_API_KEY: string;
       APP_WORKLOADS_DNS_ZONE: string;
       APP_WORKLOADS_DNS_DOMAIN: string;
       APP_METAL_INSTANCES_DNS_DOMAIN: string;
       APP_METAL_INSTANCES_DNS_ZONE: string;
-      APP_METAL_INSTANCES_ENDPOINT_SCHEME: string | undefined;
-      APP_METAL_INSTANCES_ENDPOINT_PORT: string | undefined;
-      APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS: string | undefined;
+      APP_METAL_INSTANCES_ENDPOINT_SCHEME?: string;
+      APP_METAL_INSTANCES_ENDPOINT_PORT?: string;
+      APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS?: string;
     }
   }
 }

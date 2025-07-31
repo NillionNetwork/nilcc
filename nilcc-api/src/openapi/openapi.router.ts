@@ -1,7 +1,7 @@
+import { cors } from "hono/cors";
 import { openAPISpecs } from "hono-openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
-import { cors } from 'hono/cors'
 
 export function createOpenApiRouter(options: ControllerOptions): void {
   const { app } = options;

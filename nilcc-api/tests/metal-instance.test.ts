@@ -46,7 +46,7 @@ describe("Metal Instance", () => {
     });
 
     expect(getResponseAfter.response.status).equals(200);
-    const body = await getResponseAfter.parse_body();
+    const body = await getResponseAfter.parseBody();
     const cleanBody = {
       ...body,
       updatedAt: undefined,
@@ -79,7 +79,7 @@ describe("Metal Instance", () => {
       id: myMetalInstance.id,
     });
     expect(getResponse.response.status).equals(200);
-    const body = await getResponse.parse_body();
+    const body = await getResponse.parseBody();
     const cleanBody = {
       ...body,
       updatedAt: undefined,
@@ -100,7 +100,7 @@ describe("Metal Instance", () => {
       id: myMetalInstance.id,
     });
     expect(originalResponse.response.status).equals(200);
-    const originalBody = await originalResponse.parse_body();
+    const originalBody = await originalResponse.parseBody();
     const lastSeen = new Date(originalBody.lastSeenAt);
     // sleep for a little bit
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -114,7 +114,7 @@ describe("Metal Instance", () => {
     const response = await userClient.getMetalInstance({
       id: myMetalInstance.id,
     });
-    const body = await response.parse_body();
+    const body = await response.parseBody();
     const currentLastSeen = new Date(body.lastSeenAt);
     expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
   });

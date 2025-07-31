@@ -24,7 +24,7 @@ export type TestClientOptions = {
   bindings: AppBindings;
 };
 
-class TestClient {
+export class TestClient {
   constructor(public _options: TestClientOptions) {}
 
   get app(): App {
@@ -68,13 +68,13 @@ class TestClient {
   }
 }
 
-class ParseableResponse<T> {
+export class ParseableResponse<T> {
   constructor(
     public response: Response,
     public schema: ZodType<T>,
   ) {}
 
-  async parse_body(): Promise<T> {
+  async parseBody(): Promise<T> {
     const response = await this.response.json();
     if (!this.response.ok) {
       throw new Error(
