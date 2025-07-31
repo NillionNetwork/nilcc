@@ -16,6 +16,8 @@ import { buildMetalInstanceRouter } from "./metal-instance/metal-instance.router
 import { createOpenApiRouter } from "./openapi/openapi.router";
 import { buildSystemRouter } from "./system/system.router";
 import { buildWorkloadRouter } from "./workload/workload.router";
+import { buildWorkloadContainerRouter } from "./workload-container/workload-container.router";
+import { buildWorkloadEventRouter } from "./workload-event/workload-event.router";
 
 export type App = Hono<AppEnv>;
 
@@ -39,6 +41,8 @@ export async function buildApp(
   }
 
   buildWorkloadRouter({ app, bindings });
+  buildWorkloadContainerRouter({ app, bindings });
+  buildWorkloadEventRouter({ app, bindings });
   buildMetalInstanceRouter({ app, bindings });
   buildSystemRouter({ app, bindings });
 

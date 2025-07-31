@@ -16,19 +16,13 @@ import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { paramsValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
-import { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
 import { workloadMapper } from "#/workload/workload.mapper";
 import {
   CreateWorkloadRequest,
   CreateWorkloadResponse,
+  DeleteWorkloadRequest,
   GetWorkloadResponse,
-  ListContainersRequest,
-  ListContainersResponse,
-  ListWorkloadEventsRequest,
-  ListWorkloadEventsResponse,
   ListWorkloadsResponse,
-  WorkloadContainerLogsRequest,
-  WorkloadContainerLogsResponse,
 } from "./workload.dto";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -39,10 +33,10 @@ export function create(options: ControllerOptions): void {
   app.post(
     PathsV1.workload.create,
     describeRoute({
-      tags: ["Workload"],
-      summary: "Create a new Workload",
+      tags: ["workload"],
+      summary: "Create a new workload",
       description:
-        "Creates a new Workload ad responds with the workload data and Id",
+        "This endpoint creates a new workload. The domain the workload is accessible at will be returned as part of the response.",
       responses: {
         200: {
           description: "Workload created successfully",
@@ -95,12 +89,11 @@ export function list(options: ControllerOptions): void {
   app.get(
     PathsV1.workload.list,
     describeRoute({
-      tags: ["Workload"],
-      summary: "List Workloads",
-      description: "List all Workloads",
+      tags: ["workload"],
+      summary: "List all workloads",
       responses: {
         200: {
-          description: "Workload listed successfully",
+          description: "The workloads",
           content: {
             "application/json": {
               schema: resolver(ListWorkloadsResponse),
@@ -136,12 +129,13 @@ export function read(options: ControllerOptions): void {
   app.get(
     PathsV1.workload.read,
     describeRoute({
-      tags: ["Workload"],
-      summary: "Read a Workload",
-      description: "Read a Workload by its ID",
+      tags: ["workload"],
+      summary: "Get the details for a workload",
+      description:
+        "This endpoint allows getting the details for a workload by its id",
       responses: {
         200: {
-          description: "Workload read successfully",
+          description: "The workload details",
           content: {
             "application/json": {
               schema: resolver(GetWorkloadResponse),
@@ -178,22 +172,23 @@ export function read(options: ControllerOptions): void {
 export function remove(options: ControllerOptions): void {
   const { app, bindings } = options;
 
-  app.delete(
-    PathsV1.workload.remove,
+  app.post(
+    PathsV1.workload.delete,
     describeRoute({
-      tags: ["Workload"],
-      summary: "Remove a Workload",
-      description: "Remove a Workload",
+      tags: ["workload"],
+      summary: "Delete a workload",
+      description:
+        "This endpoint deletes a workload. The workload CVM will be stopped and all resources associated with it will be deleted",
       responses: {
         200: OpenApiSpecEmptySuccessResponses[200],
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
     apiKey(bindings.config.userApiKey),
-    paramsValidator(idParamSchema),
+    zValidator("json", DeleteWorkloadRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
-      const workloadId = c.req.valid("param").id;
+      const workloadId = c.req.valid("json").id;
       const deleted = await bindings.services.workload.remove(
         bindings,
         workloadId,
@@ -203,141 +198,6 @@ export function remove(options: ControllerOptions): void {
         return c.notFound();
       }
       return c.body(null, 200);
-    },
-  );
-}
-
-export function submitEvent(options: ControllerOptions) {
-  const { app, bindings } = options;
-  app.post(
-    PathsV1.workload.events.submit,
-    describeRoute({
-      tags: ["Metal-Instance", "Workload"],
-      summary: "Report an event for a workload running inside a metal instance",
-      description: "Reports an event and updates the state for the workload",
-      responses: {
-        200: {
-          description: "The event was processed successfully",
-        },
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", SubmitEventRequest),
-    transactionMiddleware(bindings.dataSource),
-    async (c) => {
-      const payload = c.req.valid("json");
-      await bindings.services.workload.submitEvent(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      return c.body(null);
-    },
-  );
-}
-
-export function listEvents(options: ControllerOptions) {
-  const { app, bindings } = options;
-  app.post(
-    PathsV1.workload.events.list,
-    describeRoute({
-      tags: ["Metal-Instance", "Workload"],
-      summary: "List the events for a workload",
-      responses: {
-        200: {
-          description: "Event list returned successfully",
-          content: {
-            "application/json": {
-              schema: resolver(ListWorkloadEventsResponse),
-            },
-          },
-        },
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.userApiKey),
-    zValidator("json", ListWorkloadEventsRequest),
-    transactionMiddleware(bindings.dataSource),
-    responseValidator(bindings, ListWorkloadEventsResponse),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const events = await bindings.services.workload.listEvents(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      return c.json({ events });
-    },
-  );
-}
-
-export function listContainers(options: ControllerOptions) {
-  const { app, bindings } = options;
-  app.post(
-    PathsV1.workload.containers.list,
-    describeRoute({
-      tags: ["Workload"],
-      summary: "List the containers for a running workload",
-      responses: {
-        200: {
-          description: "The containers list is returned",
-          content: {
-            "application/json": {
-              schema: resolver(ListContainersResponse),
-            },
-          },
-        },
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", ListContainersRequest),
-    transactionMiddleware(bindings.dataSource),
-    responseValidator(bindings, ListContainersResponse),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const containers = await bindings.services.workload.listContainers(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      return c.json(containers);
-    },
-  );
-}
-
-export function containerLogs(options: ControllerOptions) {
-  const { app, bindings } = options;
-  app.post(
-    PathsV1.workload.containers.logs,
-    describeRoute({
-      tags: ["Workload"],
-      summary: "Get the logs for a container",
-      responses: {
-        200: {
-          description: "The container logs",
-          content: {
-            "application/json": {
-              schema: resolver(WorkloadContainerLogsRequest),
-            },
-          },
-        },
-        ...OpenApiSpecCommonErrorResponses,
-      },
-    }),
-    apiKey(bindings.config.metalInstanceApiKey),
-    zValidator("json", WorkloadContainerLogsRequest),
-    transactionMiddleware(bindings.dataSource),
-    responseValidator(bindings, WorkloadContainerLogsResponse),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const logs = await bindings.services.workload.containerLogs(
-        bindings,
-        payload,
-        c.get("txQueryRunner"),
-      );
-      return c.json(logs);
     },
   );
 }

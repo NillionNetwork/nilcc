@@ -15,8 +15,6 @@ describe("workload CRUD", () => {
 
   const createWorkloadRequest: CreateWorkloadRequest = {
     name: "my-cool-workload",
-    description: "This is a test workload",
-    tags: ["test", "workload"],
     dockerCompose: `
 services:
   app:
@@ -30,8 +28,8 @@ services:
     files: {
       "foo_-choop/bar42_beep.txt": "aGkgbW9t",
     },
-    serviceToExpose: "app",
-    servicePortToExpose: 80,
+    publicContainerName: "app",
+    publicContainerPort: 80,
     memory: 4,
     cpus: 2,
     disk: 40,
@@ -79,7 +77,7 @@ services:
     const myWorkloadResponse = await userClient.createWorkload(
       createWorkloadRequest,
     );
-    myWorkload = await myWorkloadResponse.parse_body();
+    myWorkload = await myWorkloadResponse.parseBody();
     expect(myWorkload.name).equals(createWorkloadRequest.name);
     expect(myWorkload.domain).equals(
       `${myWorkload.id}.workloads.public.localhost`,
@@ -104,13 +102,13 @@ services:
     const myWorkloadResponse = await userClient.getWorkload({
       id: myWorkload!.id,
     });
-    const workloadData = await myWorkloadResponse.parse_body();
+    const workloadData = await myWorkloadResponse.parseBody();
     expect(workloadData.name).equals(myWorkload!.name);
   });
 
   it("should list the workloads", async ({ expect, userClient }) => {
     const workloadsResponse = await userClient.listWorkloads();
-    const workloads = await workloadsResponse.parse_body();
+    const workloads = await workloadsResponse.parseBody();
     expect(workloads.length).greaterThan(0);
     expect(workloads[0].name).equals(myWorkload!.name);
   });
@@ -137,7 +135,7 @@ services:
     const workloadResponse = await userClient.createWorkload(
       createWorkloadRequest,
     );
-    myWorkload = await workloadResponse.parse_body();
+    myWorkload = await workloadResponse.parseBody();
 
     const response = await userClient.submitEvent({
       agentId: myMetalInstance.id,
@@ -149,7 +147,7 @@ services:
     const updatedWorkloadResponse = await userClient.getWorkload({
       id: myWorkload.id,
     });
-    const updatedWorkload = await updatedWorkloadResponse.parse_body();
+    const updatedWorkload = await updatedWorkloadResponse.parseBody();
     expect(updatedWorkload.status).toBe("starting");
 
     const eventsResponse = await userClient.getWorkloadEvents({
@@ -157,7 +155,7 @@ services:
     });
     expect(eventsResponse.response.status).toBe(200);
 
-    const eventsBody = await eventsResponse.parse_body();
+    const eventsBody = await eventsResponse.parseBody();
     expect(eventsBody.events).toHaveLength(2);
     const eventKinds = eventsBody.events.map((e) => e.details.kind);
     expect(eventKinds).toEqual(["created", "starting"]);

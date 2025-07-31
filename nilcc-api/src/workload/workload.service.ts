@@ -20,12 +20,14 @@ import type {
   WorkloadEventKind,
 } from "#/metal-instance/metal-instance.dto";
 import type {
-  CreateWorkloadRequest,
   ListContainersRequest,
-  ListWorkloadEventsRequest,
   WorkloadContainerLogsRequest,
+} from "#/workload-container/workload-container.dto";
+import type {
+  ListWorkloadEventsRequest,
   WorkloadEvent,
-} from "./workload.dto";
+} from "#/workload-event/workload-event.dto";
+import type { CreateWorkloadRequest } from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
 
 export class WorkloadService {
@@ -47,7 +49,7 @@ export class WorkloadService {
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
     const validator = new DockerComposeValidator();
-    validator.validate(request.dockerCompose, request.serviceToExpose);
+    validator.validate(request.dockerCompose, request.publicContainerName);
 
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(
@@ -74,6 +76,8 @@ export class WorkloadService {
     const now = new Date();
     const entity = repository.create({
       ...request,
+      serviceToExpose: request.publicContainerName,
+      servicePortToExpose: request.publicContainerPort,
       id: uuidv4(),
       metalInstance,
       createdAt: now,
@@ -237,7 +241,7 @@ export class WorkloadService {
   ): Promise<Array<Container>> {
     const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({
-      where: { id: request.workloadId },
+      where: { id: request.id },
       relations: ["metalInstance"],
     });
     if (workloads.length !== 1) {
@@ -258,7 +262,7 @@ export class WorkloadService {
   ): Promise<Array<string>> {
     const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({
-      where: { id: request.workloadId },
+      where: { id: request.id },
       relations: ["metalInstance"],
     });
     if (workloads.length !== 1) {

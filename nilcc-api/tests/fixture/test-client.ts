@@ -12,17 +12,19 @@ import {
   type CreateWorkloadRequest,
   CreateWorkloadResponse,
   GetWorkloadResponse,
-  type ListWorkloadEventsRequest,
-  ListWorkloadEventsResponse,
   ListWorkloadsResponse,
 } from "#/workload/workload.dto";
+import {
+  type ListWorkloadEventsRequest,
+  ListWorkloadEventsResponse,
+} from "#/workload-event/workload-event.dto";
 
 export type TestClientOptions = {
   app: App;
   bindings: AppBindings;
 };
 
-class TestClient {
+export class TestClient {
   constructor(public _options: TestClientOptions) {}
 
   get app(): App {
@@ -66,13 +68,13 @@ class TestClient {
   }
 }
 
-class ParseableResponse<T> {
+export class ParseableResponse<T> {
   constructor(
     public response: Response,
     public schema: ZodType<T>,
   ) {}
 
-  async parse_body(): Promise<T> {
+  async parseBody(): Promise<T> {
     const response = await this.response.json();
     if (!this.response.ok) {
       throw new Error(
@@ -125,9 +127,11 @@ export class UserClient extends TestClient {
   }
 
   async deleteWorkload(params: { id: string }): Promise<Response> {
-    return this.request(PathsV1.workload.remove.replace(":id", params.id), {
-      method: "DELETE",
-      params,
+    return this.request(PathsV1.workload.delete, {
+      method: "POST",
+      body: {
+        id: params.id,
+      },
     });
   }
 
@@ -142,7 +146,7 @@ export class UserClient extends TestClient {
   }
 
   async submitEvent(request: SubmitEventRequest) {
-    return this.request(PathsV1.workload.events.submit, {
+    return this.request(PathsV1.workloadEvents.submit, {
       method: "POST",
       body: request,
       headers: {
@@ -154,7 +158,7 @@ export class UserClient extends TestClient {
   async getWorkloadEvents(
     request: ListWorkloadEventsRequest,
   ): Promise<ParseableResponse<ListWorkloadEventsResponse>> {
-    const response = await this.request(PathsV1.workload.events.list, {
+    const response = await this.request(PathsV1.workloadEvents.list, {
       method: "POST",
       body: request,
     });

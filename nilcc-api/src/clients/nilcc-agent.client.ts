@@ -159,19 +159,47 @@ type DeleteWorkloadRequest = {
   id: string;
 };
 
-export const Container = z.object({
-  names: z.array(z.string()),
-  image: z.string(),
-  image_id: z.string(),
-  state: z.string(),
-});
+export const Container = z
+  .object({
+    names: z.array(z.string()).openapi({
+      description: "The name(s) for this container.",
+      example: ["cvm-api-1"],
+    }),
+    image: z.string().openapi({
+      description: "The docker image this container is using.",
+      example: "ghcr.io/nillionnetwork/nilcc-attester:latest",
+    }),
+    image_id: z.string().openapi({
+      description: "The docker image identifier being used.",
+      example:
+        "sha256:a16bb0e1a3fa23179888246671ce3db9c9006030cc91b7377972d5e35a121556",
+    }),
+    state: z.string().openapi({
+      description: "The state of this container.",
+      example: "created",
+    }),
+  })
+  .openapi({
+    ref: "Container",
+    description: "A container running in a workload.",
+  });
 
 export type Container = z.infer<typeof Container>;
 
 export const ContainerLogsRequest = z.object({
-  container: z.string(),
-  tail: z.boolean(),
-  stream: z.enum(["stdout", "stderr"]),
-  max_lines: z.number().int().max(1000),
+  container: z.string().openapi({ description: "The name of the container." }),
+  tail: z.boolean().openapi({
+    description:
+      "Whether to get logs from the tail of the log instead of the head.",
+  }),
+  stream: z
+    .enum(["stdout", "stderr"])
+    .openapi({ description: "The stream to get logs from." }),
+  max_lines: z
+    .number()
+    .int()
+    .max(1000)
+    .default(1000)
+    .openapi({ description: "The maximum number of lines to get." }),
 });
 export type ContainerLogsRequest = z.infer<typeof ContainerLogsRequest>;

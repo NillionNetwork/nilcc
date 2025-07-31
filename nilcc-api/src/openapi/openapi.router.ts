@@ -1,16 +1,19 @@
+import { cors } from "hono/cors";
 import { openAPISpecs } from "hono-openapi";
+import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 
 export function createOpenApiRouter(options: ControllerOptions): void {
   const { app } = options;
 
   app.get(
-    "/openapi.json",
+    PathsV1.docs,
+    cors(),
     openAPISpecs(app, {
       documentation: {
         info: {
           title: "nilcc-api",
-          version: "1.0.0-beta.1",
+          version: "0.1.0-beta.1",
           description: "API",
         },
       },
