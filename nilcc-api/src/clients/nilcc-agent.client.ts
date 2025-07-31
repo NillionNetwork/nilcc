@@ -163,20 +163,21 @@ export const Container = z
   .object({
     names: z.array(z.string()).openapi({
       description: "The name(s) for this container.",
-      example: ["cvm-api-1"],
+      examples: [["cvm-api-1"]],
     }),
     image: z.string().openapi({
       description: "The docker image this container is using.",
-      example: "ghcr.io/nillionnetwork/nilcc-attester:latest",
+      examples: ["ghcr.io/nillionnetwork/nilcc-attester:latest"],
     }),
     image_id: z.string().openapi({
       description: "The docker image identifier being used.",
-      example:
+      examples: [
         "sha256:a16bb0e1a3fa23179888246671ce3db9c9006030cc91b7377972d5e35a121556",
+      ],
     }),
     state: z.string().openapi({
       description: "The state of this container.",
-      example: "created",
+      examples: ["created"],
     }),
   })
   .openapi({

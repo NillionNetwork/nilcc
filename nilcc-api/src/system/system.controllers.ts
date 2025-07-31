@@ -17,7 +17,6 @@ export function health(options: ControllerOptions): void {
             "text/plain": {
               schema: {
                 type: "string",
-                example: "OK",
               },
             },
           },
