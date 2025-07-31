@@ -5,18 +5,23 @@ const FILENAME_REGEX = /^[\w/._-]+$/;
 
 export const CreateWorkloadRequest = z
   .object({
-    name: z.string().min(1, "name cannot be empty").openapi({
-      description: "A descriptive name for the workload",
-      example: "my-favorite-workload",
-    }),
+    name: z
+      .string()
+      .min(1, "name cannot be empty")
+      .openapi({
+        description: "A descriptive name for the workload",
+        examples: ["my-favorite-workload"],
+      }),
     dockerCompose: z.string().openapi({
       description:
         "The docker compose to be ran. The docker compose can contain any number of services but it must contain a single one that will act as the public entry point to the CVM.",
-      example: `services:
+      examples: [
+        `services:
   api:
     image: caddy:2
     command: |
       caddy respond --listen :80 --body '{"hi":"foo"}' --header "Content-Type: application/json"`,
+      ],
     }),
     envVars: z
       .record(z.string(), z.string())
@@ -24,7 +29,7 @@ export const CreateWorkloadRequest = z
       .openapi({
         description:
           "The optional environment variables to set on this workload. Environment variables are private and are not included in the attestation measurement.",
-        example: { FOO: "42" },
+        examples: [{ FOO: "42" }],
       }),
     files: z
       .record(z.string(), z.string().base64())
@@ -36,10 +41,12 @@ export const CreateWorkloadRequest = z
       .openapi({
         description:
           "The optional set of files that are meant to be mounted in the docker compose file. These are available under a special `$FILES` prefix that must be used in the docker compose file when referencing these files as mounts. Note that the file contents must be encoded in base64.",
-        example: {
-          "foo/bar.txt":
-            "dGhpcyBpcyBhIGZpbGUgY3JlYXRlZCBpbnNpZGUgdGhlIENWTSBhbmQgbW91bnRlZCB2aWEgZG9ja2VyIGNvbXBvc2U=",
-        },
+        examples: [
+          {
+            "foo/bar.txt":
+              "dGhpcyBpcyBhIGZpbGUgY3JlYXRlZCBpbnNpZGUgdGhlIENWTSBhbmQgbW91bnRlZCB2aWEgZG9ja2VyIGNvbXBvc2U=",
+          },
+        ],
       }),
     publicContainerName: z
       .string()
@@ -47,18 +54,26 @@ export const CreateWorkloadRequest = z
       .openapi({
         description:
           "The container that acts as an entry point to this workload, which must be a part of the docker compose definition.",
-        example: "api",
+        examples: ["api"],
       }),
-    publicContainerPort: z.number().int().positive().openapi({
-      description:
-        "The port that the public container uses to expose its service. This must contain the port this container is bound to, whether it is exposed or not.",
-      example: 80,
-    }),
-    memory: z.number().int().positive().openapi({
-      description:
-        "The amount of memory, in MBs, that the CVM should allocate for this workload.",
-      example: 2048,
-    }),
+    publicContainerPort: z
+      .number()
+      .int()
+      .positive()
+      .openapi({
+        description:
+          "The port that the public container uses to expose its service. This must contain the port this container is bound to, whether it is exposed or not.",
+        examples: [80],
+      }),
+    memory: z
+      .number()
+      .int()
+      .positive()
+      .openapi({
+        description:
+          "The amount of memory, in MBs, that the CVM should allocate for this workload.",
+        examples: [2048],
+      }),
     cpus: z.number().int().positive().openapi({
       description:
         "The number of CPUs that the CVM should allocate for this workload.",
@@ -71,7 +86,7 @@ export const CreateWorkloadRequest = z
       .openapi({
         description:
           "The disk space, in GBs, that the CVM should allocate for this workload. This disk space is used towards anything that's stored in the filesystem during runtime, including docker images, docker containers, files that containers will write, etc. When using large docker images, this parameter should be high enough to accommodate for them.",
-        example: 10,
+        examples: [10],
       }),
     gpus: z.number().int().openapi({
       description:

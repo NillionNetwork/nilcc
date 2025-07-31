@@ -1,4 +1,4 @@
-name: nilcc-agent docker
+name: nilcc-agent build/push
 on:
   push:
     branches:
