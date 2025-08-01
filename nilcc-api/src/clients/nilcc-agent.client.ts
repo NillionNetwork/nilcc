@@ -72,7 +72,18 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     const request: DeleteWorkloadRequest = {
       id: workloadId,
     };
-    await this.post(url, request, metalInstance);
+    try {
+      await this.post(url, request, metalInstance);
+    } catch (e: unknown) {
+      if (
+        e instanceof AgentRequestError &&
+        e.agentErrorKind === "WORKLOAD_NOT_FOUND"
+      ) {
+        // TODO log but I don't want this nonsense of passing `Logger`s around
+        return;
+      }
+      throw e;
+    }
   }
 
   async containers(
@@ -117,8 +128,8 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       },
     });
     if (!response.ok) {
-      const body = await response.json();
-      throw new AgentRequestError(body);
+      const body = AgentErrorDetails.parse(await response.json());
+      throw new AgentRequestError(body.errorCode, body.message);
     }
   }
 
@@ -135,7 +146,8 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     });
     const body = await response.json();
     if (!response.ok) {
-      throw new AgentRequestError(body);
+      const body = AgentErrorDetails.parse(await response.json());
+      throw new AgentRequestError(body.errorCode, body.message);
     }
     return schema.parse(body) as z.infer<T>;
   }
@@ -204,3 +216,8 @@ export const ContainerLogsRequest = z.object({
     .openapi({ description: "The maximum number of lines to get." }),
 });
 export type ContainerLogsRequest = z.infer<typeof ContainerLogsRequest>;
+
+const AgentErrorDetails = z.object({
+  errorCode: z.string(),
+  message: z.string(),
+});

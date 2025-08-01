@@ -29,7 +29,14 @@ export class InvalidDockerCompose extends AppError {
 }
 
 export class AgentRequestError extends AppError {
-  kind = "METAL_INSTANCE_COMMUNICATION";
+  kind = "AGENT_COMMUNICATION";
+  agentErrorKind: string;
+
+  constructor(errorKind: string, message: string) {
+    super();
+    this.description = `agent request failed code = ${errorKind}, message = ${message}`;
+    this.agentErrorKind = errorKind;
+  }
 }
 
 export class EntityNotFound extends AppError {
