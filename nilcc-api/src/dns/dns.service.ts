@@ -18,17 +18,20 @@ export class Route53DnsService implements DnsService {
   readonly zone: string;
   readonly zoneId: string;
   readonly subdomain: string;
+  readonly log: Logger;
 
   protected constructor(
     zone: string,
     subdomain: string,
     zoneId: string,
     route53: Route53Client,
+    log: Logger,
   ) {
     this.zone = zone;
     this.subdomain = subdomain;
     this.route53 = route53;
     this.zoneId = zoneId;
+    this.log = log;
   }
 
   static async create(
@@ -42,7 +45,7 @@ export class Route53DnsService implements DnsService {
     }
 
     const zoneId = await Route53DnsService.findHostedZone(route53, zone, log);
-    return new Route53DnsService(zone, subdomain, zoneId, route53);
+    return new Route53DnsService(zone, subdomain, zoneId, route53, log);
   }
 
   async createRecord(
@@ -78,7 +81,8 @@ export class Route53DnsService implements DnsService {
       recordType,
     );
     if (!domainData) {
-      throw Error(`Domain not found: ${fullDomain}`);
+      this.log.warn(`Domain ${fullDomain} does not exist, ignoring`);
+      return;
     }
     const command = new ChangeResourceRecordSetsCommand({
       HostedZoneId: this.zoneId,
@@ -142,6 +146,7 @@ export class LocalStackDnsService extends Route53DnsService {
   static override async create(
     zone: string,
     subdomain: string,
+    log: Logger,
   ): Promise<Route53DnsService> {
     const route53 = new Route53Client({
       endpoint: process.env.APP_LOCALSTACK_URI,
@@ -156,7 +161,7 @@ export class LocalStackDnsService extends Route53DnsService {
       subdomain,
       route53,
     );
-    return new LocalStackDnsService(zone, subdomain, zoneId, route53);
+    return new LocalStackDnsService(zone, subdomain, zoneId, route53, log);
   }
 
   private static async createHostedZone(

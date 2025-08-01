@@ -204,6 +204,6 @@ async function createDnsService(
     FeatureFlag.LOCALSTACK,
   );
   return localstackEnabled
-    ? await LocalStackDnsService.create(zone, subdomain)
+    ? await LocalStackDnsService.create(zone, subdomain, log)
     : await Route53DnsService.create(zone, subdomain, log);
 }

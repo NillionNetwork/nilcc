@@ -1,7 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { Container } from "#/clients/nilcc-agent.client";
-import { InstancesNotAvailable } from "#/common/errors";
+import { EntityNotFound, NoInstancesAvailable } from "#/common/errors";
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type {
@@ -51,7 +51,7 @@ export class WorkloadService {
       );
 
     if (metalInstances.length === 0) {
-      throw new InstancesNotAvailable();
+      throw new NoInstancesAvailable();
     }
 
     const metalInstance =
@@ -144,7 +144,7 @@ export class WorkloadService {
       id: request.workloadId,
     });
     if (workload === null) {
-      throw new Error("workload not found");
+      throw new EntityNotFound("workload");
     }
     switch (request.event.kind) {
       case "starting":
@@ -186,7 +186,7 @@ export class WorkloadService {
       relations: ["events"],
     });
     if (workloads.length === 0) {
-      throw new Error("workload not found");
+      throw new EntityNotFound("workload");
     }
     return workloads[0].events.map((event) => {
       let details: WorkloadEventKind;
@@ -226,7 +226,7 @@ export class WorkloadService {
       relations: ["metalInstance"],
     });
     if (workloads.length !== 1) {
-      throw new Error("workload not found");
+      throw new EntityNotFound("workload");
     }
     const workload = workloads[0];
     return await bindings.services.nilccAgentClient.containers(
@@ -246,7 +246,7 @@ export class WorkloadService {
       relations: ["metalInstance"],
     });
     if (workloads.length !== 1) {
-      throw new Error("workload not found");
+      throw new EntityNotFound("workload");
     }
     const workload = workloads[0];
     return await bindings.services.nilccAgentClient.containerLogs(

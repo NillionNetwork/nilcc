@@ -3,8 +3,8 @@ import { StatusCodes } from "http-status-codes";
 
 export abstract class AppError extends Error {
   abstract readonly kind: string;
-  readonly statusCode: ContentfulStatusCode = StatusCodes.INTERNAL_SERVER_ERROR;
-  readonly description: string | undefined;
+  statusCode: ContentfulStatusCode = StatusCodes.INTERNAL_SERVER_ERROR;
+  description: string | undefined;
 
   constructor(cause?: unknown) {
     super();
@@ -16,7 +16,7 @@ export abstract class AppError extends Error {
   }
 }
 
-export class InstancesNotAvailable extends AppError {
+export class NoInstancesAvailable extends AppError {
   kind = "NOT_ENOUGH_RESOURCES";
   override statusCode: ContentfulStatusCode = StatusCodes.SERVICE_UNAVAILABLE;
   override description =
@@ -30,4 +30,14 @@ export class InvalidDockerCompose extends AppError {
 
 export class AgentRequestError extends AppError {
   kind = "METAL_INSTANCE_COMMUNICATION";
+}
+
+export class EntityNotFound extends AppError {
+  kind = "NOT_FOUND";
+  override statusCode: ContentfulStatusCode = StatusCodes.NOT_FOUND;
+
+  constructor(entity: string) {
+    super();
+    this.description = `${entity} not found`;
+  }
 }
