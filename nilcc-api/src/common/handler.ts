@@ -64,7 +64,7 @@ export function errorHandler(e: unknown, c: Context<AppEnv>) {
     );
   }
   return toResponse(
-    null,
+    new Error(JSON.stringify(e)),
     StatusCodes.INTERNAL_SERVER_ERROR,
     "Internal error",
     "INTERNAL",
