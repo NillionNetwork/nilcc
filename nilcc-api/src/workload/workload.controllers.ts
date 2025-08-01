@@ -2,6 +2,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
 import { apiKey } from "#/common/auth";
+import { EntityNotFound } from "#/common/errors";
 import {
   OpenApiSpecCommonErrorResponses,
   OpenApiSpecEmptySuccessResponses,
@@ -142,7 +143,7 @@ export function read(options: ControllerOptions): void {
         c.get("txQueryRunner"),
       );
       if (!workload) {
-        return c.notFound();
+        throw new EntityNotFound("workload");
       }
       return c.json(
         workloadMapper.entityToResponse(
@@ -174,15 +175,12 @@ export function remove(options: ControllerOptions): void {
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const workloadId = c.req.valid("json").id;
-      const deleted = await bindings.services.workload.remove(
+      await bindings.services.workload.remove(
         bindings,
         workloadId,
         c.get("txQueryRunner"),
       );
-      if (!deleted) {
-        return c.notFound();
-      }
-      return c.body(null, 200);
+      return c.body(null);
     },
   );
 }

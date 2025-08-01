@@ -114,14 +114,14 @@ export class WorkloadService {
     bindings: AppBindings,
     workloadId: string,
     tx: QueryRunner,
-  ): Promise<boolean> {
+  ): Promise<void> {
     const workloadRepository = this.getRepository(bindings, tx);
     const workloads = await workloadRepository.find({
       where: { id: workloadId },
       relations: ["metalInstance"],
     });
     if (workloads.length === 0) {
-      return false;
+      throw new EntityNotFound("workload");
     }
     const workload = workloads[0];
     await workloadRepository.delete({ id: workloadId });
@@ -130,7 +130,6 @@ export class WorkloadService {
       workload.metalInstance,
       workloadId,
     );
-    return true;
   }
 
   async submitEvent(
