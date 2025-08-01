@@ -152,6 +152,7 @@ async function buildServices(
     config.metalInstancesEndpointScheme,
     config.metalInstancesDnsDomain,
     config.metalInstancesEndpointPort,
+    log,
   );
 
   return {

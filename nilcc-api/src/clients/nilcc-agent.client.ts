@@ -1,3 +1,4 @@
+import type { Logger } from "pino";
 import z from "zod";
 import { AgentRequestError } from "#/common/errors";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -31,11 +32,18 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
   protected scheme: string;
   protected subdomain: string;
   protected port: number;
+  protected log: Logger;
 
-  constructor(scheme: "http" | "https", subdomain: string, port: number) {
+  constructor(
+    scheme: "http" | "https",
+    subdomain: string,
+    port: number,
+    log: Logger,
+  ) {
     this.scheme = scheme;
     this.subdomain = subdomain;
     this.port = port;
+    this.log = log;
   }
 
   makeUrl(metalInstance: MetalInstanceEntity, path: string) {
@@ -48,6 +56,9 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     domain: string,
   ): Promise<void> {
     const url = this.makeUrl(metalInstance, "/api/v1/workloads/create");
+    this.log.info(
+      `Creating workload ${workload.id} in agent ${metalInstance.id}`,
+    );
     const request: CreateWorkloadRequest = {
       id: workload.id,
       dockerCompose: workload.dockerCompose,
@@ -69,17 +80,23 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     workloadId: string,
   ): Promise<void> {
     const url = this.makeUrl(metalInstance, "/api/v1/workloads/delete");
+
     const request: DeleteWorkloadRequest = {
       id: workloadId,
     };
     try {
+      this.log.info(
+        `Deleting workload ${workloadId} in agent ${metalInstance.id}`,
+      );
       await this.post(url, request, metalInstance);
     } catch (e: unknown) {
       if (
         e instanceof AgentRequestError &&
         e.agentErrorKind === "WORKLOAD_NOT_FOUND"
       ) {
-        // TODO log but I don't want this nonsense of passing `Logger`s around
+        this.log.warn(
+          `Attempted to delete workload ${workloadId} in agent ${metalInstance.id} but it didn't exist`,
+        );
         return;
       }
       throw e;
@@ -93,6 +110,9 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     const url = this.makeUrl(
       metalInstance,
       `/api/v1/workloads/${workloadId}/containers/list`,
+    );
+    this.log.info(
+      `Looking up containers for workload ${workloadId} in agent ${metalInstance.id}`,
     );
     return await this.get(url, metalInstance, Container.array());
   }
@@ -109,6 +129,9 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     const url = this.makeUrl(
       metalInstance,
       `/api/v1/workloads/${workloadId}/containers/logs?${queryParams}`,
+    );
+    this.log.info(
+      `Looking up container logs for workload ${workloadId} in agent ${metalInstance.id}`,
     );
     return await this.get(url, metalInstance, z.string().array());
   }
