@@ -1,4 +1,5 @@
 import type { QueryRunner, Repository } from "typeorm";
+import { EntityNotFound } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
   HeartbeatRequest,
@@ -59,7 +60,7 @@ export class MetalInstanceService {
   ) {
     const metalInstance = await this.read(bindings, request.id, tx);
     if (metalInstance === null) {
-      throw new Error("metal instance not found");
+      throw new EntityNotFound("metal instance");
     }
     const repository = this.getRepository(bindings, tx);
     metalInstance.lastSeenAt = new Date();
