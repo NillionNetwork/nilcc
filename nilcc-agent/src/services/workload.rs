@@ -15,6 +15,8 @@ use tokio::sync::Mutex;
 use tracing::info;
 use uuid::Uuid;
 
+const TOTAL_PORTS: usize = 3;
+
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
@@ -178,7 +180,7 @@ impl DefaultWorkloadService {
             domain,
         } = request;
         let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
-        let ports: Vec<_> = resources.ports.iter().take(3).copied().collect();
+        let ports: Vec<_> = resources.ports.iter().take(TOTAL_PORTS).copied().collect();
         let ports = ports.try_into().expect("not enough ports");
 
         Workload {
@@ -219,7 +221,7 @@ impl WorkloadService for DefaultWorkloadService {
         if resources.disk_space_gb < disk_space_gb {
             return Err(CreateWorkloadError::InsufficientResources("disk space"));
         }
-        if resources.ports.len() < 2 {
+        if resources.ports.len() < TOTAL_PORTS {
             return Err(CreateWorkloadError::InsufficientResources("open ports"));
         }
         let workload = self.build_workload(request, &resources);
@@ -234,7 +236,7 @@ impl WorkloadService for DefaultWorkloadService {
 
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
-        resources.ports.drain(0..2);
+        resources.ports.drain(0..TOTAL_PORTS);
         resources.memory_mb -= memory_mb;
         resources.disk_space_gb -= disk_space_gb;
         Ok(())
