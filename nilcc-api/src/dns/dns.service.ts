@@ -70,11 +70,15 @@ export class Route53DnsService implements DnsService {
         ],
       },
     });
+    this.log.info(
+      `Creating ${recordType} record ${fullDomain} pointing to ${to}`,
+    );
     await this.route53.send(command);
   }
 
   async deleteRecord(domain: string, recordType: RRType): Promise<void> {
     const fullDomain = `${domain}.${this.subdomain}`;
+    this.log.info(`Looking up domain ${fullDomain}`);
     const domainData = await this.findDomain(
       this.zoneId,
       fullDomain,
@@ -84,6 +88,7 @@ export class Route53DnsService implements DnsService {
       this.log.warn(`Domain ${fullDomain} does not exist, ignoring`);
       return;
     }
+    this.log.info(`Removing record for domain ${fullDomain}`);
     const command = new ChangeResourceRecordSetsCommand({
       HostedZoneId: this.zoneId,
       ChangeBatch: {
