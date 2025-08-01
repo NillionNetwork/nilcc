@@ -2,6 +2,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
 import { apiKey } from "#/common/auth";
+import { EntityNotFound } from "#/common/errors";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -109,7 +110,7 @@ export function read(options: ControllerOptions) {
       const id = c.req.param("id");
       const instance = await bindings.services.metalInstance.read(bindings, id);
       if (!instance) {
-        return c.notFound();
+        throw new EntityNotFound("metal instance");
       }
       return c.json(metalInstanceMapper.entityToResponse(instance));
     },
