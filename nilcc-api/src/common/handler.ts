@@ -39,7 +39,9 @@ export function errorHandler(e: unknown, c: Context<AppEnv>) {
     let error = rawError;
     // On internal error simply log the error and return a generic error so as to not leak any data.
     if (statusCode === StatusCodes.INTERNAL_SERVER_ERROR) {
-      c.env.log.error(`Failed to handle request: ${JSON.stringify(e)}`);
+      c.env.log.error(
+        `Failed to handle request: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`,
+      );
       error = "Internal error";
     }
     const payload: ApiErrorResponse = {
@@ -64,7 +66,7 @@ export function errorHandler(e: unknown, c: Context<AppEnv>) {
     );
   }
   return toResponse(
-    new Error(JSON.stringify(e)),
+    new Error(JSON.stringify(e, Object.getOwnPropertyNames(e))),
     StatusCodes.INTERNAL_SERVER_ERROR,
     "Internal error",
     "INTERNAL",
