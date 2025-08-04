@@ -33,7 +33,6 @@ cp $SCRIPT_PATH/../kernel/build/$TYPE/linux-*.deb "$BUILD_PATH/kernel/"
 
 # Copy cvm-agent script and dependencies.
 cp "$CVM_AGENT_PATH" "$BUILD_PATH/custom/"
-cp -r "$SCRIPT_PATH/../../cvm-agent/services/" "$BUILD_PATH/custom/"
 cp "$SCRIPT_PATH/cvm-agent.service" "$BUILD_PATH/custom/"
 
 # Store version and type so the VM can store this persistently.
