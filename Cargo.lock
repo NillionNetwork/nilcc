@@ -2164,6 +2164,7 @@ dependencies = [
  "mockall",
  "nilcc-agent-models",
  "once_cell",
+ "pkcs8",
  "qapi",
  "reqwest",
  "rstest",

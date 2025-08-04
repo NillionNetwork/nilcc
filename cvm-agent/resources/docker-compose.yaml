@@ -23,6 +23,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      CADDY_ACME_ACCOUNT_KEY: ${CADDY_ACME_ACCOUNT_KEY}
     volumes:
-      - ${CADDY_INPUT_FILE}:/etc/caddy/Caddyfile
+      - ${CADDY_INPUT_FILE}:/etc/caddy/caddy.json
+    command: caddy run --config /etc/caddy/caddy.json
 

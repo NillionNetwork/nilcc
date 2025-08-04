@@ -4,6 +4,8 @@ import { z } from "zod";
 import { InvalidDockerCompose } from "#/common/errors";
 import DockerComposeSchema from "./schema.json";
 
+const CADDY_ACME_ACCOUNT_KEY = "CADDY_ACME_ACCOUNT_KEY";
+
 const RESERVED_PORTS: Array<number> = [80, 443];
 const RESERVED_CONTAINERS: Array<string> = ["nilcc-attester", "nilcc-proxy"];
 const PORT_REGEX =
@@ -76,6 +78,11 @@ const DockerComposePolicy = z.object({
 
 export class DockerComposeValidator {
   validate(rawCompose: string, exposedService: string): void {
+    if (rawCompose.includes("CADDY_ACME_ACCOUNT_KEY ")) {
+      throw new InvalidDockerCompose(
+        `${CADDY_ACME_ACCOUNT_KEY} cannot be present in docker compose`,
+      );
+    }
     const parsedData = this.parseYaml(rawCompose);
     const ajv = new Ajv({ strict: false });
     const validate = ajv.compile(DockerComposeSchema as Schema);

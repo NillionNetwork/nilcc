@@ -27,7 +27,12 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
-    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError>;
+    async fn create_vm(
+        &self,
+        workload: Workload,
+        state: InitialVmState,
+        acme_pem_key: String,
+    ) -> Result<(), StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
     async fn disable_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
@@ -173,7 +178,12 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError> {
+    async fn create_vm(
+        &self,
+        workload: Workload,
+        state: InitialVmState,
+        acme_pem_key: String,
+    ) -> Result<(), StartVmError> {
         let id = workload.id;
         let socket_path = self.state_path.join(format!("{id}.sock"));
         let mut workers = self.workers.lock().await;
@@ -206,6 +216,7 @@ impl VmService for DefaultVmService {
                     spec,
                     socket_path,
                     state,
+                    acme_pem_key,
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -393,7 +404,10 @@ mod tests {
         builder.nilcc_api_client.expect_report_vm_event().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service.create_vm(workload, InitialVmState::Enabled).await.expect("failed to start");
+        ctx.service
+            .create_vm(workload, InitialVmState::Enabled, "acme_key".to_string())
+            .await
+            .expect("failed to start");
 
         let found_base_disk_contents =
             fs::read(ctx.state_path.path().join(format!("{id}.base.qcow2"))).await.expect("failed to read base disk");

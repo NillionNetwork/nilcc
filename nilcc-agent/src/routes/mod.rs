@@ -12,7 +12,7 @@ use axum_valid::{HasValidate, HasValidateArgs};
 use nilcc_agent_models::errors::RequestHandlerError;
 use serde::Serialize;
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tower::ServiceBuilder;
 use validator::ValidateArgs;
 
@@ -33,6 +33,7 @@ pub struct AppState {
     pub services: Services,
     pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
+    pub acme_pem_key: Arc<Mutex<Option<String>>>,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {

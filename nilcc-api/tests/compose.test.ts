@@ -28,6 +28,21 @@ services:
     );
   });
 
+  test("reserved caddy ACME environment variable", () => {
+    const rawCompose = `
+services:
+  api:
+    image: caddy:2
+    environment:
+      FOO: $CADDY_ACME_ACCOUNT_KEY 
+`;
+
+    const validator = new DockerComposeValidator();
+    expect(() => validator.validate(rawCompose, "api")).toThrow(
+      InvalidDockerCompose,
+    );
+  });
+
   test("valid minimal", () => {
     const rawCompose = `
 services:
