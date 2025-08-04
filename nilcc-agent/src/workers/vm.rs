@@ -231,7 +231,7 @@ impl VmWorker {
     async fn submit_event(&self, event: VmEvent) {
         info!("Submitting event to API");
         if let Err(e) = self.nilcc_api_client.report_vm_event(self.workload_id, event).await {
-            error!("Failed to submit event to API: {e}");
+            error!("Failed to submit event to API: {e:#}");
         }
     }
 }
