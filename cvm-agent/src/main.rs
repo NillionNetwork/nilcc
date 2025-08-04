@@ -1,11 +1,11 @@
 use crate::{
     resources::{ApplicationMetadata, Resources},
-    routes::create_router,
+    routes::{create_router, AppState, BootstrapContext, SystemState},
 };
 use bollard::Docker;
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use std::{
-    fs,
+    fs, mem,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     sync::Arc,
@@ -13,12 +13,9 @@ use std::{
 use tempfile::{tempdir, TempDir};
 use tokio::{
     net::TcpListener,
-    process::{Child, Command},
     signal::{self, unix::SignalKind},
 };
 use tracing::{error, info};
-
-const COMPOSE_PROJECT_NAME: &str = "cvm";
 
 mod resources;
 mod routes;
@@ -55,7 +52,7 @@ fn load_metadata(path: &Path) -> Result<ApplicationMetadata, Box<dyn std::error:
     Ok(metadata)
 }
 
-fn launch_docker_compose(cli: &Cli) -> (TempDir, Child) {
+fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
     let metadata = match load_metadata(&cli.iso_mount_path.join("metadata.json")) {
         Ok(metadata) => metadata,
         Err(e) => {
@@ -68,38 +65,26 @@ fn launch_docker_compose(cli: &Cli) -> (TempDir, Child) {
     println!("Writing state files to {}", state_dir.path().display());
 
     let resources = Resources::render(&metadata);
-    let our_compose_path = state_dir.path().join("docker-compose.yaml");
-    let our_caddy_path = state_dir.path().join("Caddyfile");
-    fs::write(&our_compose_path, resources.docker_compose).expect("failed to write docker-compose.yaml");
-    fs::write(&our_caddy_path, resources.caddyfile).expect("failed to write Caddyfile");
+    let system_compose_path = state_dir.path().join("docker-compose.yaml");
+    let caddy_path = state_dir.path().join("caddy.json");
+    fs::write(&system_compose_path, resources.docker_compose).expect("failed to write docker-compose.yaml");
+    fs::write(&caddy_path, resources.caddyfile).expect("failed to write Caddyfile");
 
-    let iso_compose_path = cli.iso_mount_path.join("docker-compose.yaml");
+    let user_compose_path = cli.iso_mount_path.join("docker-compose.yaml");
     let external_files_path = cli.iso_mount_path.join("files");
-    let mut command = Command::new("docker");
-    let command = command
-        .current_dir(&cli.iso_mount_path)
-        // pass in `FILES` which points to `<iso>/files`
-        .env("FILES", external_files_path.into_os_string())
-        // pass in other env vars that are needed by our compose file
-        .env("CADDY_INPUT_FILE", our_caddy_path.into_os_string())
-        .env("NILCC_VERSION", version)
-        .env("NILCC_VM_TYPE", vm_type)
-        .arg("compose")
-        // set a well defined project name, this is used as a prefix for container names
-        .arg("-p")
-        .arg(COMPOSE_PROJECT_NAME)
-        // point to the user provided compose file first
-        .arg("-f")
-        .arg(iso_compose_path)
-        // the outs
-        .arg("-f")
-        .arg(our_compose_path)
-        .arg("up");
-    let child = command.spawn().expect("failed to spawn docker");
-    (state_dir, child)
+    let context = BootstrapContext {
+        system_docker_compose: system_compose_path,
+        user_docker_compose: user_compose_path,
+        external_files: external_files_path,
+        caddy_config: caddy_path,
+        version,
+        vm_type,
+        iso_mount: cli.iso_mount_path.clone(),
+    };
+    (state_dir, context)
 }
 
-async fn shutdown_signal(mut docker_compose: Child) {
+async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c().await.expect("failed to install ctrl-c handler");
     };
@@ -115,9 +100,6 @@ async fn shutdown_signal(mut docker_compose: Child) {
         _ = terminate => {
             info!("Received SIGTERM");
         },
-        _ = docker_compose.wait() => {
-            info!("Docker compose child terminated")
-        }
     }
 }
 
@@ -126,11 +108,19 @@ async fn main() {
     tracing_subscriber::fmt().init();
 
     let cli = Cli::parse();
-    let docker = Arc::new(Docker::connect_with_local_defaults().expect("failed to connect to docker daemon"));
-    let (_state_dir, compose_child) = launch_docker_compose(&cli);
-    let router = create_router(docker);
+    let docker = Docker::connect_with_local_defaults().expect("failed to connect to docker daemon");
+    let (_state_dir, context) = build_bootstrap_context(&cli);
+    let state = Arc::new(AppState { docker, context, system_state: Default::default() });
+    let router = create_router(state.clone());
     let listener = TcpListener::bind(cli.bind_endpoint).await.expect("failed to bind");
-    if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal(compose_child)).await {
+    if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await {
         error!("Failed to serve: {e}");
+    }
+    let system_state = {
+        let mut state = state.system_state.lock().unwrap();
+        mem::take(&mut *state)
+    };
+    if let SystemState::Running(mut child) = system_state {
+        child.kill().await.expect("failed to kill child");
     }
 }

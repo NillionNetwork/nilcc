@@ -1,19 +1,12 @@
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-    Json,
-};
+use crate::routes::SharedState;
+use axum::{extract::Query, http::StatusCode, Json};
 use axum_valid::Valid;
-use bollard::{
-    query_parameters::{InspectContainerOptionsBuilder, LogsOptionsBuilder},
-    Docker,
-};
+use bollard::query_parameters::{InspectContainerOptionsBuilder, LogsOptionsBuilder};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream};
 use futures::StreamExt;
-use std::sync::Arc;
 
 pub(crate) async fn handler(
-    docker: State<Arc<Docker>>,
+    state: SharedState,
     request: Valid<Query<ContainerLogsRequest>>,
 ) -> Result<Json<ContainerLogsResponse>, StatusCode> {
     let ContainerLogsRequest { container, tail, stream, max_lines } = request.0 .0;
@@ -26,12 +19,12 @@ pub(crate) async fn handler(
         OutputStream::Stderr => builder.stderr(true),
     };
 
-    if docker.inspect_container(&container, Some(InspectContainerOptionsBuilder::new().build())).await.is_err() {
+    if state.docker.inspect_container(&container, Some(InspectContainerOptionsBuilder::new().build())).await.is_err() {
         return Err(StatusCode::NOT_FOUND);
     }
 
     let mut lines = Vec::new();
-    let mut stream = docker.logs(&container, Some(builder.build())).take(max_lines);
+    let mut stream = state.docker.logs(&container, Some(builder.build())).take(max_lines);
     while let Some(output) = stream.next().await {
         let output = output.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         lines.push(String::from_utf8_lossy(&output.into_bytes()).trim().to_string());

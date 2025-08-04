@@ -3,6 +3,7 @@ use crate::clients::{
     nilcc_api::{NilccApiClient, VmEvent},
     qemu::{QemuClientError, VmClient, VmSpec},
 };
+use cvm_agent_models::bootstrap::BootstrapRequest;
 use metrics::{counter, gauge};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use strum::EnumDiscriminants;
@@ -32,6 +33,7 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) spec: VmSpec,
     pub(crate) socket_path: PathBuf,
     pub(crate) state: InitialVmState,
+    pub(crate) acme_pem_key: String,
 }
 
 pub(crate) struct VmWorker {
@@ -44,6 +46,7 @@ pub(crate) struct VmWorker {
     socket_path: PathBuf,
     receiver: Receiver<WorkerCommand>,
     vm_state: VmState,
+    acme_pem_key: String,
 }
 
 impl VmWorker {
@@ -57,6 +60,7 @@ impl VmWorker {
             cvm_agent_client,
             cvm_agent_port,
             state,
+            acme_pem_key,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -74,6 +78,7 @@ impl VmWorker {
                 socket_path,
                 receiver,
                 vm_state,
+                acme_pem_key,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -206,7 +211,13 @@ impl VmWorker {
             info!("Checking health of CVM agent");
             match self.cvm_agent_client.check_health(self.cvm_agent_port).await {
                 Ok(()) => {
-                    info!("CVM agent is running");
+                    info!("CVM agent is running, bootstrapping it");
+                    let request = BootstrapRequest { acme_account_key: self.acme_pem_key.clone() };
+                    if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
+                        warn!("Failed to bootstrap agent: {e:#}");
+                        return;
+                    }
+                    info!("CVM agent is bootstrapped");
                     self.vm_state = VmState::Running;
                     self.submit_event(VmEvent::Running).await;
                 }
@@ -334,6 +345,7 @@ mod tests {
             spec,
             socket_path: socket,
             state: InitialVmState::Enabled,
+            acme_pem_key: "acme key".to_string(),
         };
         let join_handle = {
             let handle = VmWorker::spawn(args);

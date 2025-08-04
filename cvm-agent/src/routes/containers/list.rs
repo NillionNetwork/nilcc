@@ -1,12 +1,12 @@
-use axum::{extract::State, http::StatusCode, Json};
-use bollard::{query_parameters::ListContainersOptionsBuilder, secret::ContainerSummaryStateEnum, Docker};
+use crate::routes::SharedState;
+use axum::{http::StatusCode, Json};
+use bollard::{query_parameters::ListContainersOptionsBuilder, secret::ContainerSummaryStateEnum};
 use cvm_agent_models::container::Container;
-use std::sync::Arc;
 use tracing::error;
 
-pub(crate) async fn handler(docker: State<Arc<Docker>>) -> Result<Json<Vec<Container>>, StatusCode> {
+pub(crate) async fn handler(state: SharedState) -> Result<Json<Vec<Container>>, StatusCode> {
     let options = ListContainersOptionsBuilder::new().all(true).build();
-    let containers = docker.list_containers(Some(options)).await.map_err(|e| {
+    let containers = state.docker.list_containers(Some(options)).await.map_err(|e| {
         error!("Failed to fetch logs: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;

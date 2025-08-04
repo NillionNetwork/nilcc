@@ -1,6 +1,7 @@
 use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::{
+    bootstrap::BootstrapRequest,
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse},
 };
@@ -18,6 +19,7 @@ pub trait CvmAgentClient: Send + Sync {
         request: &ContainerLogsRequest,
     ) -> Result<ContainerLogsResponse, CvmAgentRequestError>;
     async fn check_health(&self, cvm_agent_port: u16) -> Result<(), CvmAgentRequestError>;
+    async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError>;
 }
 
 pub struct DefaultCvmAgentClient {
@@ -44,6 +46,13 @@ impl DefaultCvmAgentClient {
         let response = self.client.get(endpoint).query(query).send().await?.error_for_status()?.json().await?;
         Ok(response)
     }
+
+    async fn post<R: Serialize>(&self, port: u16, path: &str, request: &R) -> Result<(), CvmAgentRequestError> {
+        let endpoint = format!("http://127.0.0.1:{port}{path}");
+        info!("Sending request to {endpoint}");
+        self.client.post(endpoint).json(request).send().await?.error_for_status()?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -62,6 +71,10 @@ impl CvmAgentClient for DefaultCvmAgentClient {
 
     async fn check_health(&self, cvm_agent_port: u16) -> Result<(), CvmAgentRequestError> {
         self.get(cvm_agent_port, "/api/v1/health", &()).await
+    }
+
+    async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError> {
+        self.post(cvm_agent_port, "/api/v1/system/bootstrap", request).await
     }
 }
 

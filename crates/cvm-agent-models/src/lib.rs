@@ -1,6 +1,19 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+pub mod bootstrap {
+    use super::*;
+
+    pub const CADDY_ACME_ACCOUNT_KEY: &str = "CADDY_ACME_ACCOUNT_KEY";
+
+    /// A request to bootstrap the CVM.
+    #[derive(Deserialize, Serialize)]
+    pub struct BootstrapRequest {
+        /// The ACME account key.
+        pub acme_account_key: String,
+    }
+}
+
 pub mod container {
     use super::*;
 
