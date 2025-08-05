@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use cvm_agent_models::{
     bootstrap::BootstrapRequest,
     container::Container,
+    health::HealthResponse,
     logs::{ContainerLogsRequest, ContainerLogsResponse},
 };
 use reqwest::Client;
@@ -18,7 +19,7 @@ pub trait CvmAgentClient: Send + Sync {
         cvm_agent_port: u16,
         request: &ContainerLogsRequest,
     ) -> Result<ContainerLogsResponse, CvmAgentRequestError>;
-    async fn check_health(&self, cvm_agent_port: u16) -> Result<(), CvmAgentRequestError>;
+    async fn check_health(&self, cvm_agent_port: u16) -> Result<HealthResponse, CvmAgentRequestError>;
     async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError>;
 }
 
@@ -69,7 +70,7 @@ impl CvmAgentClient for DefaultCvmAgentClient {
         self.get(cvm_agent_port, "/api/v1/containers/logs", &request).await
     }
 
-    async fn check_health(&self, cvm_agent_port: u16) -> Result<(), CvmAgentRequestError> {
+    async fn check_health(&self, cvm_agent_port: u16) -> Result<HealthResponse, CvmAgentRequestError> {
         self.get(cvm_agent_port, "/api/v1/health", &()).await
     }
 

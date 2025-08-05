@@ -117,11 +117,18 @@ async fn main() {
     if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await {
         error!("Failed to serve: {e}");
     }
+    info!("Shutting down");
     let system_state = {
         let mut state = state.system_state.lock().unwrap();
         mem::take(&mut *state)
     };
-    if let SystemState::Running(mut child) = system_state {
-        child.kill().await.expect("failed to kill child");
-    }
+    match system_state {
+        SystemState::WaitingBootstrap => {
+            info!("Docker compose is not running");
+        }
+        SystemState::Starting(mut child) | SystemState::Ready(mut child) => {
+            info!("Shutting docker compose down");
+            child.kill().await.expect("failed to kill child");
+        }
+    };
 }
