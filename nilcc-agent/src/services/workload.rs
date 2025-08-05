@@ -161,8 +161,10 @@ impl DefaultWorkloadService {
             disk_space_gb =
                 disk_space_gb.checked_sub(workload.disk_space_gb).ok_or(CreateServiceError::OvercommittedDiskSpace)?;
         }
-        let gpus = gpus.into_iter().collect();
+        let gpus: Vec<_> = gpus.into_iter().collect();
         let ports = ports.into_iter().collect();
+        let gpu_count = gpus.len();
+        info!("Starting with available cpus = {cpus}, gpus = {gpu_count}, memory = {memory_mb}MB, disk = {disk_space_gb}GB");
         let resources = AvailableResources { cpus, gpus, ports, memory_mb, disk_space_gb }.into();
         Ok(Self { vm_service, repository, proxy_service, resources })
     }
@@ -264,12 +266,19 @@ impl WorkloadService for DefaultWorkloadService {
 
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        self.repository.find(id).await?;
+        let workload = self.repository.find(id).await?;
 
         info!("Deleting workload: {id}");
         self.repository.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
         self.vm_service.delete_vm(id).await;
+
+        let mut resources = self.resources.lock().await;
+        resources.cpus += workload.cpus;
+        resources.gpus.extend(workload.gpus);
+        resources.memory_mb += workload.memory_mb;
+        resources.disk_space_gb += workload.disk_space_gb;
+        resources.ports.extend(workload.ports);
         Ok(())
     }
 
