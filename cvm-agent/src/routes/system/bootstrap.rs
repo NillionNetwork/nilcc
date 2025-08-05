@@ -1,4 +1,7 @@
-use crate::routes::{SharedState, SystemState};
+use crate::{
+    caddy::CaddyMonitor,
+    routes::{SharedState, SystemState},
+};
 use axum::{http::StatusCode, Json};
 use cvm_agent_models::bootstrap::{BootstrapRequest, CADDY_ACME_ACCOUNT_KEY};
 use tokio::process::Command;
@@ -35,6 +38,7 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
     match command.spawn() {
         Ok(child) => {
             *system_state = SystemState::Running(child);
+            CaddyMonitor::spawn(state.docker.clone());
             StatusCode::OK
         }
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
