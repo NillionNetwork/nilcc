@@ -16,7 +16,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
 
   nilcc-proxy:
-    image: caddy:2
+    image: caddy:2.10.0
     restart: unless-stopped
     cap_add:
       - NET_ADMIN

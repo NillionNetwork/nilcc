@@ -17,6 +17,7 @@ use tokio::{
 };
 use tracing::{error, info};
 
+mod caddy;
 mod resources;
 mod routes;
 
