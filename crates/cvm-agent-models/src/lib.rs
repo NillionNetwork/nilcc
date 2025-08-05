@@ -35,6 +35,21 @@ pub mod container {
     }
 }
 
+pub mod health {
+    use super::*;
+
+    /// A response to a health request.
+    #[derive(Deserialize, Serialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct HealthResponse {
+        /// Whether HTTPS is configured and available.
+        pub https: bool,
+
+        /// Whether the CVM is bootstrapped
+        pub bootstrapped: bool,
+    }
+}
+
 pub mod logs {
     use super::*;
 

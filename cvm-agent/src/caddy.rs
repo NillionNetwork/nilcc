@@ -1,3 +1,4 @@
+use crate::routes::SystemState;
 use bollard::{
     container::LogOutput,
     query_parameters::{LogsOptionsBuilder, RestartContainerOptionsBuilder},
@@ -5,9 +6,14 @@ use bollard::{
 };
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-use std::{borrow::Cow, time::Duration};
+use std::{
+    borrow::Cow,
+    mem,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 const CONTAINER_NAME: &str = "cvm-nilcc-proxy-1";
 const LOOP_INTERVAL: Duration = Duration::from_secs(10);
@@ -15,11 +21,12 @@ const LOOP_INTERVAL: Duration = Duration::from_secs(10);
 /// A monitor for the caddy container.
 pub struct CaddyMonitor {
     docker: Docker,
+    system_state: Arc<Mutex<SystemState>>,
 }
 
 impl CaddyMonitor {
-    pub fn spawn(docker: Docker) {
-        let monitor = Self { docker };
+    pub fn spawn(docker: Docker, system_state: Arc<Mutex<SystemState>>) {
+        let monitor = Self { docker, system_state };
         info!("Spawning caddy monitor");
         tokio::spawn(async move {
             monitor.run().await;
@@ -28,23 +35,24 @@ impl CaddyMonitor {
 
     async fn run(self) {
         let mut threshold_timestamp = 0.0;
-        let mut last_status = Status::Unknown;
         loop {
             let builder = LogsOptionsBuilder::new().tail("10").stderr(true);
             let stream = self.docker.logs(CONTAINER_NAME, Some(builder.build()));
             let (next_timestamp, status) = Self::check_caddy_status(stream, threshold_timestamp).await;
             threshold_timestamp = next_timestamp;
-            let was_last_ok = matches!(last_status, Status::Ok);
             match status {
                 Status::Ok => {
-                    if !was_last_ok {
-                        info!("Caddy is running successfully")
+                    let mut system_state = self.system_state.lock().unwrap();
+                    match mem::take(&mut *system_state) {
+                        SystemState::WaitingBootstrap => error!("System is still waiting for bootstrap"),
+                        SystemState::Starting(child) | SystemState::Ready(child) => {
+                            info!("Caddy is running successfully");
+                            *system_state = SystemState::Ready(child)
+                        }
                     }
                 }
                 Status::Unknown => {
-                    if !was_last_ok {
-                        info!("Caddy is in an unknown state")
-                    }
+                    debug!("Caddy is in an unknown state")
                 }
                 Status::NeedsRestart => {
                     warn!("Caddy needs to be restarted");
@@ -54,7 +62,6 @@ impl CaddyMonitor {
                     }
                 }
             };
-            last_status = status;
             sleep(LOOP_INTERVAL).await;
         }
     }

@@ -210,16 +210,21 @@ impl VmWorker {
         if !matches!(self.vm_state, VmState::Running) {
             info!("Checking health of CVM agent");
             match self.cvm_agent_client.check_health(self.cvm_agent_port).await {
-                Ok(()) => {
-                    info!("CVM agent is running, bootstrapping it");
-                    let request = BootstrapRequest { acme_account_key: self.acme_pem_key.clone() };
-                    if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
-                        warn!("Failed to bootstrap agent: {e:#}");
-                        return;
+                Ok(response) => {
+                    if !response.bootstrapped {
+                        info!("CVM agent is running, bootstrapping it");
+                        let request = BootstrapRequest { acme_account_key: self.acme_pem_key.clone() };
+                        if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
+                            warn!("Failed to bootstrap agent: {e:#}");
+                            return;
+                        }
+                        info!("CVM agent is bootstrapped");
                     }
-                    info!("CVM agent is bootstrapped");
-                    self.vm_state = VmState::Running;
-                    self.submit_event(VmEvent::Running).await;
+                    if response.https {
+                        info!("CVM's https endpoint is functional");
+                        self.vm_state = VmState::Running;
+                        self.submit_event(VmEvent::Running).await;
+                    }
                 }
                 Err(e) => {
                     warn!("Failed to check CVM agent health: {e:#}");

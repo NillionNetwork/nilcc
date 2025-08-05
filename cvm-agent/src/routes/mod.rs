@@ -17,8 +17,9 @@ pub(crate) mod system;
 #[derive(Default)]
 pub enum SystemState {
     #[default]
-    Pending,
-    Running(Child),
+    WaitingBootstrap,
+    Starting(Child),
+    Ready(Child),
 }
 
 #[derive(Clone)]
@@ -35,7 +36,7 @@ pub struct BootstrapContext {
 pub struct AppState {
     pub docker: Docker,
     pub context: BootstrapContext,
-    pub system_state: Mutex<SystemState>,
+    pub system_state: Arc<Mutex<SystemState>>,
 }
 
 pub(crate) type SharedState = State<Arc<AppState>>;

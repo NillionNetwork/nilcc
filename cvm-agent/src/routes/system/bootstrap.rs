@@ -10,7 +10,7 @@ const COMPOSE_PROJECT_NAME: &str = "cvm";
 
 pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>) -> StatusCode {
     let mut system_state = state.system_state.lock().unwrap();
-    if matches!(&*system_state, SystemState::Running(_)) {
+    if !matches!(&*system_state, SystemState::WaitingBootstrap) {
         return StatusCode::OK;
     }
     let ctx = state.context.clone();
@@ -37,8 +37,8 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
         .arg("up");
     match command.spawn() {
         Ok(child) => {
-            *system_state = SystemState::Running(child);
-            CaddyMonitor::spawn(state.docker.clone());
+            *system_state = SystemState::Starting(child);
+            CaddyMonitor::spawn(state.docker.clone(), state.system_state.clone());
             StatusCode::OK
         }
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
