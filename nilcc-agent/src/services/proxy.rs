@@ -200,7 +200,7 @@ defaults
     mode tcp
     timeout connect 5000ms
     timeout client 50000ms
-    timeout server 5000050000ms
+    timeout server 50000ms
     option tcplog
     log global
 

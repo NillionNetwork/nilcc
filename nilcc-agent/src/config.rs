@@ -137,6 +137,7 @@ pub struct SniProxyConfig {
     pub master_socket_path: PathBuf,
 
     /// The timeouts for the SNI proxy.
+    #[serde(default)]
     pub timeouts: SniProxyConfigTimeouts,
 
     /// The maximum number of connections for the SNI proxy.
@@ -150,13 +151,22 @@ pub struct SniProxyConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SniProxyConfigTimeouts {
     /// Timeout for connection establishment in ms.
+    #[serde(default = "default_connect_timeout")]
     pub connect: u64,
 
     /// Timeout for server in ms.
+    #[serde(default = "default_server_timeout")]
     pub server: u64,
 
     /// Timeout for client in ms.
+    #[serde(default = "default_client_timeout")]
     pub client: u64,
+}
+
+impl Default for SniProxyConfigTimeouts {
+    fn default() -> Self {
+        Self { connect: default_connect_timeout(), server: default_server_timeout(), client: default_client_timeout() }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -248,6 +258,18 @@ fn u32_max() -> u32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_connect_timeout() -> u64 {
+    5000
+}
+
+fn default_client_timeout() -> u64 {
+    30000
+}
+
+fn default_server_timeout() -> u64 {
+    30000
 }
 
 fn ha_proxy_master_socket_path() -> PathBuf {
