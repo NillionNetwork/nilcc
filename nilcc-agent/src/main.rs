@@ -9,10 +9,7 @@ use nilcc_agent::{
         qemu::QemuClient,
     },
     config::{AgentConfig, AgentMode},
-    repositories::{
-        sqlite::SqliteDb,
-        workload::{SqliteWorkloadRepository, WorkloadRepository},
-    },
+    repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
     routes::{build_router, AppState, Clients, Services},
     services::{
@@ -181,9 +178,12 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
-    let workload_repository = Arc::new(SqliteWorkloadRepository::new(db.clone()));
-    let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
-    let proxied_vms = existing_workloads.iter().map(Into::into).collect();
+    let repository_provider = SqliteRepositoryProvider::new(db.clone());
+    let proxied_vms = {
+        let mut workload_repository = repository_provider.workloads(Default::default()).await?;
+        let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
+        existing_workloads.iter().map(Into::into).collect()
+    };
     let proxy_service = HaProxyProxyService::new(ProxyServiceArgs {
         config_file_path: config.sni_proxy.config_file_path.clone(),
         master_socket_path: config.sni_proxy.master_socket_path,
@@ -221,7 +221,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
         vm_service: Box::new(vm_service),
-        repository: Box::new(SqliteWorkloadRepository::new(db)),
+        repository_provider: Box::new(repository_provider),
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
         proxy_service: Box::new(proxy_service),

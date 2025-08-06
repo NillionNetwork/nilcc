@@ -1,5 +1,8 @@
 use crate::{
-    repositories::workload::{Workload, WorkloadRepository, WorkloadRepositoryError},
+    repositories::{
+        sqlite::{ProviderError, ProviderMode, RepositoryProvider},
+        workload::{Workload, WorkloadRepositoryError},
+    },
     resources::{GpuAddress, SystemResources},
     services::{
         proxy::{ProxiedVm, ProxyService},
@@ -75,6 +78,12 @@ pub enum WorkloadLookupError {
     Internal(String),
 }
 
+impl From<ProviderError> for WorkloadLookupError {
+    fn from(e: ProviderError) -> Self {
+        Self::Internal(e.to_string())
+    }
+}
+
 impl From<WorkloadRepositoryError> for WorkloadLookupError {
     fn from(e: WorkloadRepositoryError) -> Self {
         match e {
@@ -86,7 +95,7 @@ impl From<WorkloadRepositoryError> for WorkloadLookupError {
 
 pub struct WorkloadServiceArgs {
     pub vm_service: Box<dyn VmService>,
-    pub repository: Box<dyn WorkloadRepository>,
+    pub repository_provider: Box<dyn RepositoryProvider>,
     pub proxy_service: Box<dyn ProxyService>,
     pub resources: SystemResources,
     pub open_ports: Range<u16>,
@@ -123,12 +132,15 @@ pub enum CreateServiceError {
     #[error("database: {0}")]
     Database(#[from] WorkloadRepositoryError),
 
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
+
     #[error("staring existing workload: {0}")]
     StartWorkload(#[from] StartVmError),
 }
 
 pub struct DefaultWorkloadService {
-    repository: Box<dyn WorkloadRepository>,
+    repository_provider: Box<dyn RepositoryProvider>,
     vm_service: Box<dyn VmService>,
     proxy_service: Box<dyn ProxyService>,
     resources: Mutex<AvailableResources>,
@@ -136,9 +148,10 @@ pub struct DefaultWorkloadService {
 
 impl DefaultWorkloadService {
     pub async fn new(args: WorkloadServiceArgs) -> Result<Self, CreateServiceError> {
-        let WorkloadServiceArgs { vm_service, repository, proxy_service, resources, open_ports } = args;
+        let WorkloadServiceArgs { vm_service, repository_provider, proxy_service, resources, open_ports } = args;
 
-        let workloads = repository.list().await?;
+        let mut repo = repository_provider.workloads(Default::default()).await?;
+        let workloads = repo.list().await?;
         let mut gpus: BTreeSet<_> = resources.gpus.iter().flat_map(|g| g.addresses.iter().cloned()).collect();
         let mut ports: BTreeSet<_> = open_ports.collect();
         let mut cpus = resources.available_cpus();
@@ -166,7 +179,7 @@ impl DefaultWorkloadService {
         let gpu_count = gpus.len();
         info!("Starting with available cpus = {cpus}, gpus = {gpu_count}, memory = {memory_mb}MB, disk = {disk_space_gb}GB");
         let resources = AvailableResources { cpus, gpus, ports, memory_mb, disk_space_gb }.into();
-        Ok(Self { vm_service, repository, proxy_service, resources })
+        Ok(Self { vm_service, repository_provider, proxy_service, resources })
     }
 
     fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> Workload {
@@ -208,7 +221,8 @@ impl DefaultWorkloadService {
 #[async_trait]
 impl WorkloadService for DefaultWorkloadService {
     async fn bootstrap(&self) -> anyhow::Result<()> {
-        let workloads = self.repository.list().await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let workloads = repo.list().await?;
         for workload in workloads {
             info!("Starting existing workload {}", workload.id);
             let initial_state = if workload.enabled { InitialVmState::Enabled } else { InitialVmState::Disabled };
@@ -241,7 +255,13 @@ impl WorkloadService for DefaultWorkloadService {
         let workload = self.build_workload(request, &resources);
         let id = workload.id;
         info!("Storing workload {id} in database");
-        self.repository.create(workload.clone()).await?;
+        let mut repo = self
+            .repository_provider
+            .workloads(ProviderMode::Transactional)
+            .await
+            .map_err(|e| CreateWorkloadError::Internal(e.to_string()))?;
+        repo.create(workload.clone()).await?;
+        repo.commit().await?;
 
         info!("Scheduling VM {id}");
         let proxied_vm = ProxiedVm::from(&workload);
@@ -257,17 +277,20 @@ impl WorkloadService for DefaultWorkloadService {
     }
 
     async fn list_workloads(&self) -> Result<Vec<Workload>, WorkloadLookupError> {
-        Ok(self.repository.list().await?)
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        Ok(repo.list().await?)
     }
 
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        let workload = self.repository.find(id).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let workload = repo.find(id).await?;
 
         info!("Deleting workload: {id}");
-        self.repository.delete(id).await?;
+        repo.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
         self.vm_service.delete_vm(id).await;
+        repo.commit().await?;
 
         let mut resources = self.resources.lock().await;
         resources.cpus += workload.cpus;
@@ -280,37 +303,43 @@ impl WorkloadService for DefaultWorkloadService {
 
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        self.repository.find(id).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        repo.find(id).await?;
         self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         Ok(())
     }
 
     async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let workload = self.repository.find(id).await?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let workload = repo.find(id).await?;
         if !workload.enabled {
             info!("Workload {id} is already disabled");
             return Ok(());
         }
         info!("Disabling workload {id}");
         self.vm_service.disable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
-        self.repository.set_enabled(id, false).await?;
+        repo.set_enabled(id, false).await?;
+        repo.commit().await?;
         Ok(())
     }
 
     async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let workload = self.repository.find(id).await?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let workload = repo.find(id).await?;
         if workload.enabled {
             info!("Workload {id} is already enabled");
             return Ok(());
         }
         info!("Enabling workload {id}");
         self.vm_service.enable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
-        self.repository.set_enabled(id, true).await?;
+        repo.set_enabled(id, true).await?;
+        repo.commit().await?;
         Ok(())
     }
 
     async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError> {
-        let workload = self.repository.find(workload_id).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let workload = repo.find(workload_id).await?;
         Ok(workload.cvm_agent_port())
     }
 }
@@ -319,7 +348,7 @@ impl WorkloadService for DefaultWorkloadService {
 mod tests {
     use super::*;
     use crate::{
-        repositories::workload::MockWorkloadRepository,
+        repositories::{sqlite::MockRepositoryProvider, workload::MockWorkloadRepository},
         resources::Gpus,
         services::{
             proxy::{MockProxyService, ProxiedVm},
@@ -349,11 +378,18 @@ mod tests {
         }
 
         async fn try_build(self) -> Result<DefaultWorkloadService, CreateServiceError> {
-            let Self { vm_service, mut repository, proxy_service, resources, open_ports, existing_workloads } = self;
-            repository.expect_list().return_once(move || Ok(existing_workloads));
+            let Self { vm_service, repository, proxy_service, resources, open_ports, existing_workloads } = self;
+
+            let mut provider = MockRepositoryProvider::default();
+            provider.expect_workloads().once().return_once(|_| {
+                let mut repo = MockWorkloadRepository::default();
+                repo.expect_list().return_once(move || Ok(existing_workloads));
+                Ok(Box::new(repo))
+            });
+            provider.expect_workloads().return_once(move |_| Ok(Box::new(repository)));
             let args = WorkloadServiceArgs {
                 vm_service: Box::new(vm_service),
-                repository: Box::new(repository),
+                repository_provider: Box::new(provider),
                 proxy_service: Box::new(proxy_service),
                 resources,
                 open_ports,
@@ -523,6 +559,7 @@ mod tests {
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
         builder.repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
+        builder.repository.expect_commit().once().return_once(|| Ok(()));
         builder
             .vm_service
             .expect_create_vm()
