@@ -40,6 +40,9 @@ pub enum CreateWorkloadError {
 
     #[error("workload already exists")]
     AlreadyExists,
+
+    #[error("domain is already managed by another workload")]
+    DomainExists,
 }
 
 impl From<StartVmError> for CreateWorkloadError {
@@ -52,6 +55,7 @@ impl From<WorkloadRepositoryError> for CreateWorkloadError {
     fn from(e: WorkloadRepositoryError) -> Self {
         match e {
             WorkloadRepositoryError::DuplicateWorkload => Self::AlreadyExists,
+            WorkloadRepositoryError::DuplicateDomain => Self::DomainExists,
             WorkloadRepositoryError::WorkloadNotFound | WorkloadRepositoryError::Database(_) => {
                 Self::Internal(e.to_string())
             }

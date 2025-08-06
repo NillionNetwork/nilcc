@@ -48,6 +48,9 @@ pub(crate) enum HandlerError {
     #[error("workload already exists")]
     AlreadyExists,
 
+    #[error("domain is already managed by another workload")]
+    DomainExists,
+
     #[error("{0} can't be higher than {1}")]
     ResourceLimit(&'static str, u32),
 
@@ -61,6 +64,7 @@ impl From<CreateWorkloadError> for HandlerError {
             CreateWorkloadError::InsufficientResources(e) => Self::InsufficientResources(e),
             CreateWorkloadError::Internal(e) => Self::Internal(e),
             CreateWorkloadError::AlreadyExists => Self::AlreadyExists,
+            CreateWorkloadError::DomainExists => Self::DomainExists,
         }
     }
 }
@@ -70,7 +74,7 @@ impl IntoResponse for HandlerError {
         let discriminant = HandlerErrorDiscriminants::from(&self);
         let (code, message) = match self {
             Self::InsufficientResources(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
-            Self::AlreadyExists => (StatusCode::BAD_REQUEST, "workload already exists".into()),
+            Self::AlreadyExists | Self::DomainExists => (StatusCode::BAD_REQUEST, self.to_string()),
             Self::Internal(e) => {
                 error!("Failed to create workload: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
