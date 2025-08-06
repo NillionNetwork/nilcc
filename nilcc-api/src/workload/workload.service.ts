@@ -85,11 +85,17 @@ export class WorkloadService {
       createdWorkload.id,
       metalInstance.id,
     );
-    await bindings.services.nilccAgentClient.createWorkload(
-      metalInstance,
-      entity,
-      domain,
-    );
+    try {
+      await bindings.services.nilccAgentClient.createWorkload(
+        metalInstance,
+        entity,
+        domain,
+      );
+    } catch (e) {
+      bindings.log.warn("Could not create workload, removing CNAME record");
+      await this.removeCnameForWorkload(bindings, entity.id);
+      throw e;
+    }
     return createdWorkload;
   }
 
