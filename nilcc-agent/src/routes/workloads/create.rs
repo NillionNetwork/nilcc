@@ -9,7 +9,9 @@ use axum::{
 };
 use axum_valid::Valid;
 use cvm_agent_models::bootstrap::CADDY_ACME_EAB_KEY_ID;
+use docker_compose_types::Compose;
 use nilcc_agent_models::workloads::create::{CreateWorkloadRequest, CreateWorkloadResponse};
+use std::iter;
 use strum::EnumDiscriminants;
 use tracing::error;
 
@@ -32,9 +34,34 @@ pub(crate) async fn handler(
         return Err(HandlerError::CaddyAcmeKey);
     }
 
+    validate_compose_file(&request)?;
+
     let id = request.id;
     state.services.workload.create_workload(request.0 .0).await?;
     Ok(Json(CreateWorkloadResponse { id }))
+}
+
+fn validate_compose_file(request: &CreateWorkloadRequest) -> Result<(), HandlerError> {
+    let compose: Compose =
+        serde_yaml::from_str(&request.docker_compose).map_err(HandlerError::MalformedDockerCompose)?;
+    if compose.services.is_empty() {
+        return Err(HandlerError::InvalidDockerCompose("no services defined".into()));
+    }
+    for (name, service) in &compose.services.0 {
+        let service = service
+            .as_ref()
+            .ok_or_else(|| HandlerError::InvalidDockerCompose(format!("no body in service '{name}'")))?;
+        let names = iter::once(name).chain(service.container_name.as_ref());
+        for name in names {
+            if name == &request.public_container_name {
+                return Ok(());
+            }
+        }
+    }
+    Err(HandlerError::InvalidDockerCompose(format!(
+        "container {} is not part of compose file",
+        request.public_container_name
+    )))
 }
 
 #[derive(Debug, thiserror::Error, EnumDiscriminants)]
@@ -47,6 +74,12 @@ pub(crate) enum HandlerError {
 
     #[error("workload already exists")]
     AlreadyExists,
+
+    #[error("malformed docker compose: {0}")]
+    MalformedDockerCompose(serde_yaml::Error),
+
+    #[error("invalid docker compose: {0}")]
+    InvalidDockerCompose(String),
 
     #[error("domain is already managed by another workload")]
     DomainExists,
@@ -74,7 +107,10 @@ impl IntoResponse for HandlerError {
         let discriminant = HandlerErrorDiscriminants::from(&self);
         let (code, message) = match self {
             Self::InsufficientResources(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
-            Self::AlreadyExists | Self::DomainExists => (StatusCode::BAD_REQUEST, self.to_string()),
+            Self::AlreadyExists
+            | Self::DomainExists
+            | Self::MalformedDockerCompose(_)
+            | Self::InvalidDockerCompose(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             Self::Internal(e) => {
                 error!("Failed to create workload: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
