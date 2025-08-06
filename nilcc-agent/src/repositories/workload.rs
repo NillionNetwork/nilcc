@@ -1,7 +1,7 @@
-use crate::{repositories::sqlite::SqliteDb, resources::GpuAddress};
+use crate::{repositories::sqlite::SqliteTransactionContext, resources::GpuAddress};
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{prelude::FromRow, SqlitePool};
+use sqlx::prelude::FromRow;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
@@ -93,19 +93,22 @@ pub enum WorkloadModelStatus {
 #[async_trait]
 pub trait WorkloadRepository: Send + Sync {
     /// Create a workload.
-    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
+    async fn create(&mut self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
 
     /// Find the details for a workload.
-    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
+    async fn find(&mut self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
 
     /// List all workflows.
-    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError>;
+    async fn list(&mut self) -> Result<Vec<Workload>, WorkloadRepositoryError>;
 
     /// Delete a workload.
-    async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
+    async fn delete(&mut self, id: Uuid) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `enabled` column for a workload.
-    async fn set_enabled(&self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
+    async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
+
+    /// Commit any changes that were performed on this repository.
+    async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -141,19 +144,19 @@ impl From<sqlx::Error> for WorkloadRepositoryError {
     }
 }
 
-pub struct SqliteWorkloadRepository {
-    pool: SqlitePool,
+pub struct SqliteWorkloadRepository<'a> {
+    ctx: SqliteTransactionContext<'a>,
 }
 
-impl SqliteWorkloadRepository {
-    pub fn new(db: SqliteDb) -> Self {
-        Self { pool: db.into() }
+impl<'a> SqliteWorkloadRepository<'a> {
+    pub fn new(ctx: SqliteTransactionContext<'a>) -> Self {
+        Self { ctx }
     }
 }
 
 #[async_trait]
-impl WorkloadRepository for SqliteWorkloadRepository {
-    async fn create(&self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
+impl<'a> WorkloadRepository for SqliteWorkloadRepository<'a> {
+    async fn create(&mut self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
         let query = r"
 INSERT INTO workloads (
     id,
@@ -204,53 +207,55 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             .bind(domain)
             .bind(enabled)
             .bind(Utc::now())
-            .execute(&self.pool)
+            .execute(&mut *self.ctx)
             .await?;
         Ok(())
     }
 
-    async fn find(&self, id: Uuid) -> Result<Workload, WorkloadRepositoryError> {
+    async fn find(&mut self, id: Uuid) -> Result<Workload, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads WHERE id = ?";
         let workload: Workload = sqlx::query_as(query)
             .bind(id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *self.ctx)
             .await?
             .ok_or(WorkloadRepositoryError::WorkloadNotFound)?;
         Ok(workload)
     }
 
-    async fn list(&self) -> Result<Vec<Workload>, WorkloadRepositoryError> {
+    async fn list(&mut self) -> Result<Vec<Workload>, WorkloadRepositoryError> {
         let query = "SELECT * FROM workloads";
-        let workloads: Vec<Workload> = sqlx::query_as(query).fetch_all(&self.pool).await?;
+        let workloads: Vec<Workload> = sqlx::query_as(query).fetch_all(&mut *self.ctx).await?;
         Ok(workloads)
     }
 
-    async fn delete(&self, id: Uuid) -> Result<(), WorkloadRepositoryError> {
+    async fn delete(&mut self, id: Uuid) -> Result<(), WorkloadRepositoryError> {
         let query = "DELETE FROM workloads WHERE id = ?";
-        sqlx::query(query).bind(id).execute(&self.pool).await?;
+        sqlx::query(query).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
     }
 
-    async fn set_enabled(&self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError> {
+    async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError> {
         let query = "UPDATE workloads SET enabled = ? WHERE id = ?";
-        sqlx::query(query).bind(value).bind(id).execute(&self.pool).await?;
+        sqlx::query(query).bind(value).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError> {
+        Ok(self.ctx.commit().await?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::sqlite::{SqliteDb, SqliteTransactionContextInner};
     use std::collections::HashMap;
-
-    async fn make_repo() -> SqliteWorkloadRepository {
-        let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
-        SqliteWorkloadRepository::new(db)
-    }
 
     #[tokio::test]
     async fn crud() {
-        let repo = make_repo().await;
+        let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
+        let connection = db.0.acquire().await.expect("failed to acquire");
+        let mut repo = SqliteWorkloadRepository::new(SqliteTransactionContextInner::Connection(connection).into());
         let workload = Workload {
             id: Uuid::new_v4(),
             docker_compose: "hi".into(),

@@ -184,10 +184,12 @@ impl VmWorker {
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
                 self.vm_state = VmState::Disabled;
+                self.submit_event(VmEvent::Stopped).await;
                 info!("VM is stopped");
             }
             Err(QemuClientError::VmNotRunning) => {
                 self.vm_state = VmState::Disabled;
+                self.submit_event(VmEvent::Stopped).await;
                 warn!("VM was not running");
             }
             Err(e) => {

@@ -2156,6 +2156,7 @@ dependencies = [
  "chrono",
  "clap",
  "cvm-agent-models",
+ "futures-core",
  "hex",
  "humantime",
  "humantime-serde",

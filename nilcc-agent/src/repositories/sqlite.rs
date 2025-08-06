@@ -1,12 +1,20 @@
+use crate::repositories::workload::{SqliteWorkloadRepository, WorkloadRepository};
+use async_trait::async_trait;
 use sqlx::{
+    pool::PoolConnection,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
-    SqlitePool,
+    Sqlite, SqliteConnection, SqlitePool, SqliteTransaction,
 };
-use std::{path::Path, str::FromStr};
-use tracing::info;
+use std::{
+    mem,
+    ops::{Deref, DerefMut},
+    path::Path,
+    str::FromStr,
+};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
-pub struct SqliteDb(SqlitePool);
+pub struct SqliteDb(pub(crate) SqlitePool);
 
 impl SqliteDb {
     pub async fn connect(url: &str) -> anyhow::Result<Self> {
@@ -29,4 +37,109 @@ impl From<SqliteDb> for SqlitePool {
     fn from(db: SqliteDb) -> Self {
         db.0
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("commit error: {0}")]
+pub struct CommitError(String);
+
+#[derive(Debug)]
+pub(crate) enum SqliteTransactionContextInner<'a> {
+    Transaction(SqliteTransaction<'a>),
+    Connection(PoolConnection<Sqlite>),
+}
+
+#[derive(Debug)]
+pub struct SqliteTransactionContext<'a> {
+    inner: Option<SqliteTransactionContextInner<'a>>,
+}
+
+impl<'a> From<SqliteTransactionContextInner<'a>> for SqliteTransactionContext<'a> {
+    fn from(inner: SqliteTransactionContextInner<'a>) -> Self {
+        Self { inner: Some(inner) }
+    }
+}
+
+impl SqliteTransactionContext<'_> {
+    /// Commit this transaction.
+    pub async fn commit(mut self) -> Result<(), sqlx::Error> {
+        match mem::take(&mut self.inner).unwrap() {
+            SqliteTransactionContextInner::Transaction(tx) => tx.commit().await,
+            SqliteTransactionContextInner::Connection(_) => Ok(()),
+        }
+    }
+}
+
+impl<'a> Deref for SqliteTransactionContext<'a> {
+    type Target = SqliteConnection;
+
+    fn deref(&self) -> &Self::Target {
+        match self.inner.as_ref().unwrap() {
+            SqliteTransactionContextInner::Transaction(tx) => tx,
+            SqliteTransactionContextInner::Connection(connection) => connection,
+        }
+    }
+}
+
+impl<'a> DerefMut for SqliteTransactionContext<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self.inner.as_mut().unwrap() {
+            SqliteTransactionContextInner::Transaction(tx) => tx,
+            SqliteTransactionContextInner::Connection(connection) => connection,
+        }
+    }
+}
+
+impl Drop for SqliteTransactionContext<'_> {
+    fn drop(&mut self) {
+        if matches!(self.inner, Some(SqliteTransactionContextInner::Transaction(_))) {
+            warn!("Transaction was not committed");
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to create repository: {0}")]
+pub struct ProviderError(String);
+
+/// A provider for repositories.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait RepositoryProvider: Send + Sync {
+    async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError>;
+}
+
+pub struct SqliteRepositoryProvider {
+    db: SqliteDb,
+}
+
+impl SqliteRepositoryProvider {
+    pub fn new(db: SqliteDb) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl RepositoryProvider for SqliteRepositoryProvider {
+    async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError> {
+        let ctx = match mode {
+            ProviderMode::Single => {
+                let connection = self.db.0.acquire().await.map_err(|e| ProviderError(e.to_string()))?;
+                SqliteTransactionContextInner::Connection(connection)
+            }
+            ProviderMode::Transactional => {
+                let tx = self.db.0.begin().await.map_err(|e| ProviderError(e.to_string()))?;
+                SqliteTransactionContextInner::Transaction(tx)
+            }
+        }
+        .into();
+        Ok(Box::new(SqliteWorkloadRepository::new(ctx)))
+    }
+}
+
+#[derive(Debug, Default)]
+pub enum ProviderMode {
+    #[default]
+    Single,
+    Transactional,
 }
