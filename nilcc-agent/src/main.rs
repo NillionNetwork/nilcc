@@ -8,7 +8,7 @@ use nilcc_agent::{
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::QemuClient,
     },
-    config::{AgentConfig, AgentMode, TlsConfig},
+    config::{AgentConfig, AgentMode},
     repositories::{
         sqlite::SqliteDb,
         workload::{SqliteWorkloadRepository, WorkloadRepository},
@@ -27,16 +27,9 @@ use nilcc_agent::{
     version,
     workers::heartbeat::HeartbeatWorker,
 };
-use pkcs8::der::{Decode, EncodePem};
-use rustls_acme::{acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY, caches::DirCache, AccountCache, AcmeConfig, AcmeState};
-use std::{
-    fs, io,
-    path::PathBuf,
-    str::FromStr,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use tokio::{signal, time::sleep};
+use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
+use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use tokio::signal;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, level_filters::LevelFilter, warn};
 
@@ -157,37 +150,10 @@ fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
     Ok(config)
 }
 
-async fn process_acme_events(
-    mut state: AcmeState<io::Error, io::Error>,
-    config: TlsConfig,
-    acme_pem_key: Arc<Mutex<Option<String>>>,
-    workload_service: Arc<dyn WorkloadService>,
-) {
-    let mut need_account = true;
-    let contact = format!("mailto:{}", config.acme_contact);
+async fn process_acme_events(mut state: AcmeState<io::Error, io::Error>) {
     while let Some(event) = state.next().await {
         match event {
-            Ok(event) => {
-                info!("ACME event: {event:?}");
-                if need_account {
-                    let cache = DirCache::new(&config.cert_cache);
-                    match cache.load_account(&[contact.clone()], LETS_ENCRYPT_PRODUCTION_DIRECTORY).await {
-                        Ok(Some(account)) => {
-                            let key = pkcs8::PrivateKeyInfo::from_der(&account).expect("invalid DER key");
-                            let pem_key = key.to_pem(pkcs8::LineEnding::LF).expect("failed to convert to PEM");
-                            info!("ACME account is generated, setting it on state");
-                            *acme_pem_key.lock().unwrap() = Some(pem_key.clone());
-                            while let Err(e) = workload_service.bootstrap(pem_key.clone()).await {
-                                error!("Failed to bootstrap workload service: {e:#}");
-                                sleep(Duration::from_secs(1)).await;
-                            }
-                            info!("Workload service bootstrapped");
-                            need_account = false;
-                        }
-                        _ => warn!("Received event but ACME account is not available yet"),
-                    }
-                }
-            }
+            Ok(event) => info!("ACME event: {event:?}"),
             Err(e) => error!("ACME error: {e:?}"),
         }
     }
@@ -250,6 +216,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         cvm_config: config.cvm,
+        zerossl_config: config.zerossl,
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
@@ -261,13 +228,13 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     })
     .await
     .context("Creating workload service")?;
+    info!("Bootstrapping existing workloads");
+    workload_service.bootstrap().await?;
     let workload_service = Arc::new(workload_service);
-    let acme_pem_key = Arc::new(Mutex::new(None));
     let state = AppState {
         services: Services { workload: workload_service.clone() },
         clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
-        acme_pem_key: acme_pem_key.clone(),
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();
@@ -290,14 +257,10 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
                 .state();
             let acceptor = state.axum_acceptor(state.default_rustls_config());
             // Spin up a task that polls the ACME cert generation future
-            tokio::spawn(process_acme_events(state, tls, acme_pem_key.clone(), workload_service));
+            tokio::spawn(process_acme_events(state));
             server.acceptor(acceptor).serve(router.into_make_service()).await
         }
-        None => {
-            // TODO: check if this actually does something
-            workload_service.bootstrap("".into()).await?;
-            server.serve(router.into_make_service()).await
-        }
+        None => server.serve(router.into_make_service()).await,
     };
     result.context("Failed to serve")
 }

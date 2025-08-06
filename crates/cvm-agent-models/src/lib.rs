@@ -4,13 +4,20 @@ use validator::Validate;
 pub mod bootstrap {
     use super::*;
 
-    pub const CADDY_ACME_ACCOUNT_KEY: &str = "CADDY_ACME_ACCOUNT_KEY";
+    /// The ACME EAB key id environment variable.
+    pub const CADDY_ACME_EAB_KEY_ID: &str = "CADDY_ACME_EAB_KEY_ID";
+
+    /// The ACME EAB mac key environment variable.
+    pub const CADDY_ACME_EAB_MAC_KEY: &str = "CADDY_ACME_EAB_MAC_KEY";
 
     /// A request to bootstrap the CVM.
     #[derive(Deserialize, Serialize)]
     pub struct BootstrapRequest {
-        /// The ACME account key.
-        pub acme_account_key: String,
+        /// The ACME EAB key id.
+        pub acme_eab_key_id: String,
+
+        /// The ACME EAB MAC key.
+        pub acme_eab_mac_key: String,
     }
 }
 

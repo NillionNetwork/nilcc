@@ -4,7 +4,7 @@ use crate::{
         nilcc_api::NilccApiClient,
         qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
     },
-    config::{CvmConfig, CvmFiles},
+    config::{CvmConfig, CvmFiles, ZeroSslConfig},
     repositories::workload::Workload,
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::vm::{InitialVmState, VmWorker, VmWorkerArgs, VmWorkerHandle},
@@ -27,12 +27,7 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
-    async fn create_vm(
-        &self,
-        workload: Workload,
-        state: InitialVmState,
-        acme_pem_key: String,
-    ) -> Result<(), StartVmError>;
+    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
     async fn disable_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
@@ -50,6 +45,7 @@ pub struct VmServiceArgs {
     pub cvm_agent_client: Arc<dyn CvmAgentClient>,
     pub disk_service: Box<dyn DiskService>,
     pub cvm_config: CvmConfig,
+    pub zerossl_config: ZeroSslConfig,
 }
 
 pub struct DefaultVmService {
@@ -60,12 +56,20 @@ pub struct DefaultVmService {
     workers: Mutex<HashMap<Uuid, VmWorkerHandle>>,
     state_path: PathBuf,
     cvm_config: CvmConfig,
+    zerossl_config: ZeroSslConfig,
 }
 
 impl DefaultVmService {
     pub async fn new(args: VmServiceArgs) -> anyhow::Result<Self> {
-        let VmServiceArgs { state_path, vm_client, nilcc_api_client, cvm_agent_client, disk_service, cvm_config } =
-            args;
+        let VmServiceArgs {
+            state_path,
+            vm_client,
+            nilcc_api_client,
+            cvm_agent_client,
+            disk_service,
+            cvm_config,
+            zerossl_config,
+        } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
             vm_client,
@@ -75,6 +79,7 @@ impl DefaultVmService {
             workers: Default::default(),
             state_path,
             cvm_config,
+            zerossl_config,
         })
     }
 
@@ -178,12 +183,7 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn create_vm(
-        &self,
-        workload: Workload,
-        state: InitialVmState,
-        acme_pem_key: String,
-    ) -> Result<(), StartVmError> {
+    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError> {
         let id = workload.id;
         let socket_path = self.state_path.join(format!("{id}.sock"));
         let mut workers = self.workers.lock().await;
@@ -216,7 +216,7 @@ impl VmService for DefaultVmService {
                     spec,
                     socket_path,
                     state,
-                    acme_pem_key,
+                    zerossl_config: self.zerossl_config.clone(),
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -316,14 +316,22 @@ mod tests {
         vm_client: MockVmClient,
         nilcc_api_client: MockNilccApiClient,
         cvm_agent_client: MockCvmAgentClient,
-
         disk_service: MockDiskService,
         cvm_config: CvmConfig,
+        zerossl_config: ZeroSslConfig,
     }
 
     impl Builder {
         async fn build(self) -> Context {
-            let Self { state_path, vm_client, nilcc_api_client, cvm_agent_client, disk_service, cvm_config } = self;
+            let Self {
+                state_path,
+                vm_client,
+                nilcc_api_client,
+                cvm_agent_client,
+                disk_service,
+                cvm_config,
+                zerossl_config,
+            } = self;
             let args = VmServiceArgs {
                 state_path: state_path.path().into(),
                 vm_client: Arc::new(vm_client),
@@ -331,6 +339,7 @@ mod tests {
                 cvm_agent_client: Arc::new(cvm_agent_client),
                 disk_service: Box::new(disk_service),
                 cvm_config,
+                zerossl_config,
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }
@@ -363,6 +372,7 @@ mod tests {
                         verity_root_hash: "gpu-root-hash".into(),
                     },
                 },
+                zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
             }
         }
     }
@@ -404,10 +414,7 @@ mod tests {
         builder.nilcc_api_client.expect_report_vm_event().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service
-            .create_vm(workload, InitialVmState::Enabled, "acme_key".to_string())
-            .await
-            .expect("failed to start");
+        ctx.service.create_vm(workload, InitialVmState::Enabled).await.expect("failed to start");
 
         let found_base_disk_contents =
             fs::read(ctx.state_path.path().join(format!("{id}.base.qcow2"))).await.expect("failed to read base disk");

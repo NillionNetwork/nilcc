@@ -28,13 +28,28 @@ services:
     );
   });
 
-  test("reserved caddy ACME environment variable", () => {
+  test("reserved eab key id env", () => {
     const rawCompose = `
 services:
   api:
     image: caddy:2
     environment:
-      FOO: $CADDY_ACME_ACCOUNT_KEY 
+      FOO: $CADDY_ACME_EAB_KEY_ID
+`;
+
+    const validator = new DockerComposeValidator();
+    expect(() => validator.validate(rawCompose, "api")).toThrow(
+      InvalidDockerCompose,
+    );
+  });
+
+  test("reserved eab mac key env", () => {
+    const rawCompose = `
+services:
+  api:
+    image: caddy:2
+    environment:
+      FOO: $CADDY_ACME_EAB_MAC_KEY
 `;
 
     const validator = new DockerComposeValidator();

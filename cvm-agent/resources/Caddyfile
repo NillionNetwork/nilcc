@@ -1,0 +1,23 @@
+{
+    servers {
+        protocols h1 h2
+    }
+}
+
+(ssl_config) {
+    tls {
+        protocols tls1.2 tls1.3
+        ca https://acme.zerossl.com/v2/DV90
+        eab {$CADDY_ACME_EAB_KEY_ID} {$CADDY_ACME_EAB_MAC_KEY}
+    }
+}
+
+https://{NILCC_PROXY_HOSTNAME} {
+    import ssl_config
+
+    handle_path /nilcc/* {
+      reverse_proxy http://nilcc-attester
+    }
+
+    reverse_proxy /* {NILCC_PROXY_TARGET}
+}

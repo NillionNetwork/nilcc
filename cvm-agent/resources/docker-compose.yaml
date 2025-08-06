@@ -24,8 +24,8 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      CADDY_ACME_ACCOUNT_KEY: ${CADDY_ACME_ACCOUNT_KEY}
+      CADDY_ACME_EAB_KEY_ID: ${CADDY_ACME_EAB_KEY_ID}
+      CADDY_ACME_EAB_MAC_KEY: ${CADDY_ACME_EAB_MAC_KEY}
     volumes:
-      - ${CADDY_INPUT_FILE}:/etc/caddy/caddy.json
-    command: caddy run --config /etc/caddy/caddy.json
+      - ${CADDY_INPUT_FILE}:/etc/caddy/Caddyfile
 

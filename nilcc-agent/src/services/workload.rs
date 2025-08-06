@@ -20,12 +20,8 @@ const TOTAL_PORTS: usize = 3;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait WorkloadService: Send + Sync {
-    async fn bootstrap(&self, acme_pem_key: String) -> anyhow::Result<()>;
-    async fn create_workload(
-        &self,
-        request: CreateWorkloadRequest,
-        acme_pem_key: String,
-    ) -> Result<(), CreateWorkloadError>;
+    async fn bootstrap(&self) -> anyhow::Result<()>;
+    async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
     async fn list_workloads(&self) -> Result<Vec<Workload>, WorkloadLookupError>;
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
@@ -207,21 +203,17 @@ impl DefaultWorkloadService {
 
 #[async_trait]
 impl WorkloadService for DefaultWorkloadService {
-    async fn bootstrap(&self, acme_pem_key: String) -> anyhow::Result<()> {
+    async fn bootstrap(&self) -> anyhow::Result<()> {
         let workloads = self.repository.list().await?;
         for workload in workloads {
             info!("Starting existing workload {}", workload.id);
             let initial_state = if workload.enabled { InitialVmState::Enabled } else { InitialVmState::Disabled };
-            self.vm_service.create_vm(workload, initial_state, acme_pem_key.clone()).await?;
+            self.vm_service.create_vm(workload, initial_state).await?;
         }
         Ok(())
     }
 
-    async fn create_workload(
-        &self,
-        request: CreateWorkloadRequest,
-        acme_pem_key: String,
-    ) -> Result<(), CreateWorkloadError> {
+    async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
         let mut resources = self.resources.lock().await;
         let cpus = request.cpus;
         let gpus = request.gpus as usize;
@@ -249,7 +241,7 @@ impl WorkloadService for DefaultWorkloadService {
 
         info!("Scheduling VM {id}");
         let proxied_vm = ProxiedVm::from(&workload);
-        self.vm_service.create_vm(workload, InitialVmState::Enabled, acme_pem_key).await?;
+        self.vm_service.create_vm(workload, InitialVmState::Enabled).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
 
         resources.cpus -= cpus;
@@ -523,7 +515,6 @@ mod tests {
         let expected_cpus = builder.resources.available_cpus() - request.cpus as u32;
         let expected_memory = builder.resources.available_memory_mb() - request.memory_mb;
         let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb;
-        let acme_key = "asdf".to_string();
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
@@ -531,9 +522,9 @@ mod tests {
         builder
             .vm_service
             .expect_create_vm()
-            .with(eq(workload), eq(InitialVmState::Enabled), eq(acme_key.clone()))
+            .with(eq(workload), eq(InitialVmState::Enabled))
             .once()
-            .return_once(|_, _, _| Ok(()));
+            .return_once(|_, _| Ok(()));
         builder
             .proxy_service
             .expect_start_vm_proxy()
@@ -541,7 +532,7 @@ mod tests {
             .return_once(move |_| ());
 
         let service = builder.build().await;
-        service.create_workload(request, acme_key).await.expect("failed to create");
+        service.create_workload(request).await.expect("failed to create");
 
         // Make sure the allocated resources are successfully tracked.
         let resources = service.resources.lock().await;
