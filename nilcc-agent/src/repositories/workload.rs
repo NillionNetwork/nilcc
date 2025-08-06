@@ -116,14 +116,26 @@ pub enum WorkloadRepositoryError {
     #[error("workload already exists")]
     DuplicateWorkload,
 
+    #[error("domain is already managed by another workload")]
+    DuplicateDomain,
+
     #[error("database error: {0}")]
     Database(sqlx::Error),
 }
 
 impl From<sqlx::Error> for WorkloadRepositoryError {
     fn from(e: sqlx::Error) -> Self {
-        match e {
-            sqlx::Error::Database(e) if e.is_unique_violation() => Self::DuplicateWorkload,
+        match &e {
+            sqlx::Error::Database(inner) if inner.is_unique_violation() => {
+                match inner.code().as_deref() {
+                    // SQLITE_CONSTRAINT_PRIMARYKEY
+                    Some("1555") => Self::DuplicateWorkload,
+                    // SQLITE_CONSTRAINT_UNIQUE
+                    // Note: this is assuming there's only a single unique constraint
+                    Some("2067") => Self::DuplicateDomain,
+                    _ => Self::Database(e),
+                }
+            }
             _ => Self::Database(e),
         }
     }
@@ -256,6 +268,10 @@ mod tests {
         };
         repo.create(workload.clone()).await.expect("failed to insert");
 
+        let workload_same_id = Workload { domain: "other.com".into(), ..workload.clone() };
+        let err = repo.create(workload_same_id).await.expect_err("insertion succeeded");
+        assert!(matches!(err, WorkloadRepositoryError::DuplicateWorkload), "{err:?}");
+
         let found = repo.find(workload.id).await.expect("failed to find");
         assert_eq!(found, workload);
 
@@ -264,5 +280,9 @@ mod tests {
 
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
+
+        let workload_same_domain = Workload { id: Uuid::new_v4(), ..workload };
+        let err = repo.create(workload_same_domain.clone()).await.expect_err("insertion succeeded");
+        assert!(matches!(err, WorkloadRepositoryError::DuplicateDomain), "{err:?}");
     }
 }
