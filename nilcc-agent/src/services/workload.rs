@@ -261,12 +261,12 @@ impl WorkloadService for DefaultWorkloadService {
             .await
             .map_err(|e| CreateWorkloadError::Internal(e.to_string()))?;
         repo.create(workload.clone()).await?;
-        repo.commit().await?;
 
         info!("Scheduling VM {id}");
         let proxied_vm = ProxiedVm::from(&workload);
         self.vm_service.create_vm(workload, InitialVmState::Enabled).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
+        repo.commit().await?;
 
         resources.cpus -= cpus;
         resources.gpus.drain(0..gpus);
