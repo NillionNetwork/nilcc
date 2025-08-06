@@ -67,7 +67,7 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
 
     let resources = Resources::render(&metadata);
     let system_compose_path = state_dir.path().join("docker-compose.yaml");
-    let caddy_path = state_dir.path().join("caddy.json");
+    let caddy_path = state_dir.path().join("Caddyfile");
     fs::write(&system_compose_path, resources.docker_compose).expect("failed to write docker-compose.yaml");
     fs::write(&caddy_path, resources.caddyfile).expect("failed to write Caddyfile");
 

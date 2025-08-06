@@ -1,7 +1,10 @@
-use crate::clients::{
-    cvm_agent::CvmAgentClient,
-    nilcc_api::{NilccApiClient, VmEvent},
-    qemu::{QemuClientError, VmClient, VmSpec},
+use crate::{
+    clients::{
+        cvm_agent::CvmAgentClient,
+        nilcc_api::{NilccApiClient, VmEvent},
+        qemu::{QemuClientError, VmClient, VmSpec},
+    },
+    config::ZeroSslConfig,
 };
 use cvm_agent_models::bootstrap::BootstrapRequest;
 use metrics::{counter, gauge};
@@ -33,7 +36,7 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) spec: VmSpec,
     pub(crate) socket_path: PathBuf,
     pub(crate) state: InitialVmState,
-    pub(crate) acme_pem_key: String,
+    pub(crate) zerossl_config: ZeroSslConfig,
 }
 
 pub(crate) struct VmWorker {
@@ -46,7 +49,7 @@ pub(crate) struct VmWorker {
     socket_path: PathBuf,
     receiver: Receiver<WorkerCommand>,
     vm_state: VmState,
-    acme_pem_key: String,
+    zerossl_config: ZeroSslConfig,
 }
 
 impl VmWorker {
@@ -60,7 +63,7 @@ impl VmWorker {
             cvm_agent_client,
             cvm_agent_port,
             state,
-            acme_pem_key,
+            zerossl_config,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -78,7 +81,7 @@ impl VmWorker {
                 socket_path,
                 receiver,
                 vm_state,
-                acme_pem_key,
+                zerossl_config,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -213,7 +216,10 @@ impl VmWorker {
                 Ok(response) => {
                     if !response.bootstrapped {
                         info!("CVM agent is running, bootstrapping it");
-                        let request = BootstrapRequest { acme_account_key: self.acme_pem_key.clone() };
+                        let request = BootstrapRequest {
+                            acme_eab_key_id: self.zerossl_config.eab_key_id.clone(),
+                            acme_eab_mac_key: self.zerossl_config.eab_mac_key.clone(),
+                        };
                         if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
                             warn!("Failed to bootstrap agent: {e:#}");
                             return;
@@ -350,7 +356,7 @@ mod tests {
             spec,
             socket_path: socket,
             state: InitialVmState::Enabled,
-            acme_pem_key: "acme key".to_string(),
+            zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
         };
         let join_handle = {
             let handle = VmWorker::spawn(args);

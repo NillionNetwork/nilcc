@@ -35,6 +35,9 @@ pub struct AgentConfig {
     /// The resource configuration.
     pub resources: ResourcesConfig,
 
+    /// The zero SSL config.
+    pub zerossl: ZeroSslConfig,
+
     /// The optional TLS configuration.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
@@ -206,6 +209,16 @@ impl Default for ResourceLimitsConfig {
     fn default() -> Self {
         Self { cpus: u32::MAX, memory_mb: u32::MAX, disk_space_gb: u32::MAX }
     }
+}
+
+/// Configuration for zero SSL.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ZeroSslConfig {
+    /// The EAB key id.
+    pub eab_key_id: String,
+
+    /// The EAB MAC key.
+    pub eab_mac_key: String,
 }
 
 /// The TLS configuration.

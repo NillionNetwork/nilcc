@@ -3,7 +3,7 @@ use crate::{
     routes::{SharedState, SystemState},
 };
 use axum::{http::StatusCode, Json};
-use cvm_agent_models::bootstrap::{BootstrapRequest, CADDY_ACME_ACCOUNT_KEY};
+use cvm_agent_models::bootstrap::{BootstrapRequest, CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use tokio::process::Command;
 
 const COMPOSE_PROJECT_NAME: &str = "cvm";
@@ -23,7 +23,8 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
         .env("CADDY_INPUT_FILE", ctx.caddy_config.into_os_string())
         .env("NILCC_VERSION", ctx.version)
         .env("NILCC_VM_TYPE", ctx.vm_type)
-        .env(CADDY_ACME_ACCOUNT_KEY, &request.acme_account_key)
+        .env(CADDY_ACME_EAB_KEY_ID, &request.acme_eab_key_id)
+        .env(CADDY_ACME_EAB_MAC_KEY, &request.acme_eab_mac_key)
         .arg("compose")
         // set a well defined project name, this is used as a prefix for container names
         .arg("-p")

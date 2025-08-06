@@ -8,22 +8,15 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_valid::Valid;
-use cvm_agent_models::bootstrap::CADDY_ACME_ACCOUNT_KEY;
+use cvm_agent_models::bootstrap::CADDY_ACME_EAB_KEY_ID;
 use nilcc_agent_models::workloads::create::{CreateWorkloadRequest, CreateWorkloadResponse};
 use strum::EnumDiscriminants;
-use tracing::{error, warn};
+use tracing::error;
 
 pub(crate) async fn handler(
     state: State<AppState>,
     request: Valid<Json<CreateWorkloadRequest>>,
 ) -> Result<Json<CreateWorkloadResponse>, HandlerError> {
-    let acme_pem_key = match &*state.acme_pem_key.lock().unwrap() {
-        Some(key) => key.clone(),
-        None => {
-            warn!("Can't handle create request since we don't have an ACME key yet");
-            return Err(HandlerError::AcmeKeyMissing);
-        }
-    };
     let limits = &state.resource_limits;
     let checks = [
         (request.cpus, limits.cpus, "cpus"),
@@ -35,12 +28,12 @@ pub(crate) async fn handler(
             return Err(HandlerError::ResourceLimit(name, limit));
         }
     }
-    if request.docker_compose.contains(CADDY_ACME_ACCOUNT_KEY) {
+    if request.docker_compose.contains(CADDY_ACME_EAB_KEY_ID) {
         return Err(HandlerError::CaddyAcmeKey);
     }
 
     let id = request.id;
-    state.services.workload.create_workload(request.0 .0, acme_pem_key).await?;
+    state.services.workload.create_workload(request.0 .0).await?;
     Ok(Json(CreateWorkloadResponse { id }))
 }
 
@@ -58,11 +51,8 @@ pub(crate) enum HandlerError {
     #[error("{0} can't be higher than {1}")]
     ResourceLimit(&'static str, u32),
 
-    #[error("{CADDY_ACME_ACCOUNT_KEY} is a reserved environment variable")]
+    #[error("{CADDY_ACME_EAB_KEY_ID} is a reserved environment variable")]
     CaddyAcmeKey,
-
-    #[error("ACME key is missing")]
-    AcmeKeyMissing,
 }
 
 impl From<CreateWorkloadError> for HandlerError {
@@ -79,9 +69,7 @@ impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {
         let discriminant = HandlerErrorDiscriminants::from(&self);
         let (code, message) = match self {
-            Self::InsufficientResources(_) | Self::AcmeKeyMissing => {
-                (StatusCode::PRECONDITION_FAILED, self.to_string())
-            }
+            Self::InsufficientResources(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
             Self::AlreadyExists => (StatusCode::BAD_REQUEST, "workload already exists".into()),
             Self::Internal(e) => {
                 error!("Failed to create workload: {e}");
