@@ -1,4 +1,5 @@
 use crate::api::ApiClient;
+use anyhow::anyhow;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use cvm_agent_models::{
@@ -10,7 +11,14 @@ use nilcc_agent_models::workloads::{
     delete::DeleteWorkloadRequest,
     list::WorkloadSummary,
 };
-use std::{fs, path::PathBuf, process::exit, str::FromStr};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    process::exit,
+    str::FromStr,
+};
 use uuid::Uuid;
 
 mod api;
@@ -67,11 +75,15 @@ struct LaunchArgs {
     #[clap(long)]
     id: Option<Uuid>,
 
-    /// The environment variables to be set, in the format `<name>=<value>`.
+    /// Add an environment variable to the workload, in the format `<name>=<value>`.
     #[clap(short, long = "env-var")]
     env_vars: Vec<KeyValue>,
 
-    /// The files to be included in the ISO image, in the format `<name>=<value>`.
+    /// The path to a .env file to add environment variables from.
+    #[clap(long = "dotenv-file")]
+    dotenv: Option<PathBuf>,
+
+    /// Add a file to the workload, in the format `<file-name>=<value>`.
     #[clap(short, long = "file")]
     files: Vec<KeyValue>,
 
@@ -191,10 +203,27 @@ impl FromStr for Entrypoint {
     }
 }
 
+fn load_dotenv(path: &Path) -> anyhow::Result<HashMap<String, String>> {
+    let file = File::open(path).context("Failed to open .env file")?;
+    let reader = BufReader::new(file);
+    let mut output = HashMap::new();
+    for line in reader.lines() {
+        let line = line.context("Failed to read .env file")?;
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (name, value) = line.split_once("=").ok_or_else(|| anyhow!("no '=' in .env line"))?;
+        output.insert(name.to_string(), value.to_string());
+    }
+    Ok(output)
+}
+
 fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
     let LaunchArgs {
         id,
         env_vars,
+        dotenv,
         files,
         entrypoint,
         cpus,
@@ -205,7 +234,10 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         docker_compose_path,
     } = args;
     let docker_compose = fs::read_to_string(docker_compose_path).context("Failed to read docker compose")?;
-    let env_vars = env_vars.into_iter().map(|kv| (kv.key, kv.value)).collect();
+    let mut env_vars: HashMap<_, _> = env_vars.into_iter().map(|kv| (kv.key, kv.value)).collect();
+    if let Some(dotenv) = dotenv {
+        env_vars.extend(load_dotenv(&dotenv)?);
+    }
     let files = files
         .into_iter()
         .map(|f| fs::read(&f.value).map(|contents| (f.key, contents)).context("Failed to read file"))
