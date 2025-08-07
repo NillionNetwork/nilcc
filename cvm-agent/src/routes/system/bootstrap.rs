@@ -35,10 +35,11 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
         // then ours
         .arg("-f")
         .arg(ctx.system_docker_compose)
-        .arg("up");
+        .arg("up")
+        .arg("-d");
     match command.spawn() {
-        Ok(child) => {
-            *system_state = SystemState::Starting(child);
+        Ok(_) => {
+            *system_state = SystemState::Starting;
             CaddyMonitor::spawn(state.docker.clone(), state.system_state.clone());
             StatusCode::OK
         }

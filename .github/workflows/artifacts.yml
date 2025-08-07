@@ -1,9 +1,5 @@
 name: Artifacts
 on:
-  pull_request:
-    paths:
-      - 'artifacts/**'
-      - 'cvm-agent/**'
   push:
     paths:
       - 'artifacts/**'

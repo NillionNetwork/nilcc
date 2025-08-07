@@ -1,11 +1,11 @@
 use crate::{
     resources::{ApplicationMetadata, Resources},
-    routes::{create_router, AppState, BootstrapContext, SystemState},
+    routes::{create_router, AppState, BootstrapContext},
 };
 use bollard::Docker;
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use std::{
-    fs, mem,
+    fs::{self, create_dir_all, File},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     sync::Arc,
@@ -15,7 +15,8 @@ use tokio::{
     net::TcpListener,
     signal::{self, unix::SignalKind},
 };
-use tracing::{error, info};
+use tracing::{error, info, level_filters::LevelFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod caddy;
 mod resources;
@@ -31,6 +32,9 @@ struct Cli {
     #[clap(long, default_value = default_vm_type_path().into_os_string())]
     vm_type_path: PathBuf,
 
+    #[clap(long, default_value = default_log_file_path().into_os_string())]
+    log_file: PathBuf,
+
     #[clap(long, default_value_t = default_bind_endpoint())]
     bind_endpoint: SocketAddr,
 }
@@ -41,6 +45,10 @@ fn default_version_path() -> PathBuf {
 
 fn default_vm_type_path() -> PathBuf {
     "/opt/nillion/nilcc-vm-type".into()
+}
+
+fn default_log_file_path() -> PathBuf {
+    "/var/log/cvm-agent.log".into()
 }
 
 fn default_bind_endpoint() -> SocketAddr {
@@ -106,29 +114,30 @@ async fn shutdown_signal() {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    tracing_subscriber::fmt().init();
-
     let cli = Cli::parse();
+    if let Some(parent) = cli.log_file.parent() {
+        create_dir_all(parent).expect("failed to create directory for log file");
+    }
+    let file = File::create(&cli.log_file).expect("Failed to create log file");
+    let (writer, _guard) = tracing_appender::non_blocking(file);
+    let file_layer = tracing_subscriber::fmt::layer().with_ansi(false).with_writer(writer);
+    tracing_subscriber::registry()
+        .with(file_layer)
+        .with(
+            tracing_subscriber::filter::EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
+
     let docker = Docker::connect_with_local_defaults().expect("failed to connect to docker daemon");
     let (_state_dir, context) = build_bootstrap_context(&cli);
-    let state = Arc::new(AppState { docker, context, system_state: Default::default() });
+    let state =
+        Arc::new(AppState { docker, context, system_state: Default::default(), log_path: cli.log_file.clone() });
     let router = create_router(state.clone());
     let listener = TcpListener::bind(cli.bind_endpoint).await.expect("failed to bind");
-    if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await {
-        error!("Failed to serve: {e}");
-    }
-    info!("Shutting down");
-    let system_state = {
-        let mut state = state.system_state.lock().unwrap();
-        mem::take(&mut *state)
-    };
-    match system_state {
-        SystemState::WaitingBootstrap => {
-            info!("Docker compose is not running");
-        }
-        SystemState::Starting(mut child) | SystemState::Ready(mut child) => {
-            info!("Shutting docker compose down");
-            child.kill().await.expect("failed to kill child");
-        }
+    match axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await {
+        Ok(_) => info!("Shutting down"),
+        Err(e) => error!("Failed to serve: {e}"),
     };
 }

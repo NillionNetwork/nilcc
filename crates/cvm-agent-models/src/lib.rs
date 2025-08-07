@@ -92,6 +92,37 @@ pub mod logs {
     /// The container logs response.
     #[derive(Deserialize, Serialize)]
     pub struct ContainerLogsResponse {
+        /// The log lines.
+        pub lines: Vec<String>,
+    }
+
+    /// A request to get the system logs.
+    #[derive(Deserialize, Serialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct SystemLogsRequest {
+        /// The log source to fetch.
+        pub source: SystemLogsSource,
+
+        /// Whether to pull logs from the tail of the stream.
+        pub tail: bool,
+
+        /// The maximum number of log lines to be returned.
+        #[validate(range(max = 1000))]
+        pub max_lines: usize,
+    }
+
+    /// The source for system logs.
+    #[derive(Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum SystemLogsSource {
+        /// Get the cvm-agent logs.
+        CvmAgent,
+    }
+
+    /// The system logs response.
+    #[derive(Deserialize, Serialize)]
+    pub struct SystemLogsResponse {
+        /// The log lines.
         pub lines: Vec<String>,
     }
 }
