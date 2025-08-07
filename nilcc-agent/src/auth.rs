@@ -55,12 +55,11 @@ where
         let mut inner = self.inner.clone();
         let token = self.token.clone();
         Box::pin(async move {
-            if let Some(header) = req.headers().get(AUTHORIZATION) {
-                if let Ok(value) = header.to_str() {
-                    if value.strip_prefix("Bearer ") == Some(&token) {
-                        return inner.call(req).await;
-                    }
-                }
+            if let Some(header) = req.headers().get(AUTHORIZATION)
+                && let Ok(value) = header.to_str()
+                && value.strip_prefix("Bearer ") == Some(&token)
+            {
+                return inner.call(req).await;
             }
 
             let response = RequestHandlerError {

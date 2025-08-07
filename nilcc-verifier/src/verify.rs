@@ -186,40 +186,39 @@ impl ReportVerifier {
         let common_name: CertType = Self::parse_common_name(vek_x509.subject())?;
 
         // Compare bootloaders
-        if let Some(cert_bl) = extensions.get(&SnpOid::BootLoader.oid()) {
-            if !Self::check_cert_bytes(cert_bl, &report.reported_tcb.bootloader.to_le_bytes())? {
-                bail!("report TCB boot loader and certificate boot loader mismatch encountered");
-            }
+        if let Some(cert_bl) = extensions.get(&SnpOid::BootLoader.oid())
+            && !Self::check_cert_bytes(cert_bl, &report.reported_tcb.bootloader.to_le_bytes())?
+        {
+            bail!("report TCB boot loader and certificate boot loader mismatch encountered");
         }
 
         // Compare TEE information
-        if let Some(cert_tee) = extensions.get(&SnpOid::Tee.oid()) {
-            if !Self::check_cert_bytes(cert_tee, &report.reported_tcb.tee.to_le_bytes())? {
-                bail!("report TCB TEE and certificate TEE mismatch encountered");
-            }
+        if let Some(cert_tee) = extensions.get(&SnpOid::Tee.oid())
+            && !Self::check_cert_bytes(cert_tee, &report.reported_tcb.tee.to_le_bytes())?
+        {
+            bail!("report TCB TEE and certificate TEE mismatch encountered");
         }
 
         // Compare SNP information
-        if let Some(cert_snp) = extensions.get(&SnpOid::Snp.oid()) {
-            if !Self::check_cert_bytes(cert_snp, &report.reported_tcb.snp.to_le_bytes())? {
-                bail!("report TCB SNP and Certificate SNP mismatch encountered");
-            }
+        if let Some(cert_snp) = extensions.get(&SnpOid::Snp.oid())
+            && !Self::check_cert_bytes(cert_snp, &report.reported_tcb.snp.to_le_bytes())?
+        {
+            bail!("report TCB SNP and Certificate SNP mismatch encountered");
         }
 
         // Compare Microcode information
-        if let Some(cert_ucode) = extensions.get(&SnpOid::Ucode.oid()) {
-            if !Self::check_cert_bytes(cert_ucode, &report.reported_tcb.microcode.to_le_bytes())? {
-                bail!("report TCB microcode and certificate microcode mismatch encountered");
-            }
+        if let Some(cert_ucode) = extensions.get(&SnpOid::Ucode.oid())
+            && !Self::check_cert_bytes(cert_ucode, &report.reported_tcb.microcode.to_le_bytes())?
+        {
+            bail!("report TCB microcode and certificate microcode mismatch encountered");
         }
 
         // Compare HWID information only on VCEK
-        if common_name == CertType::VCEK {
-            if let Some(cert_hwid) = extensions.get(&SnpOid::HwId.oid()) {
-                if !Self::check_cert_bytes(cert_hwid, &*report.chip_id)? {
-                    bail!("report TCB ID and certificate ID mismatch encountered");
-                }
-            }
+        if common_name == CertType::VCEK
+            && let Some(cert_hwid) = extensions.get(&SnpOid::HwId.oid())
+            && !Self::check_cert_bytes(cert_hwid, &*report.chip_id)?
+        {
+            bail!("report TCB ID and certificate ID mismatch encountered");
         }
 
         if processor == &Processor::Turin {
@@ -335,7 +334,7 @@ enum SnpOid {
 }
 
 impl SnpOid {
-    fn oid(&self) -> Oid {
+    fn oid(&self) -> Oid<'_> {
         match self {
             SnpOid::BootLoader => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .1),
             SnpOid::Tee => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .2),

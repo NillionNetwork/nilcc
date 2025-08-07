@@ -22,7 +22,7 @@ jobs:
         run: cargo +nightly fmt --all -- --check
 
       - name: Install stable rust toolchain
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: clippy
 

@@ -126,3 +126,43 @@ pub mod logs {
         pub lines: Vec<String>,
     }
 }
+
+pub mod stats {
+    use super::*;
+
+    /// The stats response.
+    #[derive(Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct SystemStatsResponse {
+        /// Stats about the memory usage.
+        pub memory: MemoryStats,
+
+        /// Stats about CPUs.
+        pub cpus: Vec<CpuStats>,
+    }
+
+    /// Memory stats.
+    #[derive(Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct MemoryStats {
+        /// The total memory in the CVM.
+        pub total: u64,
+
+        /// The total used memory.
+        pub used: u64,
+    }
+
+    /// CPU stats.
+    #[derive(Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct CpuStats {
+        /// The CPU name.
+        pub name: String,
+
+        /// The CPU usage.
+        pub usage: f32,
+
+        /// The frequency, in MHz.
+        pub frequency: u64,
+    }
+}
