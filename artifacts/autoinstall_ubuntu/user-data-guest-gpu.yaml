@@ -31,7 +31,6 @@ autoinstall:
     - curtin in-target -- bash -c 'echo "install nvidia /sbin/modprobe ecdsa_generic ecdh; /sbin/modprobe --ignore-install nvidia" > /etc/modprobe.d/nvidia-lkca.conf'
     - curtin in-target -- sed -i "/^ExecStart=/d" /usr/lib/systemd/system/nvidia-persistenced.service
     - curtin in-target -- bash -c 'echo "ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --uvm-persistence-mode --verbose" >> /usr/lib/systemd/system/nvidia-persistenced.service'
-    - curtin in-target -- apt purge -y linux-image-6.8* linux-headers-6.8* linux-tools-6.8*
     # Copy over cvm-agent.
     - curtin in-target -- mkdir /opt/nillion
     - curtin in-target -- cp /cdrom/nillion/cvm-agent /opt/nillion

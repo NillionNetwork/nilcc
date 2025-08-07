@@ -8,7 +8,7 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 TYPE=$1
 shift
 
-AUTOINSTALL_UBUNTU_ISO_PATH="${SCRIPT_PATH}/../autoinstall_ubuntu/build/guest/$TYPE/iso/ubuntu-24.04.2-live-server-amd64-autoinstall-guest-${TYPE}.iso"
+AUTOINSTALL_UBUNTU_ISO_PATH="${SCRIPT_PATH}/../autoinstall_ubuntu/build/guest/$TYPE/iso/ubuntu-24.04.3-live-server-amd64-autoinstall-guest-${TYPE}.iso"
 [[ ! -f "$AUTOINSTALL_UBUNTU_ISO_PATH" ]] && echo "Ubuntu autoinstall ISO not found, run 'autoinstall_ubuntu/build.sh guest $TYPE' first" && exit 1
 
 QEMU_STATIC_PATH=($SCRIPT_PATH/../qemu/build/qemu-static.tar.gz)
