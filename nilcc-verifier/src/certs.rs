@@ -147,10 +147,10 @@ struct ProcessorVcekIdentifier {
 impl ProcessorVcekIdentifier {
     fn new(processor: Processor, report: &AttestationReport) -> anyhow::Result<Self> {
         let tcb = report.reported_tcb;
-        if let Processor::Turin = processor {
-            if tcb.fmc.is_none() {
-                bail!("Turin processors must have a fmc value");
-            }
+        if let Processor::Turin = processor
+            && tcb.fmc.is_none()
+        {
+            bail!("Turin processors must have a fmc value");
         }
         if report.chip_id.as_slice() == [0; 64] {
             bail!("hardware ID is 0s on attestation report");

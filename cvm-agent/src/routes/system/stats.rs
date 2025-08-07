@@ -13,7 +13,7 @@ pub(crate) async fn handler() -> Result<Json<SystemStatsResponse>, StatusCode> {
 
     let cpus = stats
         .cpus()
-        .into_iter()
+        .iter()
         .map(|cpu| CpuStats { name: cpu.name().to_string(), usage: cpu.cpu_usage(), frequency: cpu.frequency() })
         .collect();
     let memory = MemoryStats { total: stats.total_memory(), used: stats.used_memory() };
