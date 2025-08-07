@@ -569,7 +569,7 @@ mod tests {
         builder
             .proxy_service
             .expect_start_vm_proxy()
-            .with(eq(ProxiedVm { id, http_port: 100, https_port: 101 }))
+            .with(eq(ProxiedVm { id, domain: "example.com".into(), http_port: 100, https_port: 101 }))
             .return_once(move |_| ());
 
         let service = builder.build().await;

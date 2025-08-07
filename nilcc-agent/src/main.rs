@@ -188,7 +188,6 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         config_file_path: config.sni_proxy.config_file_path.clone(),
         master_socket_path: config.sni_proxy.master_socket_path,
         timeouts: config.sni_proxy.timeouts,
-        dns_subdomain: config.sni_proxy.dns_subdomain,
         agent_domain: config.api.domain.clone(),
         agent_port: config.api.bind_endpoint.port(),
         max_connections: config.sni_proxy.max_connections,
