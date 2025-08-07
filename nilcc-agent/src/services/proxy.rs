@@ -14,13 +14,19 @@ const HAPROXY_TEMPLATE: &str = include_str!("../templates/haproxy.cfg.j2");
 #[derive(Debug, PartialEq)]
 pub struct ProxiedVm {
     pub(crate) id: Uuid,
+    pub(crate) domain: String,
     pub(crate) http_port: u16,
     pub(crate) https_port: u16,
 }
 
 impl From<&Workload> for ProxiedVm {
     fn from(workload: &Workload) -> Self {
-        Self { id: workload.id, http_port: workload.http_port(), https_port: workload.https_port() }
+        Self {
+            id: workload.id,
+            domain: workload.domain.clone(),
+            http_port: workload.http_port(),
+            https_port: workload.https_port(),
+        }
     }
 }
 
@@ -41,7 +47,6 @@ pub struct ProxyServiceArgs {
     pub config_file_path: PathBuf,
     pub master_socket_path: PathBuf,
     pub timeouts: SniProxyConfigTimeouts,
-    pub dns_subdomain: String,
     pub agent_domain: String,
     pub agent_port: u16,
     pub max_connections: u64,
@@ -53,7 +58,6 @@ pub struct HaProxyProxyService {
     config_file_path: PathBuf,
     master_socket_path: PathBuf,
     timeouts: SniProxyConfigTimeouts,
-    dns_subdomain: String,
     agent_domain: String,
     agent_port: u16,
     max_connections: u64,
@@ -67,7 +71,6 @@ impl HaProxyProxyService {
             config_file_path,
             master_socket_path,
             timeouts,
-            dns_subdomain,
             agent_domain,
             agent_port,
             max_connections,
@@ -79,7 +82,6 @@ impl HaProxyProxyService {
             config_file_path,
             master_socket_path,
             timeouts,
-            dns_subdomain,
             agent_domain,
             agent_port,
             max_connections,
@@ -108,14 +110,13 @@ impl HaProxyProxyService {
     }
 
     async fn persist_config(&self, proxied_vms: impl IntoIterator<Item = &ProxiedVm>) -> Result<()> {
-        let dns_subdomain = &self.dns_subdomain;
         let backends: Vec<_> = proxied_vms
             .into_iter()
             .map(|vm| {
-                let ProxiedVm { id, http_port, https_port } = vm;
+                let ProxiedVm { id, domain, http_port, https_port } = vm;
                 ProxyBackend {
                     id: id.to_string(),
-                    domain: format!("{id}.{dns_subdomain}"),
+                    domain: domain.clone(),
                     http_address: format!("127.0.0.1:{http_port}"),
                     https_address: format!("127.0.0.1:{https_port}"),
                 }
