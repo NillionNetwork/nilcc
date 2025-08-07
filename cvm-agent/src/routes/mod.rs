@@ -8,7 +8,6 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::process::Child;
 
 pub(crate) mod containers;
 pub(crate) mod health;
@@ -18,8 +17,8 @@ pub(crate) mod system;
 pub enum SystemState {
     #[default]
     WaitingBootstrap,
-    Starting(Child),
-    Ready(Child),
+    Starting,
+    Ready,
 }
 
 #[derive(Clone)]
@@ -37,6 +36,7 @@ pub struct AppState {
     pub docker: Docker,
     pub context: BootstrapContext,
     pub system_state: Arc<Mutex<SystemState>>,
+    pub log_path: PathBuf,
 }
 
 pub(crate) type SharedState = State<Arc<AppState>>;
@@ -49,6 +49,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             .route("/containers/logs", get(containers::logs::handler))
             .route("/containers/list", get(containers::list::handler))
             .route("/system/bootstrap", post(system::bootstrap::handler))
+            .route("/system/logs", get(system::logs::handler))
             .with_state(state),
     )
 }

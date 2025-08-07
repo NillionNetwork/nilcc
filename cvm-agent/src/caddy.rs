@@ -45,9 +45,9 @@ impl CaddyMonitor {
                     let mut system_state = self.system_state.lock().unwrap();
                     match mem::take(&mut *system_state) {
                         SystemState::WaitingBootstrap => error!("System is still waiting for bootstrap"),
-                        SystemState::Starting(child) | SystemState::Ready(child) => {
+                        SystemState::Starting | SystemState::Ready => {
                             info!("Caddy is running successfully");
-                            *system_state = SystemState::Ready(child)
+                            *system_state = SystemState::Ready
                         }
                     }
                 }

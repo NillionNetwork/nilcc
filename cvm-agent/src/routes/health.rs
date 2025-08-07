@@ -7,8 +7,8 @@ use super::SystemState;
 pub(crate) async fn handler(state: SharedState) -> Json<HealthResponse> {
     let (https, bootstrapped) = match &*state.system_state.lock().unwrap() {
         SystemState::WaitingBootstrap => (false, false),
-        SystemState::Starting(_) => (false, true),
-        SystemState::Ready(_) => (true, true),
+        SystemState::Starting => (false, true),
+        SystemState::Ready => (true, true),
     };
     let response = HealthResponse { https, bootstrapped };
     Json(response)
