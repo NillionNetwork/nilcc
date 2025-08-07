@@ -17,11 +17,11 @@ apt update
 apt install -y xorriso curl 7zip
 
 # build autoinstall ISO
-ISO_NAME="ubuntu-24.04.2-live-server-amd64.iso"
-AUTOINSTALL_ISO_NAME="ubuntu-24.04.2-live-server-amd64-autoinstall-${NAME}.iso"
+ISO_NAME="ubuntu-24.04.3-live-server-amd64.iso"
+AUTOINSTALL_ISO_NAME="ubuntu-24.04.3-live-server-amd64-autoinstall-${NAME}.iso"
 
 UBUNTU_ISO_PATH="$SCRIPT_PATH/build/$ISO_NAME"
-[[ ! -f "${UBUNTU_ISO_PATH}" ]] && curl -L https://releases.ubuntu.com/noble/ubuntu-24.04.2-live-server-amd64.iso -o "$UBUNTU_ISO_PATH"
+[[ ! -f "${UBUNTU_ISO_PATH}" ]] && curl -L https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso -o "$UBUNTU_ISO_PATH"
 
 [[ ! -d "$BUILD_PATH/iso/" ]] && mkdir -p "$BUILD_PATH/iso/"
 cd "$BUILD_PATH/iso"

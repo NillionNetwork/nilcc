@@ -18,7 +18,7 @@ use tokio::{
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod caddy;
+mod monitors;
 mod resources;
 mod routes;
 
