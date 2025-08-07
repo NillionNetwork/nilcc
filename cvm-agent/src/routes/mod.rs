@@ -50,6 +50,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             .route("/containers/list", get(containers::list::handler))
             .route("/system/bootstrap", post(system::bootstrap::handler))
             .route("/system/logs", get(system::logs::handler))
+            .route("/system/stats", get(system::stats::handler))
             .with_state(state),
     )
 }

@@ -1,4 +1,4 @@
-FROM rust:1.86-alpine AS build
+FROM rust:1.88-alpine AS build
 
 WORKDIR /opt/nillion
 RUN apk add --no-cache musl-dev perl make
