@@ -36,7 +36,7 @@ pub mod workloads {
             #[serde(default)]
             pub env_vars: HashMap<String, String>,
 
-            #[serde_as(deserialize_as = "HashMap<_, Base64>")]
+            #[serde_as(as = "HashMap<_, Base64>")]
             #[serde(default)]
             #[validate(custom(function = "validate_files"))]
             pub files: HashMap<String, Vec<u8>>,
