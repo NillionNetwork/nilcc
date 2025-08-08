@@ -1,0 +1,5 @@
+disallowed-types = [
+  { path = "axum::Json", reason = "use crate::routes::Json"},
+  { path = "axum::extract::Json", reason = "use crate::routes::Json"},
+  { path = "axum::extract::Query", reason = "use crate::routes::Query"},
+]

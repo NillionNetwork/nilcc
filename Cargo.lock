@@ -2216,7 +2216,6 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-server",
- "axum-valid",
  "chrono",
  "clap",
  "cvm-agent-models",

@@ -1,11 +1,8 @@
 use crate::{
     clients::cvm_agent::CvmAgentRequestError,
-    routes::{workloads::containers::CvmAgentHandlerError, AppState},
+    routes::{workloads::containers::CvmAgentHandlerError, AppState, Json, Query},
 };
-use axum::{
-    extract::{Path, Query, State},
-    Json,
-};
+use axum::extract::{Path, State};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse};
 use reqwest::StatusCode;
 use uuid::Uuid;

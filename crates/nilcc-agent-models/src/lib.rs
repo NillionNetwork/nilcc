@@ -15,6 +15,8 @@ pub mod workloads {
         use super::*;
 
         static FILENAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[\w/._-]+$").unwrap());
+        static DOMAIN_REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9-\.]+\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$").unwrap());
 
         fn validate_files(files: &HashMap<String, Vec<u8>>) -> Result<(), ValidationError> {
             for key in files.keys() {
@@ -56,6 +58,7 @@ pub mod workloads {
             #[validate(range(min = 2))]
             pub disk_space_gb: u32,
 
+            #[validate(regex(path  = DOMAIN_REGEX))]
             pub domain: String,
         }
 
@@ -87,7 +90,7 @@ pub mod workloads {
     pub mod delete {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct DeleteWorkloadRequest {
             pub id: Uuid,
@@ -97,7 +100,7 @@ pub mod workloads {
     pub mod start {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct StartWorkloadRequest {
             pub id: Uuid,
@@ -107,7 +110,7 @@ pub mod workloads {
     pub mod stop {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct StopWorkloadRequest {
             pub id: Uuid,
@@ -117,7 +120,7 @@ pub mod workloads {
     pub mod restart {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct RestartWorkloadRequest {
             pub id: Uuid,
@@ -129,7 +132,7 @@ pub mod errors {
     use super::*;
 
     /// An error when handling a request.
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct RequestHandlerError {
         /// A descriptive message about the error that was encountered.

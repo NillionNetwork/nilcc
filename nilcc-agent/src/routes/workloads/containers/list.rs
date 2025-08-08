@@ -1,8 +1,5 @@
-use crate::routes::{workloads::containers::CvmAgentHandlerError, AppState};
-use axum::{
-    extract::{Path, State},
-    Json,
-};
+use crate::routes::{workloads::containers::CvmAgentHandlerError, AppState, Json};
+use axum::extract::{Path, State};
 use cvm_agent_models::container::Container;
 use uuid::Uuid;
 

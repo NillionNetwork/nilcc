@@ -7,7 +7,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use axum_valid::Valid;
 use cvm_agent_models::bootstrap::CADDY_ACME_EAB_KEY_ID;
 use docker_compose_types::Compose;
 use nilcc_agent_models::workloads::create::{CreateWorkloadRequest, CreateWorkloadResponse};
@@ -17,7 +16,7 @@ use tracing::error;
 
 pub(crate) async fn handler(
     state: State<AppState>,
-    request: Valid<Json<CreateWorkloadRequest>>,
+    request: Json<CreateWorkloadRequest>,
 ) -> Result<Json<CreateWorkloadResponse>, HandlerError> {
     let limits = &state.resource_limits;
     let checks = [
@@ -37,7 +36,7 @@ pub(crate) async fn handler(
     validate_compose_file(&request)?;
 
     let id = request.id;
-    state.services.workload.create_workload(request.0 .0).await?;
+    state.services.workload.create_workload(request.0).await?;
     Ok(Json(CreateWorkloadResponse { id }))
 }
 
