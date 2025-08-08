@@ -128,9 +128,8 @@ pub mod logs {
 }
 
 pub mod stats {
-    use std::path::PathBuf;
-
     use super::*;
+    use std::path::PathBuf;
 
     /// The stats response.
     #[derive(Deserialize, Serialize)]
@@ -143,6 +142,7 @@ pub mod stats {
         pub cpus: Vec<CpuStats>,
 
         /// Stats about every disk.
+        #[serde(default)]
         pub disks: Vec<DiskStats>,
     }
 
