@@ -59,6 +59,17 @@ export type ListMetalInstancesResponse = z.infer<
   typeof ListMetalInstancesResponse
 >;
 
+export const DeleteMetalInstanceRequest = z
+  .object({
+    id: Uuid,
+  })
+  .openapi({
+    ref: "DeleteMetalInstanceRequest",
+  });
+export type DeleteMetalInstanceRequest = z.infer<
+  typeof DeleteMetalInstanceRequest
+>;
+
 export const WorkloadEventKind = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("created") }),
   z.object({ kind: z.literal("starting") }),

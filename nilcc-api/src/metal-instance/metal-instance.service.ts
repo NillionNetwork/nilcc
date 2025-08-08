@@ -1,5 +1,8 @@
 import type { QueryRunner, Repository } from "typeorm";
-import { EntityNotFound } from "#/common/errors";
+import {
+  EntityNotFound,
+  MetalInstanceManagingWorkloads,
+} from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
   HeartbeatRequest,
@@ -37,6 +40,17 @@ export class MetalInstanceService {
     metalInstanceId: string,
   ): Promise<boolean> {
     const repository = this.getRepository(bindings);
+    const instances = await repository.find({
+      where: { id: metalInstanceId },
+      relations: ["workloads"],
+    });
+    if (instances.length === 0) {
+      throw new EntityNotFound("workload");
+    }
+    const instance = instances[0];
+    if (instance.workloads.length > 0) {
+      throw new MetalInstanceManagingWorkloads();
+    }
     const result = await repository.delete({ id: metalInstanceId });
     return result.affected ? result.affected > 0 : false;
   }
@@ -118,6 +132,7 @@ export class MetalInstanceService {
     const repository = this.getRepository(bindings, tx);
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
     currentMetalInstance.hostname = metalInstance.hostname;
+    currentMetalInstance.token = metalInstance.token;
 
     currentMetalInstance.totalCpus = metalInstance.cpus.total;
     currentMetalInstance.osReservedCpus = metalInstance.cpus.reserved;
