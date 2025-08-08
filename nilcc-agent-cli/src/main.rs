@@ -3,6 +3,7 @@ use ansi_term::Color;
 use anyhow::anyhow;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use cvm_agent_models::health::HealthResponse;
 use cvm_agent_models::logs::SystemLogsRequest;
 use cvm_agent_models::logs::SystemLogsResponse;
 use cvm_agent_models::logs::SystemLogsSource;
@@ -51,6 +52,9 @@ enum Command {
 
     /// Delete a workload.
     Delete(DeleteArgs),
+
+    /// Check the health for a workload.
+    Health(HealthArgs),
 
     /// Start a workload
     Start(StartArgs),
@@ -209,6 +213,12 @@ struct SystemStatsArgs {
     id: Uuid,
 }
 
+#[derive(Args)]
+struct HealthArgs {
+    /// The identifier of the workload to get health stats from.
+    id: Uuid,
+}
+
 #[derive(Clone)]
 struct KeyValue {
     key: String,
@@ -340,6 +350,18 @@ fn restart(client: ApiClient, args: RestartArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn health(client: ApiClient, args: HealthArgs) -> anyhow::Result<()> {
+    let HealthArgs { id } = args;
+    let response: HealthResponse = client.get(&format!("/api/v1/workloads/{id}/health"))?;
+    let HealthResponse { https, bootstrapped } = response;
+    let color = bool_to_color(bootstrapped);
+    println!("bootstrapped: {}", color.paint(bootstrapped.to_string()));
+
+    let color = bool_to_color(https);
+    println!("https up:     {}", color.paint(https.to_string()));
+    Ok(())
+}
+
 fn list_containers(client: ApiClient, args: ListContainersArgs) -> anyhow::Result<()> {
     let ListContainersArgs { id } = args;
     let containers: Vec<Container> = client.get(&format!("/api/v1/workloads/{id}/containers/list"))?;
@@ -404,6 +426,13 @@ fn percent_to_color(percent: f64) -> Color {
     }
 }
 
+fn bool_to_color(value: bool) -> Color {
+    match value {
+        true => Color::Green,
+        false => Color::Red,
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let Cli { url, api_key, command } = cli;
@@ -413,6 +442,7 @@ fn main() {
         Command::Launch(args) => launch(client, args),
         Command::List => list(client),
         Command::Delete(args) => delete(client, args),
+        Command::Health(args) => health(client, args),
         Command::Start(args) => start(client, args),
         Command::Stop(args) => stop(client, args),
         Command::Restart(args) => restart(client, args),
