@@ -1,5 +1,8 @@
-use crate::{routes::AppState, services::workload::WorkloadLookupError};
-use axum::{extract::State, Json};
+use crate::{
+    routes::{AppState, Json},
+    services::workload::WorkloadLookupError,
+};
+use axum::extract::State;
 use nilcc_agent_models::workloads::list::WorkloadSummary;
 
 pub(crate) async fn handler(state: State<AppState>) -> Result<Json<Vec<WorkloadSummary>>, WorkloadLookupError> {

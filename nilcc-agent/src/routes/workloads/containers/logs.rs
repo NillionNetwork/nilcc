@@ -1,12 +1,8 @@
 use crate::{
     clients::cvm_agent::CvmAgentRequestError,
-    routes::{workloads::containers::CvmAgentHandlerError, AppState},
+    routes::{workloads::containers::CvmAgentHandlerError, AppState, Json, Query},
 };
-use axum::{
-    extract::{Path, Query, State},
-    Json,
-};
-use axum_valid::Valid;
+use axum::extract::{Path, State};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse};
 use reqwest::StatusCode;
 use uuid::Uuid;
@@ -14,7 +10,7 @@ use uuid::Uuid;
 pub(crate) async fn handler(
     state: State<AppState>,
     path: Path<Uuid>,
-    request: Valid<Query<ContainerLogsRequest>>,
+    request: Query<ContainerLogsRequest>,
 ) -> Result<Json<ContainerLogsResponse>, CvmAgentHandlerError> {
     let port = state.services.workload.cvm_agent_port(path.0).await?;
     let result = state.clients.cvm_agent.container_logs(port, &request.0).await;

@@ -1,20 +1,23 @@
+#![allow(clippy::disallowed_types)]
+
 use crate::auth::AuthLayer;
 use crate::clients::cvm_agent::CvmAgentClient;
 use crate::config::ResourceLimitsConfig;
 use crate::services::workload::WorkloadService;
-use axum::extract::Request;
+use axum::extract::rejection::QueryRejection;
 use axum::extract::{rejection::JsonRejection, FromRequest};
+use axum::extract::{FromRequestParts, Request};
+use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
-use axum_valid::{HasValidate, HasValidateArgs};
 use nilcc_agent_models::errors::RequestHandlerError;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
 use tower::ServiceBuilder;
-use validator::ValidateArgs;
+use validator::Validate;
 
 pub(crate) mod workloads;
 
@@ -65,6 +68,7 @@ pub struct Json<T>(pub T);
 impl<S, T> FromRequest<S> for Json<T>
 where
     axum::Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    T: Validate,
     S: Send + Sync,
 {
     type Rejection = (StatusCode, axum::Json<RequestHandlerError>);
@@ -73,11 +77,18 @@ where
         let (parts, body) = req.into_parts();
         let req = Request::from_parts(parts, body);
 
-        match axum::Json::<T>::from_request(req, state).await {
-            Ok(value) => Ok(Self(value.0)),
+        let inner = match axum::Json::<T>::from_request(req, state).await {
+            Ok(value) => value.0,
             Err(rejection) => {
                 let payload = RequestHandlerError::new(rejection.body_text(), "MALFORMED_REQUEST");
-                Err((rejection.status(), axum::Json(payload)))
+                return Err((rejection.status(), axum::Json(payload)));
+            }
+        };
+        match inner.validate() {
+            Ok(_) => Ok(Self(inner)),
+            Err(e) => {
+                let payload = RequestHandlerError::new(e.to_string(), "MALFORMED_REQUEST");
+                Err((StatusCode::BAD_REQUEST, axum::Json(payload)))
             }
         }
     }
@@ -100,19 +111,49 @@ where
     }
 }
 
-// `axum_valid` support for `Json`/`validator`
-impl<T> HasValidate for Json<T> {
-    type Validate = T;
+/// A type that behaves like `axum::Query` but provides JSON structured errors when parsing fails.
+#[derive(Debug)]
+pub struct Query<T>(pub T);
 
-    fn get_validate(&self) -> &T {
+impl<S, T> FromRequestParts<S> for Query<T>
+where
+    axum::extract::Query<T>: FromRequestParts<S, Rejection = QueryRejection>,
+    T: Validate,
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, axum::Json<RequestHandlerError>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let inner = match axum::extract::Query::<T>::from_request_parts(parts, state).await {
+            Ok(value) => value.0,
+            Err(rejection) => {
+                let payload = RequestHandlerError::new(rejection.body_text(), "MALFORMED_REQUEST");
+                return Err((rejection.status(), axum::Json(payload)));
+            }
+        };
+        match inner.validate() {
+            Ok(_) => Ok(Self(inner)),
+            Err(e) => {
+                let payload = RequestHandlerError::new(e.to_string(), "MALFORMED_REQUEST");
+                Err((StatusCode::BAD_REQUEST, axum::Json(payload)))
+            }
+        }
+    }
+}
+
+impl<T> Deref for Query<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'v, T: ValidateArgs<'v>> HasValidateArgs<'v> for Json<T> {
-    type ValidateArgs = T;
-
-    fn get_validate_args(&self) -> &Self::ValidateArgs {
-        &self.0
+impl<T> IntoResponse for Query<T>
+where
+    T: Serialize,
+{
+    fn into_response(self) -> axum::response::Response {
+        axum::Json(self.0).into_response()
     }
 }

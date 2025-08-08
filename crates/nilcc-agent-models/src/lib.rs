@@ -90,7 +90,7 @@ pub mod workloads {
     pub mod delete {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct DeleteWorkloadRequest {
             pub id: Uuid,
@@ -100,7 +100,7 @@ pub mod workloads {
     pub mod start {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct StartWorkloadRequest {
             pub id: Uuid,
@@ -110,7 +110,7 @@ pub mod workloads {
     pub mod stop {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct StopWorkloadRequest {
             pub id: Uuid,
@@ -120,7 +120,7 @@ pub mod workloads {
     pub mod restart {
         use super::*;
 
-        #[derive(Clone, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
         #[serde(rename_all = "camelCase")]
         pub struct RestartWorkloadRequest {
             pub id: Uuid,
@@ -132,7 +132,7 @@ pub mod errors {
     use super::*;
 
     /// An error when handling a request.
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct RequestHandlerError {
         /// A descriptive message about the error that was encountered.
