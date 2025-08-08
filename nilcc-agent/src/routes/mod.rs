@@ -101,9 +101,9 @@ where
 }
 
 // `axum_valid` support for `Json`/`validator`
-
 impl<T> HasValidate for Json<T> {
     type Validate = T;
+
     fn get_validate(&self) -> &T {
         &self.0
     }
@@ -111,6 +111,7 @@ impl<T> HasValidate for Json<T> {
 
 impl<'v, T: ValidateArgs<'v>> HasValidateArgs<'v> for Json<T> {
     type ValidateArgs = T;
+
     fn get_validate_args(&self) -> &Self::ValidateArgs {
         &self.0
     }

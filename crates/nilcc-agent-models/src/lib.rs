@@ -15,6 +15,8 @@ pub mod workloads {
         use super::*;
 
         static FILENAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[\w/._-]+$").unwrap());
+        static DOMAIN_REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9-\.]+\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$").unwrap());
 
         fn validate_files(files: &HashMap<String, Vec<u8>>) -> Result<(), ValidationError> {
             for key in files.keys() {
@@ -56,6 +58,7 @@ pub mod workloads {
             #[validate(range(min = 2))]
             pub disk_space_gb: u32,
 
+            #[validate(regex(path  = DOMAIN_REGEX))]
             pub domain: String,
         }
 
