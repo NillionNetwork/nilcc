@@ -128,6 +128,8 @@ pub mod logs {
 }
 
 pub mod stats {
+    use std::path::PathBuf;
+
     use super::*;
 
     /// The stats response.
@@ -137,8 +139,11 @@ pub mod stats {
         /// Stats about the memory usage.
         pub memory: MemoryStats,
 
-        /// Stats about CPUs.
+        /// Stats about every CPU.
         pub cpus: Vec<CpuStats>,
+
+        /// Stats about every disk.
+        pub disks: Vec<DiskStats>,
     }
 
     /// Memory stats.
@@ -164,5 +169,25 @@ pub mod stats {
 
         /// The frequency, in MHz.
         pub frequency: u64,
+    }
+
+    /// Disk stats.
+    #[derive(Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct DiskStats {
+        /// The name of this disk.
+        pub name: String,
+
+        /// The path where the filesystem is mounted.
+        pub mount_point: PathBuf,
+
+        /// The type of filesystem.
+        pub filesystem: String,
+
+        /// The total size of this disk.
+        pub size: u64,
+
+        /// The used space this disk.
+        pub used: u64,
     }
 }

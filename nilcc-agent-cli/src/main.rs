@@ -8,6 +8,7 @@ use cvm_agent_models::logs::SystemLogsRequest;
 use cvm_agent_models::logs::SystemLogsResponse;
 use cvm_agent_models::logs::SystemLogsSource;
 use cvm_agent_models::stats::CpuStats;
+use cvm_agent_models::stats::DiskStats;
 use cvm_agent_models::stats::SystemStatsResponse;
 use cvm_agent_models::{
     container::Container,
@@ -395,25 +396,37 @@ fn system_logs(client: ApiClient, args: SystemLogsArgs) -> anyhow::Result<()> {
 fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> {
     let SystemStatsArgs { id } = args;
     let response: SystemStatsResponse = client.get(&format!("/api/v1/workloads/{id}/system/stats"))?;
-    let SystemStatsResponse { memory, cpus } = response;
+    let SystemStatsResponse { memory, cpus, disks } = response;
     let memory_total = bytes_to_mb(memory.total);
     let memory_used = bytes_to_mb(memory.used);
     let color = percent_to_color((memory_used as f64) / (memory_total as f64));
-    let line = format!("{memory_used}MB/{memory_total}MB");
+    let details = format!("{memory_used}MB/{memory_total}MB");
 
-    println!("Mem usage: {}", color.paint(line));
+    println!("Mem usage: {}", color.paint(details));
     println!("CPU usage:");
     for cpu in cpus {
         let CpuStats { name, usage, frequency } = cpu;
         let color = percent_to_color((usage / 100.0).into());
-        let line = format!("{usage:.1}%");
-        println!("* {name} ({frequency} MHz): {}", color.paint(line));
+        let details = format!("{usage:.1}%");
+        println!("* {name} ({frequency} MHz): {}", color.paint(details));
+    }
+    println!("Disks:");
+    for disk in disks {
+        let DiskStats { name, mount_point, filesystem, size, used } = disk;
+        let mount_point = mount_point.display();
+        let color = percent_to_color(used as f64 / size as f64);
+        let details = format!("{:.2}GB/{:.2}GB", bytes_to_gb(used), bytes_to_gb(size));
+        println!("* {name} mounted at {mount_point} ({filesystem}): {}", color.paint(details));
     }
     Ok(())
 }
 
 fn bytes_to_mb(bytes: u64) -> u64 {
     bytes / 1024 / 1024
+}
+
+fn bytes_to_gb(bytes: u64) -> f64 {
+    bytes_to_mb(bytes) as f64 / 1024.0
 }
 
 fn percent_to_color(percent: f64) -> Color {
