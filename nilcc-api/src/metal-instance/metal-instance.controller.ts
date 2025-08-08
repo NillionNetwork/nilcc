@@ -13,6 +13,7 @@ import {
 } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import {
+  DeleteMetalInstanceRequest,
   GetMetalInstanceResponse,
   HeartbeatRequest,
   ListMetalInstancesResponse,
@@ -140,6 +141,33 @@ export function list(options: ControllerOptions) {
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await bindings.services.metalInstance.list(bindings);
+      return c.json(instances);
+    },
+  );
+}
+
+export function remove(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.metalInstance.delete,
+    describeRoute({
+      tags: ["metal-instance"],
+      summary: "Delete a metal instance",
+      responses: {
+        200: {
+          description: "The metal instance was deleted",
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.userApiKey),
+    payloadValidator(DeleteMetalInstanceRequest),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const instances = await bindings.services.metalInstance.remove(
+        bindings,
+        payload.id,
+      );
       return c.json(instances);
     },
   );

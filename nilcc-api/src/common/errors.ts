@@ -23,6 +23,12 @@ export class NoInstancesAvailable extends AppError {
     "No metal instances are available to handle this workload";
 }
 
+export class MetalInstanceManagingWorkloads extends AppError {
+  kind = "METAL_INSTANCE_MANAGING_WORKLOADS";
+  override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
+  override description = "Metal instance is handling 1 or more workloads";
+}
+
 export class InvalidDockerCompose extends AppError {
   kind = "INVALID_DOCKER_COMPOSE";
   override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;

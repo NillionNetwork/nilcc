@@ -1,5 +1,6 @@
 import { describe } from "vitest";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
+import type { CreateWorkloadRequest } from "#/workload/workload.dto";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("Metal Instance", () => {
@@ -117,5 +118,51 @@ describe("Metal Instance", () => {
     const body = await response.parseBody();
     const currentLastSeen = new Date(body.lastSeenAt);
     expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
+  });
+
+  it("should allow deleting metal instances", async ({
+    expect,
+    userClient,
+  }) => {
+    const originalResponse = await userClient.getMetalInstance({
+      id: myMetalInstance.id,
+    });
+    expect(originalResponse.response.status).equals(200);
+    const instance = await originalResponse.parseBody();
+
+    const createWorkloadRequest: CreateWorkloadRequest = {
+      name: "my-cool-workload",
+      dockerCompose: `
+services:
+  app:
+    image: nginx
+    ports:
+      - '80'
+`,
+      publicContainerName: "app",
+      publicContainerPort: 80,
+      memory: 4,
+      cpus: 2,
+      disk: 40,
+      gpus: 0,
+    };
+    const workloadResponse = await userClient.createWorkload(
+      createWorkloadRequest,
+    );
+    expect(workloadResponse.response.status).equals(200);
+    const workload = await workloadResponse.parseBody();
+
+    const firstDeleteResponse = await userClient.deleteMetalInstance(
+      instance.id,
+    );
+    expect(firstDeleteResponse.status).toBe(412);
+
+    const deleteWorkloadResponse = await userClient.deleteWorkload({
+      id: workload.id,
+    });
+    expect(deleteWorkloadResponse.status).toBe(200);
+
+    const response = await userClient.deleteMetalInstance(instance.id);
+    expect(response.status).toBe(200);
   });
 });

@@ -6,4 +6,5 @@ export function buildMetalInstanceRouter(options: ControllerOptions): void {
   MetalInstanceController.list(options);
   MetalInstanceController.read(options);
   MetalInstanceController.register(options);
+  MetalInstanceController.remove(options);
 }

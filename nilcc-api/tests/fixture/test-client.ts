@@ -164,6 +164,13 @@ export class UserClient extends TestClient {
     });
     return new ParseableResponse(response, ListWorkloadEventsResponse);
   }
+
+  async deleteMetalInstance(id: string): Promise<Response> {
+    return await this.request(PathsV1.metalInstance.delete, {
+      method: "POST",
+      body: { id },
+    });
+  }
 }
 
 export class MetalInstanceClient extends TestClient {
