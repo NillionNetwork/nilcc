@@ -159,7 +159,7 @@ pub mod stats {
         /// The CPU name.
         pub name: String,
 
-        /// The CPU usage.
+        /// The CPU usage, as a percentage between 0-100.
         pub usage: f32,
 
         /// The frequency, in MHz.

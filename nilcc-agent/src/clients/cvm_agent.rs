@@ -4,7 +4,8 @@ use cvm_agent_models::{
     bootstrap::BootstrapRequest,
     container::Container,
     health::HealthResponse,
-    logs::{ContainerLogsRequest, ContainerLogsResponse},
+    logs::{ContainerLogsRequest, ContainerLogsResponse, SystemLogsRequest, SystemLogsResponse},
+    stats::SystemStatsResponse,
 };
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Serialize};
@@ -14,11 +15,17 @@ use tracing::info;
 #[cfg_attr(test, mockall::automock)]
 pub trait CvmAgentClient: Send + Sync {
     async fn list_containers(&self, cvm_agent_port: u16) -> Result<Vec<Container>, CvmAgentRequestError>;
-    async fn logs(
+    async fn container_logs(
         &self,
         cvm_agent_port: u16,
         request: &ContainerLogsRequest,
     ) -> Result<ContainerLogsResponse, CvmAgentRequestError>;
+    async fn system_logs(
+        &self,
+        cvm_agent_port: u16,
+        request: &SystemLogsRequest,
+    ) -> Result<SystemLogsResponse, CvmAgentRequestError>;
+    async fn system_stats(&self, cvm_agent_port: u16) -> Result<SystemStatsResponse, CvmAgentRequestError>;
     async fn check_health(&self, cvm_agent_port: u16) -> Result<HealthResponse, CvmAgentRequestError>;
     async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError>;
 }
@@ -62,12 +69,24 @@ impl CvmAgentClient for DefaultCvmAgentClient {
         self.get(cvm_agent_port, "/api/v1/containers/list", &()).await
     }
 
-    async fn logs(
+    async fn container_logs(
         &self,
         cvm_agent_port: u16,
         request: &ContainerLogsRequest,
     ) -> Result<ContainerLogsResponse, CvmAgentRequestError> {
         self.get(cvm_agent_port, "/api/v1/containers/logs", &request).await
+    }
+
+    async fn system_logs(
+        &self,
+        cvm_agent_port: u16,
+        request: &SystemLogsRequest,
+    ) -> Result<SystemLogsResponse, CvmAgentRequestError> {
+        self.get(cvm_agent_port, "/api/v1/system/logs", &request).await
+    }
+
+    async fn system_stats(&self, cvm_agent_port: u16) -> Result<SystemStatsResponse, CvmAgentRequestError> {
+        self.get(cvm_agent_port, "/api/v1/system/stats", &()).await
     }
 
     async fn check_health(&self, cvm_agent_port: u16) -> Result<HealthResponse, CvmAgentRequestError> {

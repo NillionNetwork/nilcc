@@ -16,7 +16,7 @@ pub(crate) async fn handler(
     request: Query<ContainerLogsRequest>,
 ) -> Result<Json<ContainerLogsResponse>, CvmAgentHandlerError> {
     let port = state.services.workload.cvm_agent_port(path.0).await?;
-    let result = state.clients.cvm_agent.logs(port, &request.0).await;
+    let result = state.clients.cvm_agent.container_logs(port, &request.0).await;
     match result {
         Ok(response) => Ok(Json(response)),
         Err(CvmAgentRequestError::Http(e)) if e.status() == Some(StatusCode::NOT_FOUND) => {

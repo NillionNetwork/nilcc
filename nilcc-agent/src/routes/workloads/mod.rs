@@ -11,6 +11,7 @@ pub(crate) mod list;
 pub(crate) mod restart;
 pub(crate) mod start;
 pub(crate) mod stop;
+pub(crate) mod system;
 
 impl IntoResponse for WorkloadLookupError {
     fn into_response(self) -> Response {
