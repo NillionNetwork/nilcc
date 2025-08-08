@@ -8,11 +8,5 @@ pub(crate) async fn handler(
     path: Path<Uuid>,
 ) -> Result<Json<Vec<Container>>, CvmAgentHandlerError> {
     let port = state.services.workload.cvm_agent_port(path.0).await?;
-    state
-        .clients
-        .cvm_agent
-        .list_containers(port)
-        .await
-        .map(Json)
-        .map_err(|e| CvmAgentHandlerError::Internal(format!("{e:#}")))
+    Ok(state.clients.cvm_agent.list_containers(port).await.map(Json)?)
 }

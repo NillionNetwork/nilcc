@@ -48,6 +48,7 @@ pub fn build_router(state: AppState, token: String) -> Router {
             .route("/stop", post(workloads::stop::handler))
             .route("/start", post(workloads::start::handler))
             .route("/list", get(workloads::list::handler))
+            .route("/{workload_id}/health", get(workloads::health::handler))
             .route("/{workload_id}/containers/list", get(workloads::containers::list::handler))
             .route("/{workload_id}/containers/logs", get(workloads::containers::logs::handler))
             .route("/{workload_id}/system/logs", get(workloads::system::logs::handler))

@@ -19,6 +19,6 @@ pub(crate) async fn handler(
         Err(CvmAgentRequestError::Http(e)) if e.status() == Some(StatusCode::NOT_FOUND) => {
             Err(CvmAgentHandlerError::ContainerNotFound)
         }
-        Err(e) => Err(CvmAgentHandlerError::Internal(e.to_string())),
+        Err(e) => Err(e.into()),
     }
 }
