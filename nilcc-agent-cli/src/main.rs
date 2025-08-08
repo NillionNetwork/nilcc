@@ -1,7 +1,13 @@
 use crate::api::ApiClient;
+use ansi_term::Color;
 use anyhow::anyhow;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use cvm_agent_models::logs::SystemLogsRequest;
+use cvm_agent_models::logs::SystemLogsResponse;
+use cvm_agent_models::logs::SystemLogsSource;
+use cvm_agent_models::stats::CpuStats;
+use cvm_agent_models::stats::SystemStatsResponse;
 use cvm_agent_models::{
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
@@ -58,6 +64,10 @@ enum Command {
     /// Container commands.
     #[clap(subcommand)]
     Containers(ContainersCommand),
+
+    /// System commands.
+    #[clap(subcommand)]
+    System(SystemCommand),
 }
 
 #[derive(Subcommand)]
@@ -67,6 +77,15 @@ enum ContainersCommand {
 
     /// Get logs for a container.
     Logs(ContainerLogsArgs),
+}
+
+#[derive(Subcommand)]
+enum SystemCommand {
+    /// Get system level logs.
+    Logs(SystemLogsArgs),
+
+    /// Get system stats.
+    Stats(SystemStatsArgs),
 }
 
 #[derive(Args)]
@@ -167,6 +186,27 @@ struct ContainerLogsArgs {
     /// The maximum number of lines to get.
     #[clap(long, default_value_t = 1000)]
     max_lines: usize,
+}
+
+#[derive(Args)]
+struct SystemLogsArgs {
+    /// The identifier of the workload to get logs from.
+    id: Uuid,
+
+    /// Whether to fetch logs from the head of the stream. By default logs are fetched from the
+    /// tail.
+    #[clap(long)]
+    head: bool,
+
+    /// The maximum number of lines to get.
+    #[clap(long, default_value_t = 1000)]
+    max_lines: usize,
+}
+
+#[derive(Args)]
+struct SystemStatsArgs {
+    /// The identifier of the workload to get stats from.
+    id: Uuid,
 }
 
 #[derive(Clone)]
@@ -320,6 +360,50 @@ fn container_logs(client: ApiClient, args: ContainerLogsArgs) -> anyhow::Result<
     Ok(())
 }
 
+fn system_logs(client: ApiClient, args: SystemLogsArgs) -> anyhow::Result<()> {
+    let SystemLogsArgs { id, head, max_lines } = args;
+    let request = SystemLogsRequest { tail: !head, max_lines, source: SystemLogsSource::CvmAgent };
+    let response: SystemLogsResponse = client.get_query(&format!("/api/v1/workloads/{id}/system/logs"), &request)?;
+    for line in response.lines {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> {
+    let SystemStatsArgs { id } = args;
+    let response: SystemStatsResponse = client.get(&format!("/api/v1/workloads/{id}/system/stats"))?;
+    let SystemStatsResponse { memory, cpus } = response;
+    let memory_total = bytes_to_mb(memory.total);
+    let memory_used = bytes_to_mb(memory.used);
+    let color = percent_to_color((memory_used as f64) / (memory_total as f64));
+    let line = format!("{memory_used}MB/{memory_total}MB");
+
+    println!("Mem usage: {}", color.paint(line));
+    println!("CPU usage:");
+    for cpu in cpus {
+        let CpuStats { name, usage, frequency } = cpu;
+        let color = percent_to_color((usage / 100.0).into());
+        let line = format!("{usage:.1}%");
+        println!("* {name} ({frequency} MHz): {}", color.paint(line));
+    }
+    Ok(())
+}
+
+fn bytes_to_mb(bytes: u64) -> u64 {
+    bytes / 1024 / 1024
+}
+
+fn percent_to_color(percent: f64) -> Color {
+    if percent < 0.4 {
+        Color::Green
+    } else if percent < 0.8 {
+        Color::Yellow
+    } else {
+        Color::Red
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let Cli { url, api_key, command } = cli;
@@ -335,6 +419,10 @@ fn main() {
         Command::Containers(command) => match command {
             ContainersCommand::List(args) => list_containers(client, args),
             ContainersCommand::Logs(args) => container_logs(client, args),
+        },
+        Command::System(command) => match command {
+            SystemCommand::Logs(args) => system_logs(client, args),
+            SystemCommand::Stats(args) => system_stats(client, args),
         },
     };
     if let Err(e) = result {

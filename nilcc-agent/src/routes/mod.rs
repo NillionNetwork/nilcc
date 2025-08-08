@@ -37,16 +37,18 @@ pub struct AppState {
 
 pub fn build_router(state: AppState, token: String) -> Router {
     Router::new().route("/health", get(health)).nest(
-        "/api/v1",
+        "/api/v1/workloads",
         Router::new()
-            .route("/workloads/create", post(workloads::create::handler))
-            .route("/workloads/delete", post(workloads::delete::handler))
-            .route("/workloads/restart", post(workloads::restart::handler))
-            .route("/workloads/stop", post(workloads::stop::handler))
-            .route("/workloads/start", post(workloads::start::handler))
-            .route("/workloads/list", get(workloads::list::handler))
-            .route("/workloads/{workload_id}/containers/list", get(workloads::containers::list::handler))
-            .route("/workloads/{workload_id}/containers/logs", get(workloads::containers::logs::handler))
+            .route("/create", post(workloads::create::handler))
+            .route("/delete", post(workloads::delete::handler))
+            .route("/restart", post(workloads::restart::handler))
+            .route("/stop", post(workloads::stop::handler))
+            .route("/start", post(workloads::start::handler))
+            .route("/list", get(workloads::list::handler))
+            .route("/{workload_id}/containers/list", get(workloads::containers::list::handler))
+            .route("/{workload_id}/containers/logs", get(workloads::containers::logs::handler))
+            .route("/{workload_id}/system/logs", get(workloads::system::logs::handler))
+            .route("/{workload_id}/system/stats", get(workloads::system::stats::handler))
             .with_state(state)
             .layer(ServiceBuilder::new().layer(AuthLayer::new(token))),
     )
