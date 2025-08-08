@@ -52,6 +52,10 @@ export class MetalInstanceService {
       throw new MetalInstanceManagingWorkloads();
     }
     const result = await repository.delete({ id: metalInstanceId });
+    await bindings.services.dns.metalInstances.deleteRecord(
+      metalInstanceId,
+      "CNAME",
+    );
     return result.affected ? result.affected > 0 : false;
   }
 
