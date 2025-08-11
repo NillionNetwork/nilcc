@@ -104,7 +104,7 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    apiKey(bindings.config.adminApiKey),
     pathValidator(idParamSchema),
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
@@ -137,7 +137,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    apiKey(bindings.config.adminApiKey),
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await bindings.services.metalInstance.list(bindings);
@@ -160,7 +160,7 @@ export function remove(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    apiKey(bindings.config.adminApiKey),
     payloadValidator(DeleteMetalInstanceRequest),
     async (c) => {
       const payload = c.req.valid("json");

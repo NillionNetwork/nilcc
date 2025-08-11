@@ -59,22 +59,18 @@ services:
 
   it("should fail to create a workload if there isn't a metal instance", async ({
     expect,
-    userClient,
+    clients,
   }) => {
-    const myWorkloadResponse = await userClient.createWorkload(
+    const myWorkloadResponse = await clients.user.createWorkload(
       createWorkloadRequest,
     );
     expect(myWorkloadResponse.response.status).equal(503);
   });
 
-  it("should create a workload", async ({
-    expect,
-    userClient,
-    metalInstanceClient,
-  }) => {
-    await metalInstanceClient.register(myMetalInstance);
+  it("should create a workload", async ({ expect, clients }) => {
+    await clients.metalInstance.register(myMetalInstance);
 
-    const myWorkloadResponse = await userClient.createWorkload(
+    const myWorkloadResponse = await clients.user.createWorkload(
       createWorkloadRequest,
     );
     myWorkload = await myWorkloadResponse.parseBody();
@@ -86,71 +82,67 @@ services:
 
   it("should fail to create a workload if it doesn't fit in the metal instance", async ({
     expect,
-    userClient,
+    clients,
   }) => {
     const overloadedWorkloadRequest = {
       ...createWorkloadRequest,
       cpus: 63, // Exceeding the available CPU
     };
-    const myWorkloadResponse = await userClient.createWorkload(
+    const myWorkloadResponse = await clients.user.createWorkload(
       overloadedWorkloadRequest,
     );
     expect(myWorkloadResponse.response.status).equal(503);
   });
 
-  it("should get a workload", async ({ expect, userClient }) => {
-    const myWorkloadResponse = await userClient.getWorkload({
+  it("should get a workload", async ({ expect, clients }) => {
+    const myWorkloadResponse = await clients.user.getWorkload({
       id: myWorkload!.id,
     });
     const workloadData = await myWorkloadResponse.parseBody();
     expect(workloadData.name).equals(myWorkload!.name);
   });
 
-  it("should list the workloads", async ({ expect, userClient }) => {
-    const workloadsResponse = await userClient.listWorkloads();
+  it("should list the workloads", async ({ expect, clients }) => {
+    const workloadsResponse = await clients.user.listWorkloads();
     const workloads = await workloadsResponse.parseBody();
     expect(workloads.length).greaterThan(0);
     expect(workloads[0].name).equals(myWorkload!.name);
   });
 
-  it("should delete a workload", async ({ expect, userClient }) => {
-    const response = await userClient.deleteWorkload({
+  it("should delete a workload", async ({ expect, clients }) => {
+    const response = await clients.user.deleteWorkload({
       id: myWorkload!.id,
     });
     expect(response.status).equals(200);
 
     // Verify deletion
-    const getResponse = await userClient.getWorkload({
+    const getResponse = await clients.user.getWorkload({
       id: myWorkload!.id,
     });
     expect(getResponse.response.status).equal(404);
   });
 
-  it("should update a workload's state", async ({
-    expect,
-    userClient,
-    metalInstanceClient,
-  }) => {
-    await metalInstanceClient.register(myMetalInstance);
-    const workloadResponse = await userClient.createWorkload(
+  it("should update a workload's state", async ({ expect, clients }) => {
+    await clients.metalInstance.register(myMetalInstance);
+    const workloadResponse = await clients.user.createWorkload(
       createWorkloadRequest,
     );
     myWorkload = await workloadResponse.parseBody();
 
-    const response = await userClient.submitEvent({
+    const response = await clients.metalInstance.submitEvent({
       agentId: myMetalInstance.id,
       workloadId: myWorkload.id,
       event: { kind: "starting" },
     });
     expect(response.status).toBe(200);
 
-    const updatedWorkloadResponse = await userClient.getWorkload({
+    const updatedWorkloadResponse = await clients.user.getWorkload({
       id: myWorkload.id,
     });
     const updatedWorkload = await updatedWorkloadResponse.parseBody();
     expect(updatedWorkload.status).toBe("starting");
 
-    const eventsResponse = await userClient.getWorkloadEvents({
+    const eventsResponse = await clients.user.getWorkloadEvents({
       workloadId: myWorkload.id,
     });
     expect(eventsResponse.response.status).toBe(200);
