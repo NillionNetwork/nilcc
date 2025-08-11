@@ -38,7 +38,7 @@ export function submitEvent(options: ControllerOptions) {
         payload,
         c.get("txQueryRunner"),
       );
-      return c.body(null);
+      return c.json({});
     },
   );
 }

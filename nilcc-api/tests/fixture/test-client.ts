@@ -1,10 +1,9 @@
-import type { ZodType } from "zod";
+import { type ZodType, z } from "zod";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
-  type HeartbeatRequest,
   type RegisterMetalInstanceRequest,
   type SubmitEventRequest,
 } from "#/metal-instance/metal-instance.dto";
@@ -68,22 +67,26 @@ export class TestClient {
   }
 }
 
-export class ParseableResponse<T> {
+export class RequestPromise<T> {
   constructor(
-    public response: Response,
+    public promise: Promise<Response>,
     public schema: ZodType<T>,
   ) {}
 
-  async parseBody(): Promise<T> {
-    const response = await this.response.json();
-    if (!this.response.ok) {
+  async submit(): Promise<T> {
+    const response = await this.promise;
+    const body = await response.json();
+    if (response.status !== 200) {
       throw new Error(
-        `Request failed with status ${this.response.status}: ${JSON.stringify(
-          response,
-        )}`,
+        `Request failed with status: ${response.status}: ${JSON.stringify(body)}`,
       );
     }
-    return this.schema.parse(response);
+    return this.schema.parse(body);
+  }
+
+  async status(): Promise<number> {
+    const response = await this.promise;
+    return response.status;
   }
 }
 
@@ -94,21 +97,22 @@ export class AdminClient extends TestClient {
     };
   }
 
-  async getMetalInstance(params: { id: string }) {
-    const response = await this.request(
-      PathsV1.metalInstance.read.replace(":id", params.id),
+  getMetalInstance(id: string): RequestPromise<GetMetalInstanceResponse> {
+    const promise = this.request(
+      PathsV1.metalInstance.read.replace(":id", id),
       {
         method: "GET",
       },
     );
-    return new ParseableResponse(response, GetMetalInstanceResponse);
+    return new RequestPromise(promise, GetMetalInstanceResponse);
   }
 
-  async deleteMetalInstance(id: string): Promise<Response> {
-    return await this.request(PathsV1.metalInstance.delete, {
+  deleteMetalInstance(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.metalInstance.delete, {
       method: "POST",
       body: { id },
     });
+    return new RequestPromise(promise, z.unknown());
   }
 }
 
@@ -119,55 +123,49 @@ export class UserClient extends TestClient {
     };
   }
 
-  async createWorkload(
+  createWorkload(
     body: CreateWorkloadRequest,
-  ): Promise<ParseableResponse<CreateWorkloadResponse>> {
-    const response = await this.request(PathsV1.workload.create, {
+  ): RequestPromise<CreateWorkloadResponse> {
+    const promise = this.request(PathsV1.workload.create, {
       method: "POST",
       body,
     });
-    return new ParseableResponse<CreateWorkloadResponse>(
-      response,
-      CreateWorkloadResponse,
-    );
+    return new RequestPromise(promise, CreateWorkloadResponse);
   }
 
-  async getWorkload(params: {
-    id: string;
-  }): Promise<ParseableResponse<GetWorkloadResponse>> {
-    const response = await this.request(
-      PathsV1.workload.read.replace(":id", params.id),
-      {
-        method: "GET",
-      },
-    );
-    return new ParseableResponse(response, GetWorkloadResponse);
-  }
-
-  async listWorkloads(): Promise<ParseableResponse<ListWorkloadsResponse>> {
-    const response = await this.request(PathsV1.workload.list, {
+  getWorkload(id: string): RequestPromise<GetWorkloadResponse> {
+    const promise = this.request(PathsV1.workload.read.replace(":id", id), {
       method: "GET",
     });
-    return new ParseableResponse(response, ListWorkloadsResponse);
+    return new RequestPromise(promise, GetWorkloadResponse);
   }
 
-  async deleteWorkload(params: { id: string }): Promise<Response> {
-    return this.request(PathsV1.workload.delete, {
+  listWorkloads(): RequestPromise<ListWorkloadsResponse> {
+    const promise = this.request(PathsV1.workload.list, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, ListWorkloadsResponse);
+  }
+
+  deleteWorkload(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workload.delete, {
       method: "POST",
       body: {
-        id: params.id,
+        id,
       },
     });
+    return new RequestPromise(promise, z.unknown());
   }
 
-  async getWorkloadEvents(
-    request: ListWorkloadEventsRequest,
-  ): Promise<ParseableResponse<ListWorkloadEventsResponse>> {
-    const response = await this.request(PathsV1.workloadEvents.list, {
+  getWorkloadEvents(
+    workloadId: string,
+  ): RequestPromise<ListWorkloadEventsResponse> {
+    const body: ListWorkloadEventsRequest = { workloadId };
+    const promise = this.request(PathsV1.workloadEvents.list, {
       method: "POST",
-      body: request,
+      body,
     });
-    return new ParseableResponse(response, ListWorkloadEventsResponse);
+    return new RequestPromise(promise, ListWorkloadEventsResponse);
   }
 }
 
@@ -178,27 +176,27 @@ export class MetalInstanceClient extends TestClient {
     };
   }
 
-  async register(body: RegisterMetalInstanceRequest): Promise<Response> {
-    return await this.request(PathsV1.metalInstance.register, {
+  register(body: RegisterMetalInstanceRequest): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.metalInstance.register, {
       method: "POST",
       body,
     });
+    return new RequestPromise(promise, z.unknown());
   }
 
-  async heartbeat(body: HeartbeatRequest): Promise<Response> {
-    return await this.request(PathsV1.metalInstance.heartbeat, {
+  heartbeat(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.metalInstance.heartbeat, {
       method: "POST",
-      body,
+      body: { id },
     });
+    return new RequestPromise(promise, z.unknown());
   }
 
-  async submitEvent(request: SubmitEventRequest) {
-    return this.request(PathsV1.workloadEvents.submit, {
+  submitEvent(request: SubmitEventRequest): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workloadEvents.submit, {
       method: "POST",
       body: request,
-      headers: {
-        "x-api-key": this.bindings.config.metalInstanceApiKey,
-      },
     });
+    return new RequestPromise(promise, z.unknown());
   }
 }

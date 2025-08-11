@@ -49,7 +49,7 @@ export function register(options: ControllerOptions) {
         payload,
         c.get("txQueryRunner"),
       );
-      return c.body(null);
+      return c.json({});
     },
   );
 }
@@ -80,7 +80,7 @@ export function heartbeat(options: ControllerOptions) {
         payload,
         c.get("txQueryRunner"),
       );
-      return c.body(null);
+      return c.json({});
     },
   );
 }
@@ -164,11 +164,8 @@ export function remove(options: ControllerOptions) {
     payloadValidator(DeleteMetalInstanceRequest),
     async (c) => {
       const payload = c.req.valid("json");
-      const instances = await bindings.services.metalInstance.remove(
-        bindings,
-        payload.id,
-      );
-      return c.json(instances);
+      await bindings.services.metalInstance.remove(bindings, payload.id);
+      return c.json({});
     },
   );
 }
