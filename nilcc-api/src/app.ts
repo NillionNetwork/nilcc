@@ -27,7 +27,9 @@ export async function buildApp(
   const app = new Hono<AppEnv>();
   const metricsApp = new Hono();
 
+  const { printMetrics, registerMetrics } = prometheus();
   app.use("*", bodyLimit({ maxSize: 16 * 1024 * 1024 }));
+  app.use("*", registerMetrics);
 
   app.use((c, next) => {
     c.env = bindings;
@@ -46,8 +48,6 @@ export async function buildApp(
   buildMetalInstanceRouter({ app, bindings });
   buildSystemRouter({ app, bindings });
 
-  const { printMetrics, registerMetrics } = prometheus();
-  app.use("*", registerMetrics);
   metricsApp.get("/metrics", printMetrics);
 
   app.get("/health", (c) => {
