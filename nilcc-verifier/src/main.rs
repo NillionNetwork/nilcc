@@ -2,12 +2,8 @@ use anyhow::{anyhow, Context};
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use object_store::{
-    aws::{AmazonS3Builder, AwsCredential},
-    StaticCredentialProvider,
-};
 use report::{Artifacts, ReportFetcher};
-use std::{fs::File, io::stdin, path::PathBuf, sync::Arc};
+use std::{fs::File, io::stdin, path::PathBuf};
 use tracing::{error, info};
 use verify::ReportVerifier;
 
@@ -90,17 +86,9 @@ struct OnlineArgs {
     #[clap(long)]
     docker_compose_hash: String,
 
-    /// The base s3 endpoint from which artifacts should be fetched.
-    #[clap(long, default_value = default_s3_endpoint())]
-    s3_endpoint: String,
-
-    /// The AWS access key id to use when fetching artifacts.
-    #[clap(long, env = "AWS_ACCESS_KEY_ID")]
-    s3_access_key_id: String,
-
-    /// The AWS secret access key to use when fetching artifacts.
-    #[clap(long, env = "AWS_SECRET_ACCESS_KEY")]
-    s3_secret_access_key: String,
+    /// The base url from which artifacts should be fetched.
+    #[clap(long, default_value = default_artifacts_url())]
+    artifacts_url: String,
 }
 
 fn default_cache_path() -> PathBuf {
@@ -115,7 +103,7 @@ fn default_artifact_cache_path() -> PathBuf {
     default_cache_path().join("artifacts")
 }
 
-fn default_s3_endpoint() -> String {
+fn default_artifacts_url() -> String {
     "https://nilcc.s3.eu-west-1.amazonaws.com".into()
 }
 
@@ -162,25 +150,10 @@ fn run_offline(args: OfflineArgs) -> anyhow::Result<()> {
 }
 
 fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
-    let OnlineArgs {
-        endpoint,
-        artifact_cache,
-        cert_cache,
-        docker_compose_hash,
-        kernel_debug_options,
-        s3_endpoint,
-        s3_access_key_id,
-        s3_secret_access_key,
-    } = args;
+    let OnlineArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, kernel_debug_options, artifacts_url } =
+        args;
     let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
-    let credentials = AwsCredential { key_id: s3_access_key_id, secret_key: s3_secret_access_key, token: None };
-    let s3_client = AmazonS3Builder::from_env()
-        .with_url(s3_endpoint)
-        .with_allow_http(true)
-        .with_credentials(Arc::new(StaticCredentialProvider::new(credentials)))
-        .build()
-        .context("building s3 client")?;
-    let fetcher = ReportFetcher::new(artifact_cache, s3_client);
+    let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint).context("fetching report")?;
     let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash } = bundle.artifacts;
 

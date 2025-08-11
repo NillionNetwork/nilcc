@@ -1,5 +1,4 @@
 use anyhow::{anyhow, bail, Context};
-use object_store::{aws::AmazonS3, path::Path, ObjectStore};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use sev::firmware::guest::AttestationReport;
@@ -29,12 +28,12 @@ pub(crate) struct EnvironmentSpec {
 
 pub struct ReportFetcher {
     cache_path: PathBuf,
-    s3_client: AmazonS3,
+    artifacts_url: String,
 }
 
 impl ReportFetcher {
-    pub fn new(cache_path: PathBuf, s3_client: AmazonS3) -> Self {
-        Self { cache_path, s3_client }
+    pub fn new(cache_path: PathBuf, artifacts_url: String) -> Self {
+        Self { cache_path, artifacts_url }
     }
 
     pub fn fetch_report(&self, base_url: &str) -> anyhow::Result<ReportBundle> {
@@ -107,7 +106,8 @@ impl ReportFetcher {
     }
 
     async fn download_object(&self, path: &str) -> anyhow::Result<Vec<u8>> {
-        let result = self.s3_client.get(&Path::from(path)).await?;
+        let url = format!("{}{path}", self.artifacts_url);
+        let result = reqwest::get(url).await?;
         let bytes = result.bytes().await?;
         Ok(bytes.into())
     }
