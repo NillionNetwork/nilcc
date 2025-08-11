@@ -180,7 +180,7 @@ export function remove(options: ControllerOptions): void {
         workloadId,
         c.get("txQueryRunner"),
       );
-      return c.body(null);
+      return c.json({});
     },
   );
 }

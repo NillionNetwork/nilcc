@@ -35,10 +35,7 @@ export class MetalInstanceService {
     return await repository.findOneBy({ id: metalInstanceId });
   }
 
-  async remove(
-    bindings: AppBindings,
-    metalInstanceId: string,
-  ): Promise<boolean> {
+  async remove(bindings: AppBindings, metalInstanceId: string): Promise<void> {
     const repository = this.getRepository(bindings);
     const instances = await repository.find({
       where: { id: metalInstanceId },
@@ -51,12 +48,11 @@ export class MetalInstanceService {
     if (instance.workloads.length > 0) {
       throw new MetalInstanceManagingWorkloads();
     }
-    const result = await repository.delete({ id: metalInstanceId });
+    await repository.delete({ id: metalInstanceId });
     await bindings.services.dns.metalInstances.deleteRecord(
       metalInstanceId,
       "CNAME",
     );
-    return result.affected ? result.affected > 0 : false;
   }
 
   async createOrUpdate(

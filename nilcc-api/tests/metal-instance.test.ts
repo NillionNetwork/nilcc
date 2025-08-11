@@ -34,34 +34,30 @@ describe("Metal Instance", () => {
     expect,
     clients,
   }) => {
-    const getResponse = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
-    expect(getResponse.response.status).equals(404);
+    expect(
+      await clients.admin.getMetalInstance(myMetalInstance.id).status(),
+    ).equals(404);
 
-    const response = await clients.metalInstance.register(myMetalInstance);
-    expect(response.status).equals(200);
-    const getResponseAfter = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
+    await clients.metalInstance.register(myMetalInstance).submit();
 
-    expect(getResponseAfter.response.status).equals(200);
-    const body = await getResponseAfter.parseBody();
-    const cleanBody = {
-      ...body,
+    const instance = await clients.admin
+      .getMetalInstance(myMetalInstance.id)
+      .submit();
+    const cleanInstance = {
+      ...instance,
       updatedAt: undefined,
       createdAt: undefined,
       lastSeenAt: undefined,
       token: myMetalInstance.token,
     };
-    expect(cleanBody).toEqual(myMetalInstance);
+    expect(cleanInstance).toEqual(myMetalInstance);
   });
 
   it("should register a metal instance that already exists, updating it", async ({
     expect,
     clients,
   }) => {
-    const updatedMetalInstance = {
+    const updatedInstance = {
       ...myMetalInstance,
       memoryMb: {
         total: 16384,
@@ -72,57 +68,46 @@ describe("Metal Instance", () => {
         reserved: 20,
       },
     };
-    const response = await clients.metalInstance.register(updatedMetalInstance);
-    expect(response.status).equals(200);
-    const getResponse = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
-    expect(getResponse.response.status).equals(200);
-    const body = await getResponse.parseBody();
-    const cleanBody = {
-      ...body,
+    await clients.metalInstance.register(updatedInstance).submit();
+
+    const instance = await clients.admin
+      .getMetalInstance(myMetalInstance.id)
+      .submit();
+    const cleanInstance = {
+      ...instance,
       updatedAt: undefined,
       createdAt: undefined,
       lastSeenAt: undefined,
       token: myMetalInstance.token,
     };
-    expect(cleanBody).toEqual(updatedMetalInstance);
+    expect(cleanInstance).toEqual(updatedInstance);
   });
 
   it("should update the last seen timestamp after a heartbeat", async ({
     expect,
     clients,
   }) => {
-    await clients.metalInstance.register(myMetalInstance);
-    const originalResponse = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
-    expect(originalResponse.response.status).equals(200);
-    const originalBody = await originalResponse.parseBody();
-    const lastSeen = new Date(originalBody.lastSeenAt);
-    // sleep for a little bit
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const instance = await clients.admin
+      .getMetalInstance(myMetalInstance.id)
+      .submit();
+    const lastSeen = new Date(instance.lastSeenAt);
 
-    const heartbeatResponse = await clients.metalInstance.heartbeat({
-      id: myMetalInstance.id,
-    });
-    expect(heartbeatResponse.status).equals(200);
+    // sleep for a little bit and send a heartbeat
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await clients.metalInstance.heartbeat(myMetalInstance.id).submit();
 
     // now the last seen timestamp should be larger
-    const response = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
-    const body = await response.parseBody();
-    const currentLastSeen = new Date(body.lastSeenAt);
+    const updatedInstance = await clients.admin
+      .getMetalInstance(myMetalInstance.id)
+      .submit();
+    const currentLastSeen = new Date(updatedInstance.lastSeenAt);
     expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
   });
 
   it("should allow deleting metal instances", async ({ expect, clients }) => {
-    const originalResponse = await clients.admin.getMetalInstance({
-      id: myMetalInstance.id,
-    });
-    expect(originalResponse.response.status).equals(200);
-    const instance = await originalResponse.parseBody();
+    const instance = await clients.admin
+      .getMetalInstance(myMetalInstance.id)
+      .submit();
 
     const createWorkloadRequest: CreateWorkloadRequest = {
       name: "my-cool-workload",
@@ -140,23 +125,17 @@ services:
       disk: 40,
       gpus: 0,
     };
-    const workloadResponse = await clients.user.createWorkload(
-      createWorkloadRequest,
+    const workload = await clients.user
+      .createWorkload(createWorkloadRequest)
+      .submit();
+
+    // we shouldn't be able to delete it since it's running a workload
+    expect(await clients.admin.deleteMetalInstance(instance.id).status()).toBe(
+      412,
     );
-    expect(workloadResponse.response.status).equals(200);
-    const workload = await workloadResponse.parseBody();
 
-    const firstDeleteResponse = await clients.admin.deleteMetalInstance(
-      instance.id,
-    );
-    expect(firstDeleteResponse.status).toBe(412);
-
-    const deleteWorkloadResponse = await clients.user.deleteWorkload({
-      id: workload.id,
-    });
-    expect(deleteWorkloadResponse.status).toBe(200);
-
-    const response = await clients.admin.deleteMetalInstance(instance.id);
-    expect(response.status).toBe(200);
+    // now delete the workload and successfully delete the instance
+    await clients.user.deleteWorkload(workload.id).submit();
+    clients.admin.deleteMetalInstance(instance.id).submit();
   });
 });
