@@ -70,6 +70,7 @@ export const EnvVarsSchema = z.object({
   logLevel: z.enum(LOG_LEVELS),
   metricsPort: z.number().int().positive(),
   httpApiPort: z.number().int().positive(),
+  adminApiKey: z.string(),
   metalInstanceApiKey: z.string(),
   userApiKey: z.string(),
   workloadsDnsDomain: z.string(),
@@ -92,6 +93,7 @@ declare global {
       APP_LOG_LEVEL: string;
       APP_METRICS_PORT: string;
       APP_HTTP_API_PORT: string;
+      APP_ADMIN_API_KEY: string;
       APP_METAL_INSTANCE_API_KEY: string;
       APP_USER_API_KEY: string;
       APP_WORKLOADS_DNS_ZONE: string;
@@ -172,6 +174,7 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     logLevel: process.env.APP_LOG_LEVEL,
     metricsPort: Number(process.env.APP_METRICS_PORT),
     httpApiPort: Number(process.env.APP_HTTP_API_PORT),
+    adminApiKey: process.env.APP_ADMIN_API_KEY,
     metalInstanceApiKey: process.env.APP_METAL_INSTANCE_API_KEY,
     userApiKey: process.env.APP_USER_API_KEY,
     workloadsDnsDomain: process.env.APP_WORKLOADS_DNS_DOMAIN,

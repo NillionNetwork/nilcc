@@ -87,6 +87,31 @@ export class ParseableResponse<T> {
   }
 }
 
+export class AdminClient extends TestClient {
+  override extraHeaders(): Record<string, string> {
+    return {
+      "x-api-key": this.bindings.config.adminApiKey,
+    };
+  }
+
+  async getMetalInstance(params: { id: string }) {
+    const response = await this.request(
+      PathsV1.metalInstance.read.replace(":id", params.id),
+      {
+        method: "GET",
+      },
+    );
+    return new ParseableResponse(response, GetMetalInstanceResponse);
+  }
+
+  async deleteMetalInstance(id: string): Promise<Response> {
+    return await this.request(PathsV1.metalInstance.delete, {
+      method: "POST",
+      body: { id },
+    });
+  }
+}
+
 export class UserClient extends TestClient {
   override extraHeaders(): Record<string, string> {
     return {
@@ -135,26 +160,6 @@ export class UserClient extends TestClient {
     });
   }
 
-  async getMetalInstance(params: { id: string }) {
-    const response = await this.request(
-      PathsV1.metalInstance.read.replace(":id", params.id),
-      {
-        method: "GET",
-      },
-    );
-    return new ParseableResponse(response, GetMetalInstanceResponse);
-  }
-
-  async submitEvent(request: SubmitEventRequest) {
-    return this.request(PathsV1.workloadEvents.submit, {
-      method: "POST",
-      body: request,
-      headers: {
-        "x-api-key": this.bindings.config.metalInstanceApiKey,
-      },
-    });
-  }
-
   async getWorkloadEvents(
     request: ListWorkloadEventsRequest,
   ): Promise<ParseableResponse<ListWorkloadEventsResponse>> {
@@ -163,13 +168,6 @@ export class UserClient extends TestClient {
       body: request,
     });
     return new ParseableResponse(response, ListWorkloadEventsResponse);
-  }
-
-  async deleteMetalInstance(id: string): Promise<Response> {
-    return await this.request(PathsV1.metalInstance.delete, {
-      method: "POST",
-      body: { id },
-    });
   }
 }
 
@@ -191,6 +189,16 @@ export class MetalInstanceClient extends TestClient {
     return await this.request(PathsV1.metalInstance.heartbeat, {
       method: "POST",
       body,
+    });
+  }
+
+  async submitEvent(request: SubmitEventRequest) {
+    return this.request(PathsV1.workloadEvents.submit, {
+      method: "POST",
+      body: request,
+      headers: {
+        "x-api-key": this.bindings.config.metalInstanceApiKey,
+      },
     });
   }
 }

@@ -2,14 +2,12 @@ import type { Logger } from "pino";
 import * as vitest from "vitest";
 import type { App } from "#/app";
 import type { AppBindings } from "#/env";
-import { buildFixture, type TestFixture } from "./fixture";
-import type { MetalInstanceClient, UserClient } from "./test-client";
+import { buildFixture, type TestClients, type TestFixture } from "./fixture";
 
 export type FixtureContext = {
   app: App;
   bindings: AppBindings;
-  userClient: UserClient;
-  metalInstanceClient: MetalInstanceClient; // Assuming you have a metal instance client similar to workload client
+  clients: TestClients;
 };
 
 type TestFixtureExtension = {
@@ -31,13 +29,9 @@ export function createTestFixtureExtension(): TestFixtureExtension {
       if (!fixture) throw new Error("Fixture is not initialized");
       await use(fixture.bindings);
     },
-    userClient: async ({}, use) => {
+    clients: async ({}, use) => {
       if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.userClient);
-    },
-    metalInstanceClient: async ({}, use) => {
-      if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.metalInstanceClient);
+      await use(fixture.clients);
     },
   });
   // biome-ignore-end lint/correctness/noEmptyPattern: Vitest fixture API requires this parameter structure

@@ -32,17 +32,16 @@ describe("Metal Instance", () => {
 
   it("should register a metal instance that hasn't been created", async ({
     expect,
-    metalInstanceClient,
-    userClient,
+    clients,
   }) => {
-    const getResponse = await userClient.getMetalInstance({
+    const getResponse = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(getResponse.response.status).equals(404);
 
-    const response = await metalInstanceClient.register(myMetalInstance);
+    const response = await clients.metalInstance.register(myMetalInstance);
     expect(response.status).equals(200);
-    const getResponseAfter = await userClient.getMetalInstance({
+    const getResponseAfter = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
 
@@ -60,8 +59,7 @@ describe("Metal Instance", () => {
 
   it("should register a metal instance that already exists, updating it", async ({
     expect,
-    metalInstanceClient,
-    userClient,
+    clients,
   }) => {
     const updatedMetalInstance = {
       ...myMetalInstance,
@@ -74,9 +72,9 @@ describe("Metal Instance", () => {
         reserved: 20,
       },
     };
-    const response = await metalInstanceClient.register(updatedMetalInstance);
+    const response = await clients.metalInstance.register(updatedMetalInstance);
     expect(response.status).equals(200);
-    const getResponse = await userClient.getMetalInstance({
+    const getResponse = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(getResponse.response.status).equals(200);
@@ -93,11 +91,10 @@ describe("Metal Instance", () => {
 
   it("should update the last seen timestamp after a heartbeat", async ({
     expect,
-    metalInstanceClient,
-    userClient,
+    clients,
   }) => {
-    await metalInstanceClient.register(myMetalInstance);
-    const originalResponse = await userClient.getMetalInstance({
+    await clients.metalInstance.register(myMetalInstance);
+    const originalResponse = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(originalResponse.response.status).equals(200);
@@ -106,13 +103,13 @@ describe("Metal Instance", () => {
     // sleep for a little bit
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    const heartbeatResponse = await metalInstanceClient.heartbeat({
+    const heartbeatResponse = await clients.metalInstance.heartbeat({
       id: myMetalInstance.id,
     });
     expect(heartbeatResponse.status).equals(200);
 
     // now the last seen timestamp should be larger
-    const response = await userClient.getMetalInstance({
+    const response = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
     const body = await response.parseBody();
@@ -120,11 +117,8 @@ describe("Metal Instance", () => {
     expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
   });
 
-  it("should allow deleting metal instances", async ({
-    expect,
-    userClient,
-  }) => {
-    const originalResponse = await userClient.getMetalInstance({
+  it("should allow deleting metal instances", async ({ expect, clients }) => {
+    const originalResponse = await clients.admin.getMetalInstance({
       id: myMetalInstance.id,
     });
     expect(originalResponse.response.status).equals(200);
@@ -146,23 +140,23 @@ services:
       disk: 40,
       gpus: 0,
     };
-    const workloadResponse = await userClient.createWorkload(
+    const workloadResponse = await clients.user.createWorkload(
       createWorkloadRequest,
     );
     expect(workloadResponse.response.status).equals(200);
     const workload = await workloadResponse.parseBody();
 
-    const firstDeleteResponse = await userClient.deleteMetalInstance(
+    const firstDeleteResponse = await clients.admin.deleteMetalInstance(
       instance.id,
     );
     expect(firstDeleteResponse.status).toBe(412);
 
-    const deleteWorkloadResponse = await userClient.deleteWorkload({
+    const deleteWorkloadResponse = await clients.user.deleteWorkload({
       id: workload.id,
     });
     expect(deleteWorkloadResponse.status).toBe(200);
 
-    const response = await userClient.deleteMetalInstance(instance.id);
+    const response = await clients.admin.deleteMetalInstance(instance.id);
     expect(response.status).toBe(200);
   });
 });
