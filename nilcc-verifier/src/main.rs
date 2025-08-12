@@ -1,3 +1,4 @@
+use crate::report::{EnvironmentSpec, VmType};
 use anyhow::{anyhow, Context};
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
@@ -25,6 +26,9 @@ enum Command {
 
     /// Run an online verification, pulling an attestation report from a CVM running in nilcc.
     Online(OnlineArgs),
+
+    /// Generate the measurement hash for the given compose hash and artifacts version.
+    MeasurementHash(MeasurementHashArgs),
 }
 
 #[derive(Args)]
@@ -89,6 +93,31 @@ struct OnlineArgs {
     /// The base url from which artifacts should be fetched.
     #[clap(long, default_value = default_artifacts_url())]
     artifacts_url: String,
+}
+
+#[derive(Args)]
+struct MeasurementHashArgs {
+    /// The path where artifacts will be cached.
+    #[clap(short, long, default_value = default_artifact_cache_path().into_os_string())]
+    artifact_cache: PathBuf,
+
+    /// The base url from which artifacts should be fetched.
+    #[clap(long, default_value = default_artifacts_url())]
+    artifacts_url: String,
+
+    /// The type of VM being used.
+    #[clap(long)]
+    vm_type: VmType,
+
+    /// The number of CPUs being used.
+    #[clap(long)]
+    cpus: u32,
+
+    /// The docker compose hash that the CVM executes.
+    docker_compose_hash: String,
+
+    /// The nilcc artifacts version that's being used.
+    nilcc_version: String,
 }
 
 fn default_cache_path() -> PathBuf {
@@ -173,10 +202,33 @@ fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
+    let MeasurementHashArgs { artifact_cache, artifacts_url, vm_type, cpus, docker_compose_hash, nilcc_version } = args;
+    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
+    let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
+    let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count: cpus };
+    let artifacts = fetcher.download_artifacts(&environment).context("fetching artifacts")?;
+    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash } = artifacts;
+
+    let measurement = MeasurementGenerator {
+        vcpus: cpus,
+        ovmf: ovmf_path,
+        kernel: kernel_path,
+        initrd: initrd_path,
+        docker_compose_hash,
+        filesystem_root_hash,
+        kernel_debug_options: false,
+    }
+    .generate()?;
+    info!("Measurement hash: {}", hex::encode(&measurement));
+    Ok(())
+}
+
 fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Command::Offline(args) => run_offline(args),
         Command::Online(args) => run_online(args),
+        Command::MeasurementHash(args) => compute_measurement_hash(args),
     }
 }
 
@@ -185,9 +237,7 @@ fn main() {
 
     let cli = Cli::parse();
     match run(cli) {
-        Ok(()) => {
-            info!("Verification successful");
-        }
+        Ok(()) => {}
         Err(e) => {
             error!("Failed to run: {e:#}");
             std::process::exit(1);

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context};
+use clap::ValueEnum;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use sev::firmware::guest::AttestationReport;
@@ -20,10 +21,17 @@ struct Response {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct EnvironmentSpec {
-    nilcc_version: String,
-    vm_type: String,
-    cpu_count: u32,
+pub struct EnvironmentSpec {
+    pub nilcc_version: String,
+    pub vm_type: VmType,
+    pub cpu_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum VmType {
+    Gpu,
+    Cpu,
 }
 
 pub struct ReportFetcher {
@@ -59,7 +67,7 @@ impl ReportFetcher {
             );
         }
         let EnvironmentSpec { nilcc_version, vm_type, cpu_count } = &environment;
-        info!("CVM is running nilcc-version {nilcc_version}, using VM type '{vm_type}' and has {cpu_count} CPUs");
+        info!("CVM is running nilcc-version {nilcc_version}, using VM type '{vm_type:?}' and has {cpu_count} CPUs");
 
         // Create the cache directory if it doesn't exist already.
         fs::create_dir_all(self.cache_path.join(nilcc_version)).context("creating cache directory")?;
@@ -69,9 +77,13 @@ impl ReportFetcher {
         Ok(ReportBundle { report, cpu_count: *cpu_count, artifacts })
     }
 
-    fn download_artifacts(&self, spec: &EnvironmentSpec) -> anyhow::Result<Artifacts> {
+    pub fn download_artifacts(&self, spec: &EnvironmentSpec) -> anyhow::Result<Artifacts> {
         let version = &spec.nilcc_version;
-        let vm_type = &spec.vm_type;
+        let vm_type = match &spec.vm_type {
+            VmType::Gpu => "gpu",
+            VmType::Cpu => "cpu",
+        };
+
         let ovmf_path = self.download_artifact(version, "vm_images/ovmf/OVMF.fd")?;
         let kernel_path = self.download_artifact(version, &format!("vm_images/kernel/{vm_type}-vmlinuz"))?;
         let initrd_path = self.download_artifact(version, "initramfs/initramfs.cpio.gz")?;

@@ -43,6 +43,7 @@ impl ReportVerifier {
 
         Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;
         Self::verify_attestation_tcb(&certs.vcek, &report, &processor).context("verifying attestation TCB")?;
+        info!("Verification successful");
         Ok(())
     }
 
