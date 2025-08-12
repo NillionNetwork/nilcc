@@ -7,35 +7,27 @@ import {
 } from "typeorm";
 import "reflect-metadata";
 import type { Context, Next } from "hono";
-import type { Logger } from "pino";
+import { InitialState1754946297570 } from "migrations/1754946297570-InitialState";
 import { DataSource } from "typeorm";
-import { type EnvVars, FeatureFlag, hasFeatureFlag } from "#/env";
+import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import {
   WorkloadEntity,
   WorkloadEventEntity,
 } from "#/workload/workload.entity";
 
-export async function buildDataSource(
-  config: EnvVars,
-  log: Logger,
-): Promise<DataSource> {
-  const synchronize = hasFeatureFlag(
-    config.enabledFeatures,
-    FeatureFlag.MIGRATIONS,
-  );
-
+export async function buildDataSource(config: EnvVars): Promise<DataSource> {
   const dataSource = new DataSource({
     type: "postgres",
     url: config.dbUri,
     entities: [WorkloadEntity, MetalInstanceEntity, WorkloadEventEntity],
     subscribers: [NullToUndefinedSubscriber],
-    synchronize,
+    // We can't use globs (e.g. `migrations/*.ts`) here because of some very reasonable problem with typescript
+    migrations: [InitialState1754946297570],
+    synchronize: false,
     logging: false,
+    migrationsRun: true,
   });
-
-  log.debug("Initializing database");
-  await dataSource.initialize();
 
   return dataSource;
 }

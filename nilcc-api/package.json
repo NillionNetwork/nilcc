@@ -7,7 +7,7 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "test": "vitest --run tests/",
-    "migrate": "tsx bin/migrate.ts",
+    "typeorm": "tsx ./node_modules/typeorm/cli.js",
     "fetch-compose-schema": "tsx bin/fetch-compose-schema.ts",
     "fmt": "biome format .",
     "compile": "tsc"

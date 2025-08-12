@@ -19,10 +19,10 @@ export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export const FeatureFlag = {
   OPENAPI_SPEC: "openapi",
   PROMETHEUS_METRICS: "prometheus-metrics",
-  MIGRATIONS: "migrations",
   LOCALSTACK: "localstack",
   PRETTY_LOGS: "pretty-logs",
   HTTP_ERROR_STACKTRACE: "http-error-stacktrace",
+  AUTO_MIGRATIONS: "auto-migrations",
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -116,7 +116,9 @@ export async function loadBindings(
     hasFeatureFlag(config.enabledFeatures, FeatureFlag.PRETTY_LOGS),
   );
 
-  const dataSource = await buildDataSource(config, log);
+  const dataSource = await buildDataSource(config);
+  log.debug("Initializing database");
+  await dataSource.initialize();
 
   const services = await buildServices(config, log);
 
