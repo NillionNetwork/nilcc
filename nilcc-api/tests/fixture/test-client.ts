@@ -1,4 +1,5 @@
 import { type ZodType, z } from "zod";
+import { Account } from "#/account/account.dto";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
@@ -113,6 +114,28 @@ export class AdminClient extends TestClient {
       body: { id },
     });
     return new RequestPromise(promise, z.unknown());
+  }
+
+  createAccount(name: string): RequestPromise<Account> {
+    const promise = this.request(PathsV1.account.create, {
+      method: "POST",
+      body: { name },
+    });
+    return new RequestPromise(promise, Account);
+  }
+
+  listAccounts(): RequestPromise<Account[]> {
+    const promise = this.request(PathsV1.account.list, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, Account.array());
+  }
+
+  getAccount(id: string): RequestPromise<Account> {
+    const promise = this.request(PathsV1.account.read.replace(":id", id), {
+      method: "GET",
+    });
+    return new RequestPromise(promise, Account);
   }
 }
 

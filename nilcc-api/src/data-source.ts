@@ -8,6 +8,7 @@ import {
 import "reflect-metadata";
 import type { Context, Next } from "hono";
 import { InitialState1754946297570 } from "migrations/1754946297570-InitialState";
+import { Account1755033746208 } from "migrations/1755033746208-Account";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -15,15 +16,21 @@ import {
   WorkloadEntity,
   WorkloadEventEntity,
 } from "#/workload/workload.entity";
+import { AccountEntity } from "./account/account.entity";
 
 export async function buildDataSource(config: EnvVars): Promise<DataSource> {
   const dataSource = new DataSource({
     type: "postgres",
     url: config.dbUri,
-    entities: [WorkloadEntity, MetalInstanceEntity, WorkloadEventEntity],
+    entities: [
+      AccountEntity,
+      WorkloadEntity,
+      MetalInstanceEntity,
+      WorkloadEventEntity,
+    ],
     subscribers: [NullToUndefinedSubscriber],
     // We can't use globs (e.g. `migrations/*.ts`) here because of some very reasonable problem with typescript
-    migrations: [InitialState1754946297570],
+    migrations: [InitialState1754946297570, Account1755033746208],
     synchronize: false,
     logging: false,
     migrationsRun: true,

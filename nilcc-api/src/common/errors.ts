@@ -54,3 +54,13 @@ export class EntityNotFound extends AppError {
     this.description = `${entity} not found`;
   }
 }
+
+export class AccountAlreadyExists extends AppError {
+  kind = "ACCOUNT_ALREADY_EXISTS";
+  override statusCode: ContentfulStatusCode = StatusCodes.CONFLICT;
+
+  constructor() {
+    super();
+    this.description = "account already exists";
+  }
+}

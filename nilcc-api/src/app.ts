@@ -6,6 +6,7 @@ import { bodyLimit } from "hono/body-limit";
 import { timeout } from "hono/timeout";
 import { Temporal } from "temporal-polyfill";
 import { errorHandler } from "#/common/handler";
+import { buildAccountRouter } from "./account/account.router";
 import {
   type AppBindings,
   type AppEnv,
@@ -42,6 +43,7 @@ export async function buildApp(
     createOpenApiRouter({ app, bindings });
   }
 
+  buildAccountRouter({ app, bindings });
   buildWorkloadRouter({ app, bindings });
   buildWorkloadContainerRouter({ app, bindings });
   buildWorkloadEventRouter({ app, bindings });

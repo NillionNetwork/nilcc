@@ -12,6 +12,11 @@ export type Path = z.infer<typeof PathSchema>;
 
 export const PathsV1 = {
   docs: PathSchema.parse("/openapi.json"),
+  account: {
+    create: PathSchema.parse("/api/v1/accounts/create"),
+    list: PathSchema.parse("/api/v1/accounts/list"),
+    read: PathSchema.parse("/api/v1/accounts/:id"),
+  },
   workload: {
     create: PathSchema.parse("/api/v1/workloads/create"),
     list: PathSchema.parse("/api/v1/workloads/list"),
