@@ -26,6 +26,12 @@ export interface NilccAgentClient {
     workloadId: string,
     request: ContainerLogsRequest,
   ): Promise<Array<string>>;
+
+  systemLogs(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+    request: SystemLogsRequest,
+  ): Promise<Array<string>>;
 }
 
 export class DefaultNilccAgentClient implements NilccAgentClient {
@@ -121,7 +127,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     metalInstance: MetalInstanceEntity,
     workloadId: string,
     request: ContainerLogsRequest,
-  ): Promise<Array<string>> {
+  ): Promise<string[]> {
     const params: [string, string][] = Object.entries(request).map(
       (key, value) => [String(key), String(value)],
     );
@@ -133,7 +139,28 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     this.log.info(
       `Looking up container logs for workload ${workloadId} in agent ${metalInstance.id}`,
     );
-    return await this.get(url, metalInstance, z.string().array());
+    const response = await this.get(url, metalInstance, LogsResponse);
+    return response.lines;
+  }
+
+  async systemLogs(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+    request: SystemLogsRequest,
+  ): Promise<string[]> {
+    const params: [string, string][] = Object.entries(request).map(
+      (key, value) => [String(key), String(value)],
+    );
+    const queryParams = new URLSearchParams(params).toString();
+    const url = this.makeUrl(
+      metalInstance,
+      `/api/v1/workloads/${workloadId}/system/logs?${queryParams}`,
+    );
+    this.log.info(
+      `Looking up system logs for workload ${workloadId} in agent ${metalInstance.id}`,
+    );
+    const response = await this.get(url, metalInstance, LogsResponse);
+    return response.lines;
   }
 
   async post(
@@ -239,6 +266,26 @@ export const ContainerLogsRequest = z.object({
     .openapi({ description: "The maximum number of lines to get." }),
 });
 export type ContainerLogsRequest = z.infer<typeof ContainerLogsRequest>;
+
+export const SystemLogsRequest = z.object({
+  tail: z.boolean().openapi({
+    description:
+      "Whether to get logs from the tail of the log instead of the head.",
+  }),
+  source: z
+    .enum(["cvm-agent"])
+    .default("cvm-agent")
+    .openapi({ description: "The source to get logs from." }),
+  max_lines: z
+    .number()
+    .int()
+    .max(1000)
+    .default(1000)
+    .openapi({ description: "The maximum number of lines to get." }),
+});
+export type SystemLogsRequest = z.infer<typeof SystemLogsRequest>;
+
+const LogsResponse = z.object({ lines: z.string().array() });
 
 const AgentErrorDetails = z.object({
   errorCode: z.string(),
