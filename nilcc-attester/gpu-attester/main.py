@@ -18,7 +18,7 @@ def disable_logging():
 
 def main():
     # Disable logging before we import the nvidia package since it otherwise logs
-    disable_logging()
+    # disable_logging()
     from nv_attestation_sdk import attestation
 
     parser = argparse.ArgumentParser(prog="gpu-attester")
@@ -34,7 +34,7 @@ def main():
 
     evidence = client.get_evidence()
     if not client.attest(evidence):
-        sys.stderr.write("could not gneerate attestation\n")
+        sys.stderr.write("could not generate attestation\n")
         sys.exit(1)
 
     token = client.get_token()
