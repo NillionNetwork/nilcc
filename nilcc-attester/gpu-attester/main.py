@@ -6,7 +6,7 @@ import base64
 import logging
 
 
-NRAS_URL = "https://nras.attestation.nvidia.com/v4/attest/gpu"
+NRAS_URL = "https://nras.attestation.nvidia.com/v3/attest/gpu"
 
 
 def disable_logging():
