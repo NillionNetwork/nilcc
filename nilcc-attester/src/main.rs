@@ -1,3 +1,4 @@
+use axum::http;
 use clap::Parser;
 use nilcc_attester::{
     config::Config,
@@ -5,6 +6,7 @@ use nilcc_attester::{
 };
 use std::process::exit;
 use tokio::{net::TcpListener, signal};
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 #[derive(Parser)]
@@ -50,7 +52,11 @@ async fn main() {
     info!("Running server on {bind_endpoint}");
 
     let state = AppState::new(config.nilcc_version, config.vm_type, config.gpu_attester_path);
-    let router = build_router(state);
     let listener = TcpListener::bind(bind_endpoint).await.expect("failed to bind");
+    let cors = CorsLayer::new()
+        .allow_methods([http::Method::GET, http::Method::POST])
+        .allow_headers([http::header::CONTENT_TYPE])
+        .allow_origin(tower_http::cors::Any);
+    let router = build_router(state).layer(cors);
     axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await.expect("failed to run");
 }
