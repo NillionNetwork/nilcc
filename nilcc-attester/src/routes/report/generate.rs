@@ -36,19 +36,20 @@ pub(crate) async fn handler(state: State<AppState>, request: Json<Request>) -> R
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
-    let gpu_token = match &vm_type {
-        VmType::Cpu => None,
-        VmType::Gpu => {
-            info!("Generating GPU report using nonce {hex_nonce}");
-            match hardware_reporter.gpu_report(&hex_nonce).await {
-                Ok(token) => Some(token),
-                Err(e) => {
-                    error!("Failed to generate GPU attestation: {e:#}");
-                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
-                }
-            }
-        }
-    };
+    // let gpu_token = match &vm_type {
+    //     VmType::Cpu => None,
+    //     VmType::Gpu => {
+    //         info!("Generating GPU report using nonce {hex_nonce}");
+    //         match hardware_reporter.gpu_report(&hex_nonce).await {
+    //             Ok(token) => Some(token),
+    //             Err(e) => {
+    //                 error!("Failed to generate GPU attestation: {e:#}");
+    //                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    //             }
+    //         }
+    //     }
+    // };
+    let gpu_token = None;
     let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count };
     Ok(Json(Response { report, environment, gpu_token }))
 }
