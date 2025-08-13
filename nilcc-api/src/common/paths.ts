@@ -22,6 +22,7 @@ export const PathsV1 = {
     list: PathSchema.parse("/api/v1/workloads/list"),
     read: PathSchema.parse("/api/v1/workloads/:id"),
     delete: PathSchema.parse("/api/v1/workloads/delete"),
+    logs: PathSchema.parse("/api/v1/workloads/logs"),
   },
   workloadContainers: {
     list: PathSchema.parse("/api/v1/workload-containers/list"),

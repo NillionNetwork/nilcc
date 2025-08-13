@@ -16,7 +16,10 @@ import type {
   ListWorkloadEventsRequest,
   WorkloadEvent,
 } from "#/workload-event/workload-event.dto";
-import type { CreateWorkloadRequest } from "./workload.dto";
+import type {
+  CreateWorkloadRequest,
+  WorkloadSystemLogsRequest,
+} from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
 
 export class WorkloadService {
@@ -218,6 +221,27 @@ export class WorkloadService {
         timestamp: event.timestamp.toISOString(),
       };
     });
+  }
+
+  async systemLogs(
+    bindings: AppBindings,
+    request: WorkloadSystemLogsRequest,
+    tx: QueryRunner,
+  ): Promise<Array<string>> {
+    const workloadRepository = this.getRepository(bindings, tx);
+    const workloads = await workloadRepository.find({
+      where: { id: request.id },
+      relations: ["metalInstance"],
+    });
+    if (workloads.length !== 1) {
+      throw new EntityNotFound("workload");
+    }
+    const workload = workloads[0];
+    return await bindings.services.nilccAgentClient.systemLogs(
+      workload.metalInstance,
+      workload.id,
+      request,
+    );
   }
 
   async listContainers(

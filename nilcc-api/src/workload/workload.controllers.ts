@@ -22,6 +22,8 @@ import {
   DeleteWorkloadRequest,
   GetWorkloadResponse,
   ListWorkloadsResponse,
+  WorkloadSystemLogsRequest,
+  WorkloadSystemLogsResponse,
 } from "./workload.dto";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -181,6 +183,44 @@ export function remove(options: ControllerOptions): void {
         c.get("txQueryRunner"),
       );
       return c.json({});
+    },
+  );
+}
+
+export function systemLogs(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.logs,
+    describeRoute({
+      tags: ["workload"],
+      summary: "Get the system logs for a workload",
+      description: "This endpoint retrieves the system logs for a workload",
+      responses: {
+        200: {
+          description: "The system logs",
+          content: {
+            "application/json": {
+              schema: resolver(WorkloadSystemLogsResponse),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    apiKey(bindings.config.userApiKey),
+    payloadValidator(WorkloadSystemLogsRequest),
+    transactionMiddleware(bindings.dataSource),
+    responseValidator(bindings, WorkloadSystemLogsResponse),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const lines = await bindings.services.workload.systemLogs(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
+
+      const response: WorkloadSystemLogsResponse = { lines };
+      return c.json(response);
     },
   );
 }

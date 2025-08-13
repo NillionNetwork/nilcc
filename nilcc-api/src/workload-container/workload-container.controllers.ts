@@ -34,7 +34,7 @@ export function listContainers(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.metalInstanceApiKey),
+    apiKey(bindings.config.userApiKey),
     payloadValidator(ListContainersRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListContainersResponse),
@@ -71,18 +71,20 @@ export function containerLogs(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.metalInstanceApiKey),
+    apiKey(bindings.config.userApiKey),
     payloadValidator(WorkloadContainerLogsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, WorkloadContainerLogsResponse),
     async (c) => {
       const payload = c.req.valid("json");
-      const logs = await bindings.services.workload.containerLogs(
+      const lines = await bindings.services.workload.containerLogs(
         bindings,
         payload,
         c.get("txQueryRunner"),
       );
-      return c.json(logs);
+
+      const response: WorkloadContainerLogsResponse = { lines };
+      return c.json(response);
     },
   );
 }

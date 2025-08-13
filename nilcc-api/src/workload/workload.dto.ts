@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SystemLogsRequest } from "#/clients/nilcc-agent.client";
 import { Uuid } from "#/common/types";
 
 const FILENAME_REGEX = /^[\w/._-]+$/;
@@ -134,3 +135,23 @@ export const ListWorkloadsResponse = z
   .array(GetWorkloadResponse)
   .openapi({ ref: "ListWorkloadsResponse" });
 export type ListWorkloadsResponse = z.infer<typeof ListWorkloadsResponse>;
+
+export const WorkloadSystemLogsRequest = SystemLogsRequest.extend({
+  id: Uuid.openapi({
+    description: "The identifier for the workloads to get system logs from.",
+  }),
+}).openapi({ ref: "WorkloadSystemLogsRequest" });
+export type WorkloadSystemLogsRequest = z.infer<
+  typeof WorkloadSystemLogsRequest
+>;
+
+export const WorkloadSystemLogsResponse = z
+  .object({
+    lines: z.string().array().openapi({
+      description: "The system log lines.",
+    }),
+  })
+  .openapi({ ref: "WorkloadSystemLogsResponse" });
+export type WorkloadSystemLogsResponse = z.infer<
+  typeof WorkloadSystemLogsResponse
+>;
