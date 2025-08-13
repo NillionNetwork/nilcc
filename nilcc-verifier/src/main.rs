@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
 use report::{Artifacts, ReportFetcher};
 use std::{fs::File, io::stdin, path::PathBuf};
-use tracing::{error, info};
+use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
 
 mod certs;
@@ -17,6 +17,9 @@ mod verify;
 struct Cli {
     #[clap(subcommand)]
     command: Command,
+
+    #[clap(long, global = true)]
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -220,7 +223,9 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
         kernel_debug_options: false,
     }
     .generate()?;
-    info!("Measurement hash: {}", hex::encode(&measurement));
+    let measurement = hex::encode(&measurement);
+    info!("Measurement hash: {measurement}");
+    println!("{measurement}");
     Ok(())
 }
 
@@ -233,9 +238,20 @@ fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 fn main() {
-    tracing_subscriber::fmt().init();
-
     let cli = Cli::parse();
+
+    let default_log_level = match cli.verbose {
+        true => LevelFilter::INFO,
+        false => LevelFilter::OFF,
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::filter::EnvFilter::builder()
+                .with_default_directive(default_log_level.into())
+                .from_env_lossy(),
+        )
+        .init();
+
     match run(cli) {
         Ok(()) => {}
         Err(e) => {
