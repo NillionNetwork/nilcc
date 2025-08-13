@@ -34,6 +34,7 @@ def main():
 
     evidence = client.get_evidence()
     if not client.attest(evidence):
+        sys.stderr.write("could not gneerate attestation\n")
         sys.exit(1)
 
     token = client.get_token()

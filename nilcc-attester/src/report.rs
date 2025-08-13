@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use sev::firmware::guest::{AttestationReport, Firmware};
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Stdio};
 use tokio::process::Command;
 
 pub const VMPL: u32 = 1;
@@ -17,12 +17,17 @@ impl HardwareReporter {
     }
 
     pub async fn gpu_report(&self, nonce: &str) -> anyhow::Result<String> {
-        let output =
-            Command::new(&self.gpu_attester_path).arg(nonce).output().await.context("failed to invoke GPU attester")?;
+        let output = Command::new(&self.gpu_attester_path)
+            .arg(nonce)
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .context("failed to invoke GPU attester")?;
         if output.status.success() {
             String::from_utf8(output.stdout).context("invalid utf8 token")
         } else {
-            bail!("could not generate GPU report")
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("could not generate GPU report: {stderr}")
         }
     }
 
