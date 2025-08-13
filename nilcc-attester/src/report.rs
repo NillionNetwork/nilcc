@@ -19,6 +19,7 @@ impl HardwareReporter {
     pub async fn gpu_report(&self, nonce: &str) -> anyhow::Result<String> {
         let output = Command::new(&self.gpu_attester_path)
             .arg(nonce)
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
             .await
@@ -26,8 +27,9 @@ impl HardwareReporter {
         if output.status.success() {
             String::from_utf8(output.stdout).context("invalid utf8 token")
         } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("could not generate GPU report: {stderr}")
+            bail!("could not generate GPU report. stderr = '{stderr}', stdout = '{stdout}'")
         }
     }
 
