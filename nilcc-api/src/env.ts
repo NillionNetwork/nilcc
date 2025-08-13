@@ -5,6 +5,7 @@ import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
 import { WorkloadService } from "#/workload/workload.service";
+import { AccountService } from "./account/account.service";
 import {
   DefaultNilccAgentClient,
   type NilccAgentClient,
@@ -51,6 +52,7 @@ export type DnsServices = {
 export type AppServices = {
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
+  account: AccountService;
   dns: DnsServices;
   nilccAgentClient: NilccAgentClient;
 };
@@ -152,6 +154,7 @@ async function buildServices(
 
   const metalInstanceService = new MetalInstanceService();
   const workloadService = new WorkloadService();
+  const accountService = new AccountService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
     config.metalInstancesDnsDomain,
@@ -162,6 +165,7 @@ async function buildServices(
   return {
     metalInstance: metalInstanceService,
     workload: workloadService,
+    account: accountService,
     dns,
     nilccAgentClient,
   };
