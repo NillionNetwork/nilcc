@@ -112,7 +112,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
   async containers(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
-  ): Promise<Array<Container>> {
+  ): Promise<Container[]> {
     const url = this.makeUrl(
       metalInstance,
       `/api/v1/workloads/${workloadId}/containers/list`,
@@ -129,7 +129,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     request: ContainerLogsRequest,
   ): Promise<string[]> {
     const params: [string, string][] = Object.entries(request).map(
-      (key, value) => [String(key), String(value)],
+      ([key, value]) => [String(key), String(value)],
     );
     const queryParams = new URLSearchParams(params).toString();
     const url = this.makeUrl(
@@ -149,7 +149,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     request: SystemLogsRequest,
   ): Promise<string[]> {
     const params: [string, string][] = Object.entries(request).map(
-      (key, value) => [String(key), String(value)],
+      ([key, value]) => [String(key), String(value)],
     );
     const queryParams = new URLSearchParams(params).toString();
     const url = this.makeUrl(
@@ -231,7 +231,7 @@ export const Container = z
       description: "The docker image this container is using.",
       examples: ["ghcr.io/nillionnetwork/nilcc-attester:latest"],
     }),
-    image_id: z.string().openapi({
+    imageId: z.string().openapi({
       description: "The docker image identifier being used.",
       examples: [
         "sha256:a16bb0e1a3fa23179888246671ce3db9c9006030cc91b7377972d5e35a121556",
@@ -258,7 +258,7 @@ export const ContainerLogsRequest = z.object({
   stream: z
     .enum(["stdout", "stderr"])
     .openapi({ description: "The stream to get logs from." }),
-  max_lines: z
+  maxLines: z
     .number()
     .int()
     .max(1000)
@@ -276,7 +276,7 @@ export const SystemLogsRequest = z.object({
     .enum(["cvm-agent"])
     .default("cvm-agent")
     .openapi({ description: "The source to get logs from." }),
-  max_lines: z
+  maxLines: z
     .number()
     .int()
     .max(1000)
