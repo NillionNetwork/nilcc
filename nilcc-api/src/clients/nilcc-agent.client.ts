@@ -196,8 +196,8 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     });
     const body = await response.json();
     if (!response.ok) {
-      const body = AgentErrorDetails.parse(await response.json());
-      throw new AgentRequestError(body.errorCode, body.message);
+      const error = AgentErrorDetails.parse(body);
+      throw new AgentRequestError(error.errorCode, error.message);
     }
     return schema.parse(body) as z.infer<T>;
   }
