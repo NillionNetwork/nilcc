@@ -216,6 +216,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         cvm_config: config.cvm,
         zerossl_config: config.zerossl,
+        docker_config: config.docker,
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {

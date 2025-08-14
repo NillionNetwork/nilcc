@@ -4,7 +4,7 @@ use crate::{
         nilcc_api::NilccApiClient,
         qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
     },
-    config::{CvmConfig, CvmFiles, ZeroSslConfig},
+    config::{CvmConfig, CvmFiles, DockerConfig, ZeroSslConfig},
     repositories::workload::Workload,
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::vm::{InitialVmState, VmWorker, VmWorkerArgs, VmWorkerHandle},
@@ -46,6 +46,7 @@ pub struct VmServiceArgs {
     pub disk_service: Box<dyn DiskService>,
     pub cvm_config: CvmConfig,
     pub zerossl_config: ZeroSslConfig,
+    pub docker_config: DockerConfig,
 }
 
 pub struct DefaultVmService {
@@ -57,6 +58,7 @@ pub struct DefaultVmService {
     state_path: PathBuf,
     cvm_config: CvmConfig,
     zerossl_config: ZeroSslConfig,
+    docker_config: DockerConfig,
 }
 
 impl DefaultVmService {
@@ -69,6 +71,7 @@ impl DefaultVmService {
             disk_service,
             cvm_config,
             zerossl_config,
+            docker_config,
         } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
@@ -80,6 +83,7 @@ impl DefaultVmService {
             state_path,
             cvm_config,
             zerossl_config,
+            docker_config,
         })
     }
 
@@ -217,6 +221,7 @@ impl VmService for DefaultVmService {
                     socket_path,
                     state,
                     zerossl_config: self.zerossl_config.clone(),
+                    docker_config: self.docker_config.clone(),
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -319,6 +324,7 @@ mod tests {
         disk_service: MockDiskService,
         cvm_config: CvmConfig,
         zerossl_config: ZeroSslConfig,
+        docker_config: DockerConfig,
     }
 
     impl Builder {
@@ -331,6 +337,7 @@ mod tests {
                 disk_service,
                 cvm_config,
                 zerossl_config,
+                docker_config,
             } = self;
             let args = VmServiceArgs {
                 state_path: state_path.path().into(),
@@ -340,6 +347,7 @@ mod tests {
                 disk_service: Box::new(disk_service),
                 cvm_config,
                 zerossl_config,
+                docker_config,
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }
@@ -373,6 +381,7 @@ mod tests {
                     },
                 },
                 zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
+                docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
             }
         }
     }

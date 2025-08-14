@@ -81,6 +81,8 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
     let resources = Resources::render(&metadata);
     let system_compose_path = state_dir.path().join("docker-compose.yaml");
     let caddy_path = state_dir.path().join("Caddyfile");
+    let docker_config_path = state_dir.path().join("docker");
+    fs::create_dir_all(&docker_config_path).expect("failed to create docker config path");
     fs::write(&system_compose_path, resources.docker_compose).expect("failed to write docker-compose.yaml");
     fs::write(&caddy_path, resources.caddyfile).expect("failed to write Caddyfile");
 
@@ -91,6 +93,7 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
         user_docker_compose: user_compose_path,
         external_files: external_files_path,
         caddy_config: caddy_path,
+        docker_config: docker_config_path,
         version,
         vm_type,
         iso_mount: cli.iso_mount_path.clone(),

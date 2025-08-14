@@ -29,6 +29,7 @@ pub struct BootstrapContext {
     pub user_docker_compose: PathBuf,
     pub external_files: PathBuf,
     pub caddy_config: PathBuf,
+    pub docker_config: PathBuf,
     pub version: String,
     pub vm_type: VmType,
     pub iso_mount: PathBuf,
