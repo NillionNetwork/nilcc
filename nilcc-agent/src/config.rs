@@ -38,6 +38,9 @@ pub struct AgentConfig {
     /// The zero SSL config.
     pub zerossl: ZeroSslConfig,
 
+    /// The docker hub credentials.
+    pub docker: DockerConfig,
+
     /// The optional TLS configuration.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
@@ -236,6 +239,16 @@ pub struct TlsConfig {
 
     /// The contact email address to use for ACME requests.
     pub acme_contact: String,
+}
+
+/// The docker hub credentials to use.
+#[derive(Clone, Debug, Deserialize)]
+pub struct DockerConfig {
+    /// The username.
+    pub username: String,
+
+    /// The password.
+    pub password: String,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>

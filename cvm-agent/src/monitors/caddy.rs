@@ -41,12 +41,12 @@ impl CaddyMonitor {
             let (next_timestamp, status) = Self::check_caddy_status(stream, threshold_timestamp).await;
             threshold_timestamp = next_timestamp;
             match status {
-                Status::Ok => {
+                Status::CertificateGenerated => {
                     let mut system_state = self.system_state.lock().unwrap();
                     match mem::take(&mut *system_state) {
                         SystemState::WaitingBootstrap => error!("System is still waiting for bootstrap"),
                         SystemState::Starting | SystemState::Ready => {
-                            info!("Caddy is running successfully");
+                            info!("Caddy fetched TLS certificate and is running successfully");
                             *system_state = SystemState::Ready
                         }
                     }
@@ -85,7 +85,7 @@ impl CaddyMonitor {
                 continue;
             }
             if line.msg == "certificate obtained successfully" {
-                status = Status::Ok;
+                status = Status::CertificateGenerated;
             } else if line.error.contains("https://acme-staging-v02.api.letsencrypt.org") {
                 status = Status::NeedsRestart;
             }
@@ -105,7 +105,7 @@ struct LogLine<'a> {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 enum Status {
-    Ok,
+    CertificateGenerated,
     Unknown,
     NeedsRestart,
 }
@@ -130,7 +130,7 @@ mod tests {
         ]);
         let (timestamp, status) = CaddyMonitor::check_caddy_status(lines, 0.0).await;
         assert_eq!(timestamp, 1754341166.4263053);
-        assert_eq!(status, Status::Ok);
+        assert_eq!(status, Status::CertificateGenerated);
     }
 
     #[tokio::test]

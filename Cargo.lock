@@ -869,6 +869,7 @@ dependencies = [
 name = "cvm-agent"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "axum-valid",
  "bollard",

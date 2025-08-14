@@ -13,11 +13,40 @@ pub mod bootstrap {
     /// A request to bootstrap the CVM.
     #[derive(Deserialize, Serialize)]
     pub struct BootstrapRequest {
-        /// The ACME EAB key id.
+        /// Deprecated: The ACME EAB key id.
         pub acme_eab_key_id: String,
 
-        /// The ACME EAB MAC key.
+        /// Deprecated: The ACME EAB MAC key.
         pub acme_eab_mac_key: String,
+
+        /// The ACME credentials.
+        pub acme: AcmeCredentials,
+
+        /// The docker credentials to use.
+        pub docker: Vec<DockerCredentials>,
+    }
+
+    /// The ACME credentials.
+    #[derive(Deserialize, Serialize)]
+    pub struct AcmeCredentials {
+        /// The ACME EAB key id.
+        pub eab_key_id: String,
+
+        /// The ACME EAB MAC key.
+        pub eab_mac_key: String,
+    }
+
+    /// A set of docker credentials to use.
+    #[derive(Deserialize, Serialize)]
+    pub struct DockerCredentials {
+        /// The username.
+        pub username: String,
+
+        /// The password.
+        pub password: String,
+
+        /// The optional server.
+        pub server: Option<String>,
     }
 }
 

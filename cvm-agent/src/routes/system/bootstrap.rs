@@ -13,7 +13,7 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
     let request = request.0;
     let ctx = state.context.clone();
     *system_state = SystemState::Starting;
-    ComposeMonitor::spawn(ctx, request.acme_eab_key_id, request.acme_eab_mac_key);
+    ComposeMonitor::spawn(ctx, request.acme, request.docker);
     CaddyMonitor::spawn(state.docker.clone(), state.system_state.clone());
     StatusCode::OK
 }
