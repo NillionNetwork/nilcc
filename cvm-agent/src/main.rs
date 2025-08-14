@@ -1,6 +1,6 @@
 use crate::{
     resources::{ApplicationMetadata, Resources},
-    routes::{create_router, AppState, BootstrapContext},
+    routes::{create_router, AppState, BootstrapContext, VmType},
 };
 use bollard::Docker;
 use clap::{error::ErrorKind, CommandFactory, Parser};
@@ -69,7 +69,12 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
         }
     };
     let version = fs::read_to_string(&cli.version_path).expect("failed to read version").trim().to_string();
-    let vm_type = fs::read_to_string(&cli.vm_type_path).expect("failed to read version").trim().to_string();
+    let vm_type = fs::read_to_string(&cli.vm_type_path).expect("failed to read version");
+    let vm_type = match vm_type.trim() {
+        "cpu" => VmType::Cpu,
+        "gpu" => VmType::Gpu,
+        _ => panic!("unknown vm type {vm_type}"),
+    };
     let state_dir = tempdir().expect("failed to create tempdir");
     println!("Writing state files to {}", state_dir.path().display());
 
@@ -132,6 +137,13 @@ async fn main() {
 
     let docker = Docker::connect_with_local_defaults().expect("failed to connect to docker daemon");
     let (_state_dir, context) = build_bootstrap_context(&cli);
+    if matches!(context.vm_type, VmType::Gpu) {
+        // Set nvidia confidential compute ready state
+        std::process::Command::new("nvidia-smi")
+            .args(["conf-compute", "-srs", "1"])
+            .status()
+            .expect("failed to run nvidia-smi");
+    }
     let state =
         Arc::new(AppState { docker, context, system_state: Default::default(), log_path: cli.log_file.clone() });
     let router = create_router(state.clone());
