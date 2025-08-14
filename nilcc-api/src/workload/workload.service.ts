@@ -1,7 +1,12 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
+import type { AccountEntity } from "#/account/account.entity";
 import type { Container } from "#/clients/nilcc-agent.client";
-import { EntityNotFound, NoInstancesAvailable } from "#/common/errors";
+import {
+  AccessDenied,
+  EntityNotFound,
+  NoInstancesAvailable,
+} from "#/common/errors";
 import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type {
@@ -36,6 +41,7 @@ export class WorkloadService {
   async create(
     bindings: AppBindings,
     request: CreateWorkloadRequest,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
     const validator = new DockerComposeValidator();
@@ -70,6 +76,7 @@ export class WorkloadService {
       servicePortToExpose: request.publicContainerPort,
       id: uuidv4(),
       metalInstance,
+      account,
       createdAt: now,
       updatedAt: now,
     });
@@ -104,36 +111,41 @@ export class WorkloadService {
 
   async list(
     bindings: AppBindings,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<WorkloadEntity[]> {
     const repository = this.getRepository(bindings, tx);
-    return await repository.find();
+    return await repository.find({
+      where: { account },
+      relations: ["account"],
+    });
   }
 
   async read(
     bindings: AppBindings,
     workloadId: string,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<WorkloadEntity | null> {
     const repository = this.getRepository(bindings, tx);
-    return await repository.findOneBy({ id: workloadId });
+    return await this.findWorkload(repository, workloadId, account);
   }
 
   async remove(
     bindings: AppBindings,
     workloadId: string,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<void> {
-    const workloadRepository = this.getRepository(bindings, tx);
-    const workloads = await workloadRepository.find({
-      where: { id: workloadId },
-      relations: ["metalInstance"],
-    });
-    if (workloads.length === 0) {
+    const repository = this.getRepository(bindings, tx);
+    const workload = await this.findWorkload(repository, workloadId, account, [
+      "metalInstance",
+    ]);
+    if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    const workload = workloads[0];
-    await workloadRepository.delete({ id: workloadId });
+
+    await repository.delete({ id: workloadId });
     await this.removeCnameForWorkload(bindings, workloadId);
     await bindings.services.nilccAgentClient.deleteWorkload(
       workload.metalInstance,
@@ -186,17 +198,20 @@ export class WorkloadService {
   async listEvents(
     bindings: AppBindings,
     request: ListWorkloadEventsRequest,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<Array<WorkloadEvent>> {
     const repository = this.getRepository(bindings, tx);
-    const workloads = await repository.find({
-      where: { id: request.workloadId },
-      relations: ["events"],
-    });
-    if (workloads.length === 0) {
+    const workload = await this.findWorkload(
+      repository,
+      request.workloadId,
+      account,
+      ["events"],
+    );
+    if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    return workloads[0].events.map((event) => {
+    return workload.events.map((event) => {
       let details: WorkloadEventKind;
       switch (event.event) {
         case "created":
@@ -226,17 +241,16 @@ export class WorkloadService {
   async systemLogs(
     bindings: AppBindings,
     request: WorkloadSystemLogsRequest,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<Array<string>> {
-    const workloadRepository = this.getRepository(bindings, tx);
-    const workloads = await workloadRepository.find({
-      where: { id: request.id },
-      relations: ["metalInstance"],
-    });
-    if (workloads.length !== 1) {
+    const repository = this.getRepository(bindings, tx);
+    const workload = await this.findWorkload(repository, request.id, account, [
+      "metalInstance",
+    ]);
+    if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    const workload = workloads[0];
     return await bindings.services.nilccAgentClient.systemLogs(
       workload.metalInstance,
       workload.id,
@@ -247,17 +261,16 @@ export class WorkloadService {
   async listContainers(
     bindings: AppBindings,
     request: ListContainersRequest,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<Array<Container>> {
-    const workloadRepository = this.getRepository(bindings, tx);
-    const workloads = await workloadRepository.find({
-      where: { id: request.id },
-      relations: ["metalInstance"],
-    });
-    if (workloads.length !== 1) {
+    const repository = this.getRepository(bindings, tx);
+    const workload = await this.findWorkload(repository, request.id, account, [
+      "metalInstance",
+    ]);
+    if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    const workload = workloads[0];
     return await bindings.services.nilccAgentClient.containers(
       workload.metalInstance,
       workload.id,
@@ -267,17 +280,16 @@ export class WorkloadService {
   async containerLogs(
     bindings: AppBindings,
     request: WorkloadContainerLogsRequest,
+    account: AccountEntity,
     tx: QueryRunner,
   ): Promise<Array<string>> {
-    const workloadRepository = this.getRepository(bindings, tx);
-    const workloads = await workloadRepository.find({
-      where: { id: request.id },
-      relations: ["metalInstance"],
-    });
-    if (workloads.length !== 1) {
+    const repository = this.getRepository(bindings, tx);
+    const workload = await this.findWorkload(repository, request.id, account, [
+      "metalInstance",
+    ]);
+    if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    const workload = workloads[0];
     return await bindings.services.nilccAgentClient.containerLogs(
       workload.metalInstance,
       workload.id,
@@ -307,5 +319,31 @@ export class WorkloadService {
       workloadId,
       "CNAME",
     );
+  }
+
+  validateAccount(expected: AccountEntity, actual: AccountEntity): void {
+    if (expected.id !== actual.id) {
+      throw new AccessDenied();
+    }
+  }
+
+  async findWorkload(
+    repository: Repository<WorkloadEntity>,
+    workloadId: string,
+    account: AccountEntity,
+    relations: string[] = [],
+  ): Promise<WorkloadEntity | null> {
+    const workloads = await repository.find({
+      where: {
+        id: workloadId,
+      },
+      relations: ["account", ...relations],
+    });
+    if (workloads.length === 0) {
+      return null;
+    }
+    const workload = workloads[0];
+    this.validateAccount(account, workload.account);
+    return workload;
   }
 }

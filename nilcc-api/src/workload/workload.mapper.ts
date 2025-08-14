@@ -19,6 +19,7 @@ export const workloadMapper = {
       disk: workload.disk,
       status: workload.status,
       domain: `${workload.id}.${workloadsDomain}`,
+      account: workload.account.id,
       createdAt: workload.createdAt.toISOString(),
       updatedAt: workload.updatedAt.toISOString(),
     };

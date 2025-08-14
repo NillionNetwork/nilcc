@@ -40,6 +40,14 @@ export class AccountService {
     return await repository.findOneBy({ id });
   }
 
+  async findByApiToken(
+    bindings: AppBindings,
+    apiToken: string,
+  ): Promise<AccountEntity | null> {
+    const repository = this.getRepository(bindings);
+    return await repository.findOneBy({ apiToken });
+  }
+
   async list(bindings: AppBindings): Promise<AccountEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();

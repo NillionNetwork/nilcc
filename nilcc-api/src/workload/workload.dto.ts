@@ -114,6 +114,9 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   domain: z.string().openapi({
     description: "The domain where this workload is reachable via https.",
   }),
+  account: z.string().openapi({
+    description: "The account this workload belongs to.",
+  }),
 }).openapi({ ref: "CreateWorkloadResponse" });
 export type CreateWorkloadResponse = z.infer<typeof CreateWorkloadResponse>;
 

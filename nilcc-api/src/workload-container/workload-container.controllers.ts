@@ -1,6 +1,6 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
-import { apiKey } from "#/common/auth";
+import { userAuthentication } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -34,7 +34,7 @@ export function listContainers(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(ListContainersRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListContainersResponse),
@@ -43,6 +43,7 @@ export function listContainers(options: ControllerOptions) {
       const containers = await bindings.services.workload.listContainers(
         bindings,
         payload,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       return c.json(containers);
@@ -71,7 +72,7 @@ export function containerLogs(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(WorkloadContainerLogsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, WorkloadContainerLogsResponse),
@@ -80,6 +81,7 @@ export function containerLogs(options: ControllerOptions) {
       const lines = await bindings.services.workload.containerLogs(
         bindings,
         payload,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
 

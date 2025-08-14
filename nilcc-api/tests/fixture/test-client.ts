@@ -13,7 +13,15 @@ import {
   CreateWorkloadResponse,
   GetWorkloadResponse,
   ListWorkloadsResponse,
+  type WorkloadSystemLogsRequest,
+  WorkloadSystemLogsResponse,
 } from "#/workload/workload.dto";
+import {
+  type ListContainersRequest,
+  ListContainersResponse,
+  type WorkloadContainerLogsRequest,
+  WorkloadContainerLogsResponse,
+} from "#/workload-container/workload-container.dto";
 import {
   type ListWorkloadEventsRequest,
   ListWorkloadEventsResponse,
@@ -22,6 +30,7 @@ import {
 export type TestClientOptions = {
   app: App;
   bindings: AppBindings;
+  apiToken: string;
 };
 
 export class TestClient {
@@ -63,8 +72,9 @@ export class TestClient {
   }
 
   extraHeaders(): Record<string, string> {
-    // This method can be overridden to add extra headers if needed
-    return {};
+    return {
+      "x-api-key": this._options.apiToken,
+    };
   }
 }
 
@@ -92,12 +102,6 @@ export class RequestPromise<T> {
 }
 
 export class AdminClient extends TestClient {
-  override extraHeaders(): Record<string, string> {
-    return {
-      "x-api-key": this.bindings.config.adminApiKey,
-    };
-  }
-
   getMetalInstance(id: string): RequestPromise<GetMetalInstanceResponse> {
     const promise = this.request(
       PathsV1.metalInstance.read.replace(":id", id),
@@ -140,12 +144,6 @@ export class AdminClient extends TestClient {
 }
 
 export class UserClient extends TestClient {
-  override extraHeaders(): Record<string, string> {
-    return {
-      "x-api-key": this.bindings.config.userApiKey,
-    };
-  }
-
   createWorkload(
     body: CreateWorkloadRequest,
   ): RequestPromise<CreateWorkloadResponse> {
@@ -180,9 +178,7 @@ export class UserClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
-  getWorkloadEvents(
-    workloadId: string,
-  ): RequestPromise<ListWorkloadEventsResponse> {
+  listEvents(workloadId: string): RequestPromise<ListWorkloadEventsResponse> {
     const body: ListWorkloadEventsRequest = { workloadId };
     const promise = this.request(PathsV1.workloadEvents.list, {
       method: "POST",
@@ -190,15 +186,50 @@ export class UserClient extends TestClient {
     });
     return new RequestPromise(promise, ListWorkloadEventsResponse);
   }
+
+  listContainers(id: string): RequestPromise<ListContainersResponse> {
+    const body: ListContainersRequest = { id };
+    const promise = this.request(PathsV1.workloadContainers.list, {
+      method: "POST",
+      body,
+    });
+    return new RequestPromise(promise, ListContainersResponse);
+  }
+
+  containerLogs(
+    id: string,
+    container: string,
+  ): RequestPromise<WorkloadContainerLogsResponse> {
+    const body: WorkloadContainerLogsRequest = {
+      id,
+      container,
+      stream: "stdout",
+      tail: false,
+      maxLines: 100,
+    };
+    const promise = this.request(PathsV1.workloadContainers.logs, {
+      method: "POST",
+      body,
+    });
+    return new RequestPromise(promise, WorkloadContainerLogsResponse);
+  }
+
+  logs(id: string): RequestPromise<WorkloadSystemLogsResponse> {
+    const body: WorkloadSystemLogsRequest = {
+      id,
+      source: "cvm-agent",
+      tail: false,
+      maxLines: 100,
+    };
+    const promise = this.request(PathsV1.workload.logs, {
+      method: "POST",
+      body,
+    });
+    return new RequestPromise(promise, WorkloadSystemLogsResponse);
+  }
 }
 
 export class MetalInstanceClient extends TestClient {
-  override extraHeaders(): Record<string, string> {
-    return {
-      "x-api-key": this.bindings.config.metalInstanceApiKey,
-    };
-  }
-
   register(body: RegisterMetalInstanceRequest): RequestPromise<unknown> {
     const promise = this.request(PathsV1.metalInstance.register, {
       method: "POST",

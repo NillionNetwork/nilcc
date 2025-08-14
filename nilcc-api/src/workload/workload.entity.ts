@@ -1,5 +1,6 @@
 import { Column, Entity, ManyToOne, OneToMany, PrimaryColumn } from "typeorm";
 import { z } from "zod";
+import { AccountEntity } from "#/account/account.entity";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 
 @Entity()
@@ -9,6 +10,12 @@ export class WorkloadEntity {
 
   @Column({ type: "varchar" })
   name: string;
+
+  @ManyToOne(
+    () => AccountEntity,
+    (account) => account.workloads,
+  )
+  account: AccountEntity;
 
   @Column({ type: "varchar", nullable: true })
   description?: string;
