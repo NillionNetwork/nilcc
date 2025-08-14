@@ -4,7 +4,9 @@ use axum::{
     Router,
 };
 use bollard::Docker;
+use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -28,8 +30,24 @@ pub struct BootstrapContext {
     pub external_files: PathBuf,
     pub caddy_config: PathBuf,
     pub version: String,
-    pub vm_type: String,
+    pub vm_type: VmType,
     pub iso_mount: PathBuf,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VmType {
+    Cpu,
+    Gpu,
+}
+
+impl fmt::Display for VmType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cpu => write!(f, "cpu"),
+            Self::Gpu => write!(f, "gpu"),
+        }
+    }
 }
 
 pub struct AppState {
