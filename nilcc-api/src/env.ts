@@ -5,6 +5,7 @@ import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
 import { WorkloadService } from "#/workload/workload.service";
+import type { AccountEntity } from "./account/account.entity";
 import { AccountService } from "./account/account.service";
 import {
   DefaultNilccAgentClient,
@@ -42,6 +43,7 @@ export type AppEnv = {
 
 export type AppVariables = {
   txQueryRunner: QueryRunner;
+  account: AccountEntity;
 };
 
 export type DnsServices = {
@@ -74,7 +76,6 @@ export const EnvVarsSchema = z.object({
   httpApiPort: z.number().int().positive(),
   adminApiKey: z.string(),
   metalInstanceApiKey: z.string(),
-  userApiKey: z.string(),
   workloadsDnsDomain: z.string(),
   workloadsDnsZone: z.string(),
   metalInstancesDnsDomain: z.string(),
@@ -97,7 +98,6 @@ declare global {
       APP_HTTP_API_PORT: string;
       APP_ADMIN_API_KEY: string;
       APP_METAL_INSTANCE_API_KEY: string;
-      APP_USER_API_KEY: string;
       APP_WORKLOADS_DNS_ZONE: string;
       APP_WORKLOADS_DNS_DOMAIN: string;
       APP_METAL_INSTANCES_DNS_DOMAIN: string;
@@ -182,7 +182,6 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     httpApiPort: Number(process.env.APP_HTTP_API_PORT),
     adminApiKey: process.env.APP_ADMIN_API_KEY,
     metalInstanceApiKey: process.env.APP_METAL_INSTANCE_API_KEY,
-    userApiKey: process.env.APP_USER_API_KEY,
     workloadsDnsDomain: process.env.APP_WORKLOADS_DNS_DOMAIN,
     workloadsDnsZone: process.env.APP_WORKLOADS_DNS_ZONE,
     metalInstancesDnsZone: process.env.APP_METAL_INSTANCES_DNS_ZONE,

@@ -64,3 +64,13 @@ export class AccountAlreadyExists extends AppError {
     this.description = "account already exists";
   }
 }
+
+export class AccessDenied extends AppError {
+  kind = "ACCESS_DENIED";
+  override statusCode: ContentfulStatusCode = StatusCodes.UNAUTHORIZED;
+
+  constructor() {
+    super();
+    this.description = "access denied";
+  }
+}

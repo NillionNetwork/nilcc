@@ -5,6 +5,7 @@ import type {
   CreateWorkloadResponse,
 } from "#/workload/workload.dto";
 import { createTestFixtureExtension } from "./fixture/it";
+import { UserClient } from "./fixture/test-client";
 
 describe("workload CRUD", () => {
   const { it, beforeAll, afterAll } = createTestFixtureExtension();
@@ -130,11 +131,35 @@ services:
       .submit();
     expect(updatedWorkload.status).toBe("starting");
 
-    const eventsBody = await clients.user
-      .getWorkloadEvents(workload!.id)
-      .submit();
+    const eventsBody = await clients.user.listEvents(workload!.id).submit();
     expect(eventsBody.events).toHaveLength(2);
     const eventKinds = eventsBody.events.map((e) => e.details.kind);
     expect(eventKinds).toEqual(["created", "starting"]);
+  });
+
+  it("should now allow cross account operations", async ({
+    expect,
+    app,
+    bindings,
+    clients,
+  }) => {
+    const account = await clients.admin.createAccount("cross-account").submit();
+    const client = new UserClient({
+      app,
+      bindings,
+      apiToken: account.apiToken,
+    });
+    // Make sure there's something with the regular client, just in case the above tests are changed somehow.
+    const workloads = await clients.user.listWorkloads().submit();
+    expect(workloads).toHaveLength(1);
+
+    const workload = workloads[0];
+    expect(await client.listWorkloads().submit()).toHaveLength(0);
+    expect(await client.getWorkload(workload.id).status()).toBe(401);
+    expect(await client.deleteWorkload(workload.id).status()).toBe(401);
+    expect(await client.listEvents(workload.id).status()).toBe(401);
+    expect(await client.listContainers(workload.id).status()).toBe(401);
+    expect(await client.containerLogs(workload.id, "foo").status()).toBe(401);
+    expect(await client.logs(workload.id).status()).toBe(401);
   });
 });

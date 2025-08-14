@@ -1,7 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
-import { apiKey } from "#/common/auth";
+import { userAuthentication } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import {
   OpenApiSpecCommonErrorResponses,
@@ -50,7 +50,7 @@ export function create(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(CreateWorkloadRequest),
     responseValidator(bindings, CreateWorkloadResponse),
     transactionMiddleware(bindings.dataSource),
@@ -59,6 +59,7 @@ export function create(options: ControllerOptions): void {
       const workload = await bindings.services.workload.create(
         bindings,
         payload,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       return c.json(
@@ -91,12 +92,13 @@ export function list(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     responseValidator(bindings, CreateWorkloadResponse.array()),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const workloads = await bindings.services.workload.list(
         bindings,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       return c.json(
@@ -133,7 +135,7 @@ export function read(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     pathValidator(idParamSchema),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, GetWorkloadResponse),
@@ -142,6 +144,7 @@ export function read(options: ControllerOptions): void {
       const workload = await bindings.services.workload.read(
         bindings,
         params.id,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       if (!workload) {
@@ -172,7 +175,7 @@ export function remove(options: ControllerOptions): void {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(DeleteWorkloadRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -180,6 +183,7 @@ export function remove(options: ControllerOptions): void {
       await bindings.services.workload.remove(
         bindings,
         workloadId,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       return c.json({});
@@ -207,7 +211,7 @@ export function systemLogs(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(WorkloadSystemLogsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, WorkloadSystemLogsResponse),
@@ -216,6 +220,7 @@ export function systemLogs(options: ControllerOptions) {
       const lines = await bindings.services.workload.systemLogs(
         bindings,
         payload,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
 

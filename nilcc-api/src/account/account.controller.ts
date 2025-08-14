@@ -1,6 +1,6 @@
 import { describeRoute } from "hono-openapi";
 import { z } from "zod";
-import { apiKey } from "#/common/auth";
+import { adminAuthentication } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -26,7 +26,7 @@ export function create(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     payloadValidator(CreateAccountRequest),
     async (c) => {
       const payload = c.req.valid("json");
@@ -54,7 +54,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     async (c) => {
       const accounts = await bindings.services.account.list(bindings);
       return c.json(accounts.map(accountMapper.entityToResponse));
@@ -78,7 +78,7 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     pathValidator(idParamSchema),
     async (c) => {
       const params = c.req.valid("param");

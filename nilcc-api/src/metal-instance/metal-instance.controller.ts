@@ -1,7 +1,10 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
-import { apiKey } from "#/common/auth";
+import {
+  adminAuthentication,
+  metalInstanceAuthentication,
+} from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
@@ -39,7 +42,7 @@ export function register(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.metalInstanceApiKey),
+    metalInstanceAuthentication(bindings),
     payloadValidator(RegisterMetalInstanceRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -70,7 +73,7 @@ export function heartbeat(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.metalInstanceApiKey),
+    metalInstanceAuthentication(bindings),
     payloadValidator(HeartbeatRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -104,7 +107,7 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     pathValidator(idParamSchema),
     responseValidator(bindings, GetMetalInstanceResponse),
     async (c) => {
@@ -137,7 +140,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await bindings.services.metalInstance.list(bindings);
@@ -160,7 +163,7 @@ export function remove(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.adminApiKey),
+    adminAuthentication(bindings),
     payloadValidator(DeleteMetalInstanceRequest),
     async (c) => {
       const payload = c.req.valid("json");

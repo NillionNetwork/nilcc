@@ -1,6 +1,6 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
-import { apiKey } from "#/common/auth";
+import { metalInstanceAuthentication, userAuthentication } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -28,7 +28,7 @@ export function submitEvent(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.metalInstanceApiKey),
+    metalInstanceAuthentication(bindings),
     payloadValidator(SubmitEventRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -62,7 +62,7 @@ export function listEvents(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    apiKey(bindings.config.userApiKey),
+    userAuthentication(bindings),
     payloadValidator(ListWorkloadEventsRequest),
     transactionMiddleware(bindings.dataSource),
     responseValidator(bindings, ListWorkloadEventsResponse),
@@ -71,6 +71,7 @@ export function listEvents(options: ControllerOptions) {
       const events = await bindings.services.workload.listEvents(
         bindings,
         payload,
+        c.get("account"),
         c.get("txQueryRunner"),
       );
       return c.json({ events });

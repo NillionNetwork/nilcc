@@ -51,18 +51,23 @@ export async function buildFixture(): Promise<TestFixture> {
   log.info("Creating app");
   const { app } = await buildApp(bindings);
 
+  const admin = new AdminClient({
+    app,
+    bindings,
+    apiToken: bindings.config.adminApiKey,
+  });
+  const account = await admin.createAccount("default account").submit();
   const clients = {
-    admin: new AdminClient({
-      app,
-      bindings,
-    }),
+    admin,
     user: new UserClient({
       app,
       bindings,
+      apiToken: account.apiToken,
     }),
     metalInstance: new MetalInstanceClient({
       app,
       bindings,
+      apiToken: bindings.config.metalInstanceApiKey,
     }),
   };
   log.info("Test suite ready");
