@@ -40,6 +40,9 @@ pub(crate) fn validate_docker_compose(
         }
 
         validate_ports(&service.ports)?;
+        if !service.cap_add.is_empty() {
+            return Err(Error::Capabilities);
+        }
         if service.privileged {
             return Err(Error::PrivilegedService);
         }
@@ -220,6 +223,9 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("privileged services are not allowed")]
     PrivilegedService,
+
+    #[error("cannot use capabilities")]
+    Capabilities,
 }
 
 #[cfg(test)]
@@ -330,6 +336,19 @@ services:
     privileged: true
 "#;
         validate_failure(compose, "api", DockerComposeValidationError::PrivilegedService);
+    }
+
+    #[test]
+    fn capabilities() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    cap_add:
+      - NET_ADMIN
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Capabilities);
     }
 
     #[rstest]
