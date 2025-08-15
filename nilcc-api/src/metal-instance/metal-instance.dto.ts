@@ -9,7 +9,7 @@ export type Resource = z.infer<typeof Resource>;
 
 export const RegisterMetalInstanceRequest = z
   .object({
-    id: Uuid,
+    metalInstanceId: Uuid,
     agentVersion: z.string().min(1, "Agent version is required"),
     publicIp: z.string().ip({ version: "v4" }),
     token: z.string(),
@@ -27,14 +27,14 @@ export type RegisterMetalInstanceRequest = z.infer<
 
 export const HeartbeatRequest = z
   .object({
-    id: Uuid,
+    metalInstanceId: Uuid,
   })
   .openapi({ ref: "HeartbeatRequest" });
 export type HeartbeatRequest = z.infer<typeof HeartbeatRequest>;
 
 export const GetMetalInstanceResponse = z
   .object({
-    id: Uuid,
+    metalInstanceId: Uuid,
     agentVersion: z.string(),
     hostname: z.string(),
     publicIp: z.string(),
@@ -61,7 +61,7 @@ export type ListMetalInstancesResponse = z.infer<
 
 export const DeleteMetalInstanceRequest = z
   .object({
-    id: Uuid,
+    metalInstanceId: Uuid,
   })
   .openapi({
     ref: "DeleteMetalInstanceRequest",
@@ -81,7 +81,7 @@ export type WorkloadEventKind = z.infer<typeof WorkloadEventKind>;
 
 export const SubmitEventRequest = z
   .object({
-    agentId: Uuid,
+    metalInstanceId: Uuid,
     workloadId: Uuid,
     event: WorkloadEventKind,
   })

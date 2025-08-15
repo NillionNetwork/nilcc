@@ -101,7 +101,9 @@ export const CreateWorkloadRequest = z
 export type CreateWorkloadRequest = z.infer<typeof CreateWorkloadRequest>;
 
 export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
-  id: Uuid.openapi({ description: "The identifier for this workload." }),
+  workloadId: Uuid.openapi({
+    description: "The identifier for this workload.",
+  }),
   status: z
     .enum(["scheduled", "starting", "running", "stopped", "error"])
     .openapi({ description: "The status of the workload." }),
@@ -114,7 +116,7 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   domain: z.string().openapi({
     description: "The domain where this workload is reachable via https.",
   }),
-  account: z.string().openapi({
+  accountId: z.string().openapi({
     description: "The account this workload belongs to.",
   }),
 }).openapi({ ref: "CreateWorkloadResponse" });
@@ -122,7 +124,7 @@ export type CreateWorkloadResponse = z.infer<typeof CreateWorkloadResponse>;
 
 export const DeleteWorkloadRequest = z
   .object({
-    id: Uuid.openapi({
+    workloadId: Uuid.openapi({
       description: "The identifier for the workload to be deleted.",
     }),
   })
@@ -140,7 +142,7 @@ export const ListWorkloadsResponse = z
 export type ListWorkloadsResponse = z.infer<typeof ListWorkloadsResponse>;
 
 export const WorkloadSystemLogsRequest = SystemLogsRequest.extend({
-  id: Uuid.openapi({
+  workloadId: Uuid.openapi({
     description: "The identifier for the workloads to get system logs from.",
   }),
 }).openapi({ ref: "WorkloadSystemLogsRequest" });

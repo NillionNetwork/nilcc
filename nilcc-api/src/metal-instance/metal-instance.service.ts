@@ -60,7 +60,11 @@ export class MetalInstanceService {
     request: RegisterMetalInstanceRequest,
     tx: QueryRunner,
   ) {
-    const maybeMetalInstance = await this.read(bindings, request.id, tx);
+    const maybeMetalInstance = await this.read(
+      bindings,
+      request.metalInstanceId,
+      tx,
+    );
     if (maybeMetalInstance) {
       return this.update(bindings, request, maybeMetalInstance, tx);
     }
@@ -72,7 +76,11 @@ export class MetalInstanceService {
     request: HeartbeatRequest,
     tx: QueryRunner,
   ) {
-    const metalInstance = await this.read(bindings, request.id, tx);
+    const metalInstance = await this.read(
+      bindings,
+      request.metalInstanceId,
+      tx,
+    );
     if (metalInstance === null) {
       throw new EntityNotFound("metal instance");
     }
@@ -158,7 +166,7 @@ export class MetalInstanceService {
     const repository = this.getRepository(bindings, tx);
     const now = new Date();
     const newMetalInstance = repository.create({
-      id: request.id,
+      id: request.metalInstanceId,
       agentVersion: request.agentVersion,
       token: request.token,
       publicIp: request.publicIp,
@@ -176,7 +184,7 @@ export class MetalInstanceService {
       lastSeenAt: now,
     });
     bindings.services.dns.metalInstances.createRecord(
-      request.id,
+      request.metalInstanceId,
       request.publicIp,
       "A",
     );

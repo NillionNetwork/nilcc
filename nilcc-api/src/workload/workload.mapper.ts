@@ -7,7 +7,7 @@ export const workloadMapper = {
     workloadsDomain: string,
   ): CreateWorkloadResponse {
     return {
-      id: workload.id,
+      workloadId: workload.id,
       name: workload.name,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars ?? undefined,
@@ -19,7 +19,7 @@ export const workloadMapper = {
       disk: workload.disk,
       status: workload.status,
       domain: `${workload.id}.${workloadsDomain}`,
-      account: workload.account.id,
+      accountId: workload.account.id,
       createdAt: workload.createdAt.toISOString(),
       updatedAt: workload.updatedAt.toISOString(),
     };

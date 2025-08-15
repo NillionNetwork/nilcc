@@ -4,7 +4,7 @@ import { WorkloadEventKind } from "#/metal-instance/metal-instance.dto";
 
 export const WorkloadEvent = z
   .object({
-    id: Uuid,
+    eventId: Uuid,
     details: WorkloadEventKind,
     timestamp: z.string().datetime(),
   })

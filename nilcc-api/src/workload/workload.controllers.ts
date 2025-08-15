@@ -179,7 +179,7 @@ export function remove(options: ControllerOptions): void {
     payloadValidator(DeleteWorkloadRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
-      const workloadId = c.req.valid("json").id;
+      const workloadId = c.req.valid("json").workloadId;
       await bindings.services.workload.remove(
         bindings,
         workloadId,

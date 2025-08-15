@@ -167,7 +167,10 @@ export function remove(options: ControllerOptions) {
     payloadValidator(DeleteMetalInstanceRequest),
     async (c) => {
       const payload = c.req.valid("json");
-      await bindings.services.metalInstance.remove(bindings, payload.id);
+      await bindings.services.metalInstance.remove(
+        bindings,
+        payload.metalInstanceId,
+      );
       return c.json({});
     },
   );

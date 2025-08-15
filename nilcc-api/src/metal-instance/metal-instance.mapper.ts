@@ -21,7 +21,7 @@ export const metalInstanceMapper = {
         total: metalInstance.totalDisk,
         reserved: metalInstance.osReservedDisk,
       },
-      id: metalInstance.id,
+      metalInstanceId: metalInstance.id,
       gpus: metalInstance.gpus,
       gpuModel: metalInstance.gpuModel ?? undefined,
       createdAt: metalInstance.createdAt.toISOString(),

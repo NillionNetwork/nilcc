@@ -155,6 +155,7 @@ impl NilccApiClient for DummyNilccApiClient {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
+    #[serde(rename = "metalInstanceId")]
     id: Uuid,
     agent_version: String,
     public_ip: String,
@@ -179,6 +180,7 @@ struct Resource {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VmEventRequest {
+    #[serde(rename = "metalInstanceId")]
     agent_id: Uuid,
     workload_id: Uuid,
     event: VmEvent,
@@ -187,5 +189,6 @@ struct VmEventRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HeartbeatRequest {
+    #[serde(rename = "metalInstanceId")]
     id: Uuid,
 }
