@@ -2,7 +2,10 @@ use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY}
 use docker_compose_types::{
     Compose, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, TopLevelVolumes, Volumes,
 };
-use std::{collections::HashSet, iter};
+use std::{
+    collections::{HashMap, HashSet},
+    iter,
+};
 
 const RESERVED_CONTAINERS: &[&str] = &["nilcc-attester", "nilcc-proxy"];
 const RESERVED_PORTS: &[u16] = &[80, 443];
@@ -52,6 +55,7 @@ pub(crate) fn validate_docker_compose(
         if let Some(env) = &service.env_file {
             validate_env_file(env)?;
         }
+        validate_extends(&service.extends)?;
     }
     if found_public_container {
         Ok(())
@@ -183,6 +187,17 @@ fn validate_env_file(env: &EnvFile) -> Result<(), DockerComposeValidationError> 
     }
 }
 
+fn validate_extends(attrs: &HashMap<String, String>) -> Result<(), DockerComposeValidationError> {
+    use DockerComposeValidationError as Error;
+    if attrs.is_empty() {
+        return Ok(());
+    }
+    if attrs.get("file").is_some() {
+        return Err(Error::ExtendFile);
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DockerComposeValidationError {
     #[error("malformed docker compose: {0}")]
@@ -196,6 +211,9 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use reserved container name '{0}'")]
     ReservedContainerName(String),
+
+    #[error("cannot extend service in external file")]
+    ExtendFile,
 
     #[error("cannot publish reserved port: {0}")]
     ReservedPort(u16),
@@ -278,12 +296,14 @@ services:
       - "84-85:80/tcp"
       - "86-87:80-81/tcp"
       - "86-87:80-81/udp"
+    extends: some-service
     environment:
       FOO: ${FOO_VAR}
     volumes:
       - "$FILES/foo:/tmp/foo"
       - $FILES/foo:/tmp/bar
       - ${FILES}/foo:/tmp/tar
+      - ${FILES}/foo:/tmp/tar2:rw
       - other:/tmp/other
     env_file:
       - $FILES/dotenv1
@@ -363,6 +383,33 @@ services:
         // Note: this option is currently unsupported by `docker-compose-types` but we want to make
         // sure this test keeps failing if they ever add support. Once they do, we should
         // explicitly check for this option and prevent it from being set.
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
+    #[test]
+    fn extends() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    extends:
+      file: potato.yaml
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::ExtendFile);
+    }
+
+    #[test]
+    fn external_links() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    external_links:
+      - foo
+"#;
+        // same as `use_api_socket` this is unsupported but we don't want it once it is
         validate_docker_compose(compose, "api").expect_err("success");
     }
 
