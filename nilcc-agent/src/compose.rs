@@ -56,6 +56,9 @@ pub(crate) fn validate_docker_compose(
             validate_env_file(env)?;
         }
         validate_extends(&service.extends)?;
+        if service.cgroup_parent.is_some() {
+            return Err(Error::Cgroups);
+        }
     }
     if found_public_container {
         Ok(())
@@ -244,6 +247,9 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use capabilities")]
     Capabilities,
+
+    #[error("cannot use cgroups")]
+    Cgroups,
 }
 
 #[cfg(test)]
@@ -372,18 +378,15 @@ services:
     }
 
     #[test]
-    fn use_api_socket() {
+    fn cgroup_parent() {
         let compose = r#"
 services:
   api:
     image: caddy:2
     command: "caddy"
-    use_api_socket: true
+    cgroup_parent: foo
 "#;
-        // Note: this option is currently unsupported by `docker-compose-types` but we want to make
-        // sure this test keeps failing if they ever add support. Once they do, we should
-        // explicitly check for this option and prevent it from being set.
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_failure(compose, "api", DockerComposeValidationError::Cgroups);
     }
 
     #[test]
@@ -400,6 +403,21 @@ services:
     }
 
     #[test]
+    fn use_api_socket() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    use_api_socket: true
+"#;
+        // Note: this option is currently unsupported by `docker-compose-types` but we want to make
+        // sure this test keeps failing if they ever add support. Once they do, we should
+        // explicitly check for this option and prevent it from being set.
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
+    #[test]
     fn external_links() {
         let compose = r#"
 services:
@@ -410,6 +428,19 @@ services:
       - foo
 "#;
         // same as `use_api_socket` this is unsupported but we don't want it once it is
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
+    #[test]
+    fn cgroup() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    cgroup: host
+"#;
+        // same as above
         validate_docker_compose(compose, "api").expect_err("success");
     }
 
