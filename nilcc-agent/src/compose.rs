@@ -60,6 +60,12 @@ pub(crate) fn validate_docker_compose(
             return Err(Error::Cgroups);
         }
     }
+    if compose.includes.is_some() {
+        return Err(Error::Includes);
+    }
+    if compose.secrets.is_some() {
+        return Err(Error::Secrets);
+    }
     if found_public_container {
         Ok(())
     } else {
@@ -250,6 +256,12 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use cgroups")]
     Cgroups,
+
+    #[error("cannot use includes")]
+    Includes,
+
+    #[error("cannot use secrets")]
+    Secrets,
 }
 
 #[cfg(test)]
@@ -400,6 +412,33 @@ services:
       file: potato.yaml
 "#;
         validate_failure(compose, "api", DockerComposeValidationError::ExtendFile);
+    }
+
+    #[test]
+    fn includes() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+includes:
+  - foo
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Includes);
+    }
+
+    #[test]
+    fn secrets() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+secrets:
+  foo:
+    file: foo.txt
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Secrets);
     }
 
     #[test]
