@@ -7,7 +7,6 @@ import {
   EntityNotFound,
   NoInstancesAvailable,
 } from "#/common/errors";
-import { DockerComposeValidator } from "#/compose/validator";
 import type { AppBindings } from "#/env";
 import type {
   SubmitEventRequest,
@@ -44,9 +43,6 @@ export class WorkloadService {
     account: AccountEntity,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
-    const validator = new DockerComposeValidator();
-    validator.validate(request.dockerCompose, request.publicContainerName);
-
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(
         {
