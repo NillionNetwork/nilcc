@@ -351,6 +351,21 @@ services:
         validate_failure(compose, "api", DockerComposeValidationError::Capabilities);
     }
 
+    #[test]
+    fn use_api_socket() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    use_api_socket: true
+"#;
+        // Note: this option is currently unsupported by `docker-compose-types` but we want to make
+        // sure this test keeps failing if they ever add support. Once they do, we should
+        // explicitly check for this option and prevent it from being set.
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
     #[rstest]
     #[case::port_80("80", 80)]
     #[case::port_443("443", 443)]
