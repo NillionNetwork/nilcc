@@ -29,7 +29,7 @@ describe("Account", () => {
   it("should allow lookups", async ({ expect, clients }) => {
     const name = "yet another account";
     const account = await clients.admin.createAccount(name).submit();
-    const details = await clients.admin.getAccount(account.id).submit();
+    const details = await clients.admin.getAccount(account.accountId).submit();
     expect(details).toEqual(account);
   });
 });

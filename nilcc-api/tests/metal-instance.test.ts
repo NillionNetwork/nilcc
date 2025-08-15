@@ -10,7 +10,7 @@ describe("Metal Instance", () => {
   afterAll(async (_ctx) => {});
 
   const myMetalInstance: RegisterMetalInstanceRequest = {
-    id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
+    metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
     token: "my_token",
@@ -35,13 +35,15 @@ describe("Metal Instance", () => {
     clients,
   }) => {
     expect(
-      await clients.admin.getMetalInstance(myMetalInstance.id).status(),
+      await clients.admin
+        .getMetalInstance(myMetalInstance.metalInstanceId)
+        .status(),
     ).equals(404);
 
     await clients.metalInstance.register(myMetalInstance).submit();
 
     const instance = await clients.admin
-      .getMetalInstance(myMetalInstance.id)
+      .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
     const cleanInstance = {
       ...instance,
@@ -71,7 +73,7 @@ describe("Metal Instance", () => {
     await clients.metalInstance.register(updatedInstance).submit();
 
     const instance = await clients.admin
-      .getMetalInstance(myMetalInstance.id)
+      .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
     const cleanInstance = {
       ...instance,
@@ -88,17 +90,19 @@ describe("Metal Instance", () => {
     clients,
   }) => {
     const instance = await clients.admin
-      .getMetalInstance(myMetalInstance.id)
+      .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
     const lastSeen = new Date(instance.lastSeenAt);
 
     // sleep for a little bit and send a heartbeat
     await new Promise((resolve) => setTimeout(resolve, 200));
-    await clients.metalInstance.heartbeat(myMetalInstance.id).submit();
+    await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId)
+      .submit();
 
     // now the last seen timestamp should be larger
     const updatedInstance = await clients.admin
-      .getMetalInstance(myMetalInstance.id)
+      .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
     const currentLastSeen = new Date(updatedInstance.lastSeenAt);
     expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
@@ -106,7 +110,7 @@ describe("Metal Instance", () => {
 
   it("should allow deleting metal instances", async ({ expect, clients }) => {
     const instance = await clients.admin
-      .getMetalInstance(myMetalInstance.id)
+      .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
 
     const createWorkloadRequest: CreateWorkloadRequest = {
@@ -130,12 +134,14 @@ services:
       .submit();
 
     // we shouldn't be able to delete it since it's running a workload
-    expect(await clients.admin.deleteMetalInstance(instance.id).status()).toBe(
-      412,
-    );
+    expect(
+      await clients.admin
+        .deleteMetalInstance(instance.metalInstanceId)
+        .status(),
+    ).toBe(412);
 
     // now delete the workload and successfully delete the instance
-    await clients.user.deleteWorkload(workload.id).submit();
-    clients.admin.deleteMetalInstance(instance.id).submit();
+    await clients.user.deleteWorkload(workload.workloadId).submit();
+    clients.admin.deleteMetalInstance(instance.metalInstanceId).submit();
   });
 });

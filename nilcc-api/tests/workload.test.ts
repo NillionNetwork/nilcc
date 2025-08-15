@@ -38,7 +38,7 @@ services:
   };
 
   const myMetalInstance: RegisterMetalInstanceRequest = {
-    id: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
+    metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
     token: "my_token",
@@ -75,7 +75,9 @@ services:
       .createWorkload(createWorkloadRequest)
       .submit();
     expect(workload.name).equals(createWorkloadRequest.name);
-    expect(workload.domain).equals(`${workload.id}.workloads.public.localhost`);
+    expect(workload.domain).equals(
+      `${workload.workloadId}.workloads.public.localhost`,
+    );
     // store it for other tests to re-use it
     myWorkload = workload;
   });
@@ -95,7 +97,9 @@ services:
   });
 
   it("should get a workload", async ({ expect, clients }) => {
-    const workload = await clients.user.getWorkload(myWorkload!.id).submit();
+    const workload = await clients.user
+      .getWorkload(myWorkload!.workloadId)
+      .submit();
     expect(workload.name).equals(myWorkload!.name);
   });
 
@@ -106,10 +110,12 @@ services:
   });
 
   it("should delete a workload", async ({ expect, clients }) => {
-    await clients.user.deleteWorkload(myWorkload!.id).submit();
+    await clients.user.deleteWorkload(myWorkload!.workloadId).submit();
 
     // Verify deletion
-    const status = await clients.user.getWorkload(myWorkload!.id).status();
+    const status = await clients.user
+      .getWorkload(myWorkload!.workloadId)
+      .status();
     expect(status).equal(404);
   });
 
@@ -120,18 +126,20 @@ services:
 
     await clients.metalInstance
       .submitEvent({
-        agentId: myMetalInstance.id,
-        workloadId: workload.id,
+        metalInstanceId: myMetalInstance.metalInstanceId,
+        workloadId: workload.workloadId,
         event: { kind: "starting" },
       })
       .submit();
 
     const updatedWorkload = await clients.user
-      .getWorkload(workload!.id)
+      .getWorkload(workload!.workloadId)
       .submit();
     expect(updatedWorkload.status).toBe("starting");
 
-    const eventsBody = await clients.user.listEvents(workload!.id).submit();
+    const eventsBody = await clients.user
+      .listEvents(workload!.workloadId)
+      .submit();
     expect(eventsBody.events).toHaveLength(2);
     const eventKinds = eventsBody.events.map((e) => e.details.kind);
     expect(eventKinds).toEqual(["created", "starting"]);
@@ -155,11 +163,13 @@ services:
 
     const workload = workloads[0];
     expect(await client.listWorkloads().submit()).toHaveLength(0);
-    expect(await client.getWorkload(workload.id).status()).toBe(401);
-    expect(await client.deleteWorkload(workload.id).status()).toBe(401);
-    expect(await client.listEvents(workload.id).status()).toBe(401);
-    expect(await client.listContainers(workload.id).status()).toBe(401);
-    expect(await client.containerLogs(workload.id, "foo").status()).toBe(401);
-    expect(await client.logs(workload.id).status()).toBe(401);
+    expect(await client.getWorkload(workload.workloadId).status()).toBe(401);
+    expect(await client.deleteWorkload(workload.workloadId).status()).toBe(401);
+    expect(await client.listEvents(workload.workloadId).status()).toBe(401);
+    expect(await client.listContainers(workload.workloadId).status()).toBe(401);
+    expect(
+      await client.containerLogs(workload.workloadId, "foo").status(),
+    ).toBe(401);
+    expect(await client.logs(workload.workloadId).status()).toBe(401);
   });
 });

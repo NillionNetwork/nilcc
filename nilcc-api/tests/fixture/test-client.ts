@@ -115,7 +115,7 @@ export class AdminClient extends TestClient {
   deleteMetalInstance(id: string): RequestPromise<unknown> {
     const promise = this.request(PathsV1.metalInstance.delete, {
       method: "POST",
-      body: { id },
+      body: { metalInstanceId: id },
     });
     return new RequestPromise(promise, z.unknown());
   }
@@ -172,7 +172,7 @@ export class UserClient extends TestClient {
     const promise = this.request(PathsV1.workload.delete, {
       method: "POST",
       body: {
-        id,
+        workloadId: id,
       },
     });
     return new RequestPromise(promise, z.unknown());
@@ -188,7 +188,7 @@ export class UserClient extends TestClient {
   }
 
   listContainers(id: string): RequestPromise<ListContainersResponse> {
-    const body: ListContainersRequest = { id };
+    const body: ListContainersRequest = { workloadId: id };
     const promise = this.request(PathsV1.workloadContainers.list, {
       method: "POST",
       body,
@@ -201,7 +201,7 @@ export class UserClient extends TestClient {
     container: string,
   ): RequestPromise<WorkloadContainerLogsResponse> {
     const body: WorkloadContainerLogsRequest = {
-      id,
+      workloadId: id,
       container,
       stream: "stdout",
       tail: false,
@@ -216,7 +216,7 @@ export class UserClient extends TestClient {
 
   logs(id: string): RequestPromise<WorkloadSystemLogsResponse> {
     const body: WorkloadSystemLogsRequest = {
-      id,
+      workloadId: id,
       source: "cvm-agent",
       tail: false,
       maxLines: 100,
@@ -241,7 +241,7 @@ export class MetalInstanceClient extends TestClient {
   heartbeat(id: string): RequestPromise<unknown> {
     const promise = this.request(PathsV1.metalInstance.heartbeat, {
       method: "POST",
-      body: { id },
+      body: { metalInstanceId: id },
     });
     return new RequestPromise(promise, z.unknown());
   }

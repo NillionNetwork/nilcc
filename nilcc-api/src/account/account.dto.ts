@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const Account = z
   .object({
-    id: z.string(),
+    accountId: z.string(),
     name: z.string().max(32),
     apiToken: z.string(),
     createdAt: z.string().datetime(),

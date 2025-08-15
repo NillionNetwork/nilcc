@@ -4,7 +4,7 @@ import type { AccountEntity } from "./account.entity";
 export const accountMapper = {
   entityToResponse(account: AccountEntity): Account {
     return {
-      id: account.id,
+      accountId: account.id,
       createdAt: account.createdAt.toISOString(),
       name: account.name,
       apiToken: account.apiToken,

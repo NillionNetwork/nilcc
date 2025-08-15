@@ -4,7 +4,7 @@ import { Uuid } from "#/common/types";
 
 export const ListContainersRequest = z
   .object({
-    id: Uuid.openapi({
+    workloadId: Uuid.openapi({
       description:
         "The identifier for the workload to get a container list from.",
     }),
@@ -18,7 +18,7 @@ export const ListContainersResponse = z
 export type ListContainersResponse = z.infer<typeof ListContainersResponse>;
 
 export const WorkloadContainerLogsRequest = ContainerLogsRequest.extend({
-  id: Uuid.openapi({
+  workloadId: Uuid.openapi({
     description: "The identifier for the workloads to get container logs from.",
   }),
 }).openapi({ ref: "WorkloadContainerLogsRequest" });

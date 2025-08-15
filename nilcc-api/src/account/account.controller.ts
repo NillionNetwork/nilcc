@@ -1,6 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { z } from "zod";
 import { adminAuthentication } from "#/common/auth";
+import { EntityNotFound } from "#/common/errors";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -83,7 +84,10 @@ export function read(options: ControllerOptions) {
     async (c) => {
       const params = c.req.valid("param");
       const account = await bindings.services.account.read(bindings, params.id);
-      return c.json(account);
+      if (!account) {
+        throw new EntityNotFound("account");
+      }
+      return c.json(accountMapper.entityToResponse(account));
     },
   );
 }
