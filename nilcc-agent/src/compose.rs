@@ -1,6 +1,6 @@
 use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use docker_compose_types::{
-    Compose, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, TopLevelVolumes, Volumes,
+    Compose, ComposeNetworks, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, TopLevelVolumes, Volumes,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -49,6 +49,21 @@ pub(crate) fn validate_docker_compose(
         if service.privileged {
             return Err(Error::PrivilegedService);
         }
+        if !service.security_opt.is_empty() {
+            return Err(Error::SecurityOpt);
+        }
+        if !service.devices.is_empty() {
+            return Err(Error::Devices);
+        }
+        if service.pid.is_some() {
+            return Err(Error::Pid);
+        }
+        if service.ipc.is_some() {
+            return Err(Error::Ipc);
+        }
+        if service.network_mode.is_some() {
+            return Err(Error::NetworkMode);
+        }
         for volume in &service.volumes {
             validate_volumes(volume, &top_level_volumes)?;
         }
@@ -66,6 +81,7 @@ pub(crate) fn validate_docker_compose(
     if compose.secrets.is_some() {
         return Err(Error::Secrets);
     }
+    validate_networks(&compose.networks)?;
     if found_public_container {
         Ok(())
     } else {
@@ -207,6 +223,25 @@ fn validate_extends(attrs: &HashMap<String, String>) -> Result<(), DockerCompose
     Ok(())
 }
 
+fn validate_networks(networks: &ComposeNetworks) -> Result<(), DockerComposeValidationError> {
+    use DockerComposeValidationError as Error;
+    for network in networks.0.values() {
+        let MapOrEmpty::Map(network) = network else {
+            continue;
+        };
+        if network.driver.is_some() {
+            return Err(Error::NetworkDriver);
+        }
+        if !network.driver_opts.is_empty() {
+            return Err(Error::NetworkDriverOpts);
+        }
+        if network.ipam.is_some() {
+            return Err(Error::NetworkIpam);
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DockerComposeValidationError {
     #[error("malformed docker compose: {0}")]
@@ -262,6 +297,30 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use secrets")]
     Secrets,
+
+    #[error("cannot use security-opt")]
+    SecurityOpt,
+
+    #[error("cannot use devices")]
+    Devices,
+
+    #[error("cannot set pid mode")]
+    Pid,
+
+    #[error("cannot use ipc")]
+    Ipc,
+
+    #[error("cannot use network-mode")]
+    NetworkMode,
+
+    #[error("cannot set network driver")]
+    NetworkDriver,
+
+    #[error("cannot set network driver opts")]
+    NetworkDriverOpts,
+
+    #[error("cannot set network ipam")]
+    NetworkIpam,
 }
 
 #[cfg(test)]
@@ -439,6 +498,112 @@ secrets:
     file: foo.txt
 "#;
         validate_failure(compose, "api", DockerComposeValidationError::Secrets);
+    }
+
+    #[test]
+    fn security_opt() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    security_opt:
+      - foo
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::SecurityOpt);
+    }
+
+    #[test]
+    fn devices() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    devices:
+      - foo
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Devices);
+    }
+
+    #[test]
+    fn pid() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    pid: "42"
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Pid);
+    }
+
+    #[test]
+    fn ipc() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    ipc: "42"
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::Ipc);
+    }
+
+    #[test]
+    fn network_mode() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    network_mode: "42"
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::NetworkMode);
+    }
+
+    #[test]
+    fn network_driver() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+networks:
+  foo:
+    driver: host
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::NetworkDriver);
+    }
+
+    #[test]
+    fn network_driver_opts() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+networks:
+  foo:
+    driver_opts:
+      foo: bar
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::NetworkDriverOpts);
+    }
+
+    #[test]
+    fn network_ipam() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+networks:
+  foo:
+    ipam:
+      driver: bar
+"#;
+        validate_failure(compose, "api", DockerComposeValidationError::NetworkIpam);
     }
 
     #[test]
