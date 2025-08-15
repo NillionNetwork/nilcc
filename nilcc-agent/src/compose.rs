@@ -444,6 +444,35 @@ services:
         validate_docker_compose(compose, "api").expect_err("success");
     }
 
+    #[test]
+    fn configs() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+    configs:
+      - foo
+"#;
+        // same as above
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
+    #[test]
+    fn configs_top_level() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    command: "caddy"
+configs:
+  my_config:
+    file: ./my_config.txt
+"#;
+        // same as above
+        validate_docker_compose(compose, "api").expect_err("success");
+    }
+
     #[rstest]
     #[case::port_80("80", 80)]
     #[case::port_443("443", 443)]
