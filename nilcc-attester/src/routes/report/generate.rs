@@ -5,6 +5,7 @@ use crate::{
 };
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
+use serde_with::hex::Hex;
 use serde_with::serde_as;
 use sev::firmware::guest::AttestationReport;
 use tracing::error;
@@ -16,7 +17,7 @@ pub(crate) struct Request {
     #[serde(with = "hex::serde")]
     nonce: HardwareReportData,
 
-    #[serde_with(as = "Option<Hex>")]
+    #[serde_as(as = "Option<Hex>")]
     gpu_nonce: Option<GpuReportData>,
 }
 
