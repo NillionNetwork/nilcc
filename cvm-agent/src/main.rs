@@ -78,7 +78,7 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
     let state_dir = tempdir().expect("failed to create tempdir");
     println!("Writing state files to {}", state_dir.path().display());
 
-    let resources = Resources::render(&metadata);
+    let resources = Resources::render(&metadata, &vm_type);
     let system_compose_path = state_dir.path().join("docker-compose.yaml");
     let caddy_path = state_dir.path().join("Caddyfile");
     let docker_config_path = state_dir.path().join("docker");
