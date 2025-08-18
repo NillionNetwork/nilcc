@@ -107,7 +107,7 @@ impl ReportFetcher {
         let parent = local_path.parent().ok_or_else(|| anyhow!("path has no parent"))?;
         fs::create_dir_all(parent).context("creating cache directory")?;
 
-        let remote_path = format!("{version}/{artifact_name}");
+        let remote_path = format!("/{version}/{artifact_name}");
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
         let data = runtime
