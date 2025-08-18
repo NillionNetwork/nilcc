@@ -18,7 +18,7 @@ def disable_logging():
 
 def main():
     # Disable logging before we import the nvidia package since it otherwise logs
-    # disable_logging()
+    disable_logging()
     from nv_attestation_sdk import attestation
 
     parser = argparse.ArgumentParser(prog="gpu-attester")
