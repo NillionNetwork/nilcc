@@ -14,6 +14,7 @@ services:
       NO_COLOR: 1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
+    {DOCKER_COMPOSE_DEPLOY}
 
   nilcc-proxy:
     image: caddy:2.10.0
@@ -28,4 +29,3 @@ services:
       CADDY_ACME_EAB_MAC_KEY: ${CADDY_ACME_EAB_MAC_KEY}
     volumes:
       - ${CADDY_INPUT_FILE}:/etc/caddy/Caddyfile
-
