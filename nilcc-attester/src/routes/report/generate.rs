@@ -1,13 +1,23 @@
-use crate::{config::VmType, report::ReportData, routes::AppState};
+use crate::{
+    config::VmType,
+    report::{GpuReportData, HardwareReportData},
+    routes::AppState,
+};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use sev::firmware::guest::AttestationReport;
-use tracing::{error, info};
+use tracing::error;
 
+#[serde_as]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Request {
     #[serde(with = "hex::serde")]
-    nonce: ReportData,
+    nonce: HardwareReportData,
+
+    #[serde_with(as = "Option<Hex>")]
+    gpu_nonce: Option<GpuReportData>,
 }
 
 #[derive(Serialize)]
@@ -26,9 +36,7 @@ pub(crate) struct EnvironmentSpec {
 
 pub(crate) async fn handler(state: State<AppState>, request: Json<Request>) -> Result<Json<Response>, StatusCode> {
     let AppState { nilcc_version, vm_type, cpu_count, hardware_reporter } = state.0;
-    let nonce = request.nonce;
-    let hex_nonce = hex::encode(nonce);
-    info!("Generating hardware report using nonce {hex_nonce}");
+    let Request { nonce, gpu_nonce } = request.0;
     let report = match hardware_reporter.hardware_report(nonce) {
         Ok(report) => report,
         Err(e) => {
@@ -36,20 +44,17 @@ pub(crate) async fn handler(state: State<AppState>, request: Json<Request>) -> R
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
-    // let gpu_token = match &vm_type {
-    //     VmType::Cpu => None,
-    //     VmType::Gpu => {
-    //         info!("Generating GPU report using nonce {hex_nonce}");
-    //         match hardware_reporter.gpu_report(&hex_nonce).await {
-    //             Ok(token) => Some(token),
-    //             Err(e) => {
-    //                 error!("Failed to generate GPU attestation: {e:#}");
-    //                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    //             }
-    //         }
-    //     }
-    // };
-    let gpu_token = None;
+    let gpu_token = match (&vm_type, gpu_nonce) {
+        (VmType::Cpu, _) => None,
+        (VmType::Gpu, Some(nonce)) => match hardware_reporter.gpu_report(nonce).await {
+            Ok(token) => Some(token),
+            Err(e) => {
+                error!("Failed to generate GPU attestation: {e:#}");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        },
+        (VmType::Gpu, None) => None,
+    };
     let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count };
     Ok(Json(Response { report, environment, gpu_token }))
 }
