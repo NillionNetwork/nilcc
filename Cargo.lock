@@ -1067,7 +1067,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dd0905d0ae048885d8575c8c3dc9639408a9300f62767f1473318379dbf03f9"
 dependencies = [
  "derive_builder",
- "indexmap 2.9.0",
  "serde",
  "serde_yaml",
 ]

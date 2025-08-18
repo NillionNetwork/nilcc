@@ -119,7 +119,7 @@ impl ComposeMonitor {
     }
 
     async fn launch_compose(&self) -> io::Result<Child> {
-        self.base_docker_command().arg("up").arg("-d").spawn()
+        self.base_docker_command().arg("up").arg("-d").arg("--no-build").spawn()
     }
 
     fn base_docker_command(&self) -> Command {
