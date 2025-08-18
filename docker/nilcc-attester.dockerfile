@@ -1,12 +1,12 @@
-FROM rust:1.88-alpine AS build
+FROM rust:1.88 AS build
 
 WORKDIR /opt/nillion
-RUN apk add --no-cache musl-dev git
+RUN apt update && apt install -y git
 
 COPY . .
 RUN cargo build --release --locked -p nilcc-attester
 
-FROM ghcr.io/astral-sh/uv:python3.12-alpine
+FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
 
 WORKDIR /opt/nillion
 
@@ -15,7 +15,12 @@ COPY --from=build /opt/nillion/nilcc-attester/gpu-attester /opt/nillion/gpu-atte
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/nillion/.venv
 
-RUN apk add --no-cache curl && uv sync --project gpu-attester
+RUN apt update && \
+  apt install -y curl && \
+  apt clean && \
+  apt autoremove && \
+  rm -rf /var/lib/apt/lists/* && \
+  uv sync --project gpu-attester
 
 ENTRYPOINT ["uv", "run", "/opt/nillion/nilcc-attester"]
 
