@@ -30,7 +30,7 @@ impl HardwareReporter {
             .await
             .context("failed to invoke GPU attester")?;
         if output.status.success() {
-            String::from_utf8(output.stdout).context("invalid utf8 token")
+            Ok(String::from_utf8_lossy(&output.stdout).trim().into())
         } else {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
