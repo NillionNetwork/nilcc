@@ -386,6 +386,12 @@ services:
       - $FILES/dotenv1
       - ${FILES}/dotenv2
     command: "caddy"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
 volumes:
   other:
 "#;
