@@ -36,6 +36,7 @@ pub struct AppState {
     pub services: Services,
     pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
+    pub agent_domain: String,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {

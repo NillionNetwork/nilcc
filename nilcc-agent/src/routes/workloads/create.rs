@@ -27,6 +27,9 @@ pub(crate) async fn handler(
             return Err(HandlerError::ResourceLimit(name, limit));
         }
     }
+    if request.domain == state.agent_domain {
+        return Err(HandlerError::AgentDomain);
+    }
     validate_docker_compose(&request.docker_compose, &request.public_container_name)?;
 
     let id = request.id;
@@ -53,6 +56,9 @@ pub(crate) enum HandlerError {
 
     #[error("{0} can't be higher than {1}")]
     ResourceLimit(&'static str, u32),
+
+    #[error("cannot use agent's domain for workload")]
+    AgentDomain,
 }
 
 impl From<CreateWorkloadError> for HandlerError {
@@ -71,14 +77,15 @@ impl IntoResponse for HandlerError {
         let discriminant = HandlerErrorDiscriminants::from(&self);
         let (code, message) = match self {
             Self::InsufficientResources(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
-            Self::AlreadyExists | Self::DomainExists | Self::DockerCompose(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string())
-            }
+            Self::AlreadyExists
+            | Self::DomainExists
+            | Self::DockerCompose(_)
+            | Self::AgentDomain
+            | Self::ResourceLimit(..) => (StatusCode::BAD_REQUEST, self.to_string()),
             Self::Internal(e) => {
                 error!("Failed to create workload: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
             }
-            Self::ResourceLimit(..) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
         let response = RequestHandlerError::new(message, format!("{discriminant:?}"));
         (code, Json(response)).into_response()

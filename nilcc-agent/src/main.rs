@@ -235,6 +235,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         services: Services { workload: workload_service.clone() },
         clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
+        agent_domain: config.api.domain.clone(),
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();
