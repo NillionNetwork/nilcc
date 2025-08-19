@@ -339,7 +339,7 @@ mod tests {
             initrd_path: None,
             kernel_path: None,
             kernel_args: None,
-            display_gtk: false,
+            display: Default::default(),
             enable_cvm: false,
         }
     }

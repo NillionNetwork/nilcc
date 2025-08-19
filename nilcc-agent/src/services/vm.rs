@@ -28,6 +28,7 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[async_trait]
 pub trait VmService: Send + Sync {
     async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError>;
+    async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
     async fn disable_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
@@ -117,7 +118,7 @@ impl DefaultVmService {
             initrd_path: Some(self.cvm_config.initrd.clone()),
             kernel_path: Some(kernel.clone()),
             kernel_args: Some(kernel_args.to_string()),
-            display_gtk: false,
+            display: Default::default(),
             enable_cvm: true,
         }
     }
@@ -200,20 +201,7 @@ impl VmService for DefaultVmService {
             }
             None => {
                 info!("Creating disks for VM {id}");
-                let cvm_files = if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
-                let (iso_path, docker_compose_hash) = self.create_application_iso(&workload).await?;
-                let state_disk = self.create_state_disk(&workload).await?;
-                let base_disk =
-                    self.create_disk_snapshot(&workload, &cvm_files.base_disk, "base", HardDiskFormat::Qcow2).await?;
-                let verity_disk = cvm_files.verity_disk.clone();
-                let cvm_files = CvmFiles {
-                    kernel: cvm_files.kernel.clone(),
-                    base_disk,
-                    verity_disk,
-                    verity_root_hash: cvm_files.verity_root_hash.clone(),
-                };
-
-                let spec = self.create_vm_spec(&workload, iso_path, state_disk, docker_compose_hash, cvm_files);
+                let spec = self.create_workload_spec(&workload).await?;
                 let args = VmWorkerArgs {
                     workload_id: id,
                     vm_client: self.vm_client.clone(),
@@ -231,6 +219,24 @@ impl VmService for DefaultVmService {
                 Ok(())
             }
         }
+    }
+
+    async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError> {
+        let cvm_files = if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
+        let (iso_path, docker_compose_hash) = self.create_application_iso(workload).await?;
+        let state_disk = self.create_state_disk(workload).await?;
+        let base_disk =
+            self.create_disk_snapshot(workload, &cvm_files.base_disk, "base", HardDiskFormat::Qcow2).await?;
+        let verity_disk = cvm_files.verity_disk.clone();
+        let cvm_files = CvmFiles {
+            kernel: cvm_files.kernel.clone(),
+            base_disk,
+            verity_disk,
+            verity_root_hash: cvm_files.verity_root_hash.clone(),
+        };
+
+        let spec = self.create_vm_spec(workload, iso_path, state_disk, docker_compose_hash, cvm_files);
+        Ok(spec)
     }
 
     async fn delete_vm(&self, id: Uuid) {
