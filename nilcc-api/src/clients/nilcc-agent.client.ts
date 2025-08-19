@@ -1,8 +1,15 @@
 import type { Logger } from "pino";
 import z from "zod";
-import { AgentRequestError } from "#/common/errors";
+import { AgentCreateWorkloadError, AgentRequestError } from "#/common/errors";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import type { WorkloadEntity } from "#/workload/workload.entity";
+
+const ALLOWED_CREATE_WORKLOAD_ERRORS: string[] = [
+  "DOCKER_COMPOSE",
+  "DOMAIN_EXISTS",
+  "AGENT_DOMAIN",
+  "RESOURCE_LIMIT",
+];
 
 export interface NilccAgentClient {
   createWorkload(
@@ -78,7 +85,20 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       diskSpaceGb: workload.disk,
       domain,
     };
-    await this.post(url, request, metalInstance);
+    try {
+      await this.post(url, request, metalInstance);
+    } catch (error: unknown) {
+      if (
+        error instanceof AgentRequestError &&
+        ALLOWED_CREATE_WORKLOAD_ERRORS.includes(error.agentErrorKind)
+      ) {
+        throw new AgentCreateWorkloadError(
+          error.agentErrorKind,
+          error.agentErrorDescription,
+        );
+      }
+      throw error;
+    }
   }
 
   async deleteWorkload(

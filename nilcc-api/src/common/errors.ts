@@ -2,7 +2,7 @@ import type { ContentfulStatusCode } from "hono/dist/types/utils/http-status";
 import { StatusCodes } from "http-status-codes";
 
 export abstract class AppError extends Error {
-  abstract readonly kind: string;
+  kind = "INTERNAL";
   statusCode: ContentfulStatusCode = StatusCodes.INTERNAL_SERVER_ERROR;
   description: string | undefined;
 
@@ -17,36 +17,48 @@ export abstract class AppError extends Error {
 }
 
 export class NoInstancesAvailable extends AppError {
-  kind = "NOT_ENOUGH_RESOURCES";
+  override kind = "NOT_ENOUGH_RESOURCES";
   override statusCode: ContentfulStatusCode = StatusCodes.SERVICE_UNAVAILABLE;
   override description =
     "No metal instances are available to handle this workload";
 }
 
 export class MetalInstanceManagingWorkloads extends AppError {
-  kind = "METAL_INSTANCE_MANAGING_WORKLOADS";
+  override kind = "METAL_INSTANCE_MANAGING_WORKLOADS";
   override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
   override description = "Metal instance is handling 1 or more workloads";
 }
 
 export class InvalidDockerCompose extends AppError {
-  kind = "INVALID_DOCKER_COMPOSE";
+  override kind = "INVALID_DOCKER_COMPOSE";
   override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
 }
 
 export class AgentRequestError extends AppError {
-  kind = "AGENT_COMMUNICATION";
+  override kind = "AGENT_COMMUNICATION";
   agentErrorKind: string;
+  agentErrorDescription: string;
 
   constructor(errorKind: string, message: string) {
     super();
     this.description = `agent request failed code = ${errorKind}, message = ${message}`;
     this.agentErrorKind = errorKind;
+    this.agentErrorDescription = message;
+  }
+}
+
+export class AgentCreateWorkloadError extends AppError {
+  override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
+
+  constructor(errorKind: string, message: string) {
+    super();
+    this.kind = errorKind;
+    this.description = message;
   }
 }
 
 export class EntityNotFound extends AppError {
-  kind = "NOT_FOUND";
+  override kind = "NOT_FOUND";
   override statusCode: ContentfulStatusCode = StatusCodes.NOT_FOUND;
 
   constructor(entity: string) {
@@ -56,7 +68,7 @@ export class EntityNotFound extends AppError {
 }
 
 export class AccountAlreadyExists extends AppError {
-  kind = "ACCOUNT_ALREADY_EXISTS";
+  override kind = "ACCOUNT_ALREADY_EXISTS";
   override statusCode: ContentfulStatusCode = StatusCodes.CONFLICT;
 
   constructor() {
@@ -66,7 +78,7 @@ export class AccountAlreadyExists extends AppError {
 }
 
 export class AccessDenied extends AppError {
-  kind = "ACCESS_DENIED";
+  override kind = "ACCESS_DENIED";
   override statusCode: ContentfulStatusCode = StatusCodes.UNAUTHORIZED;
 
   constructor() {
