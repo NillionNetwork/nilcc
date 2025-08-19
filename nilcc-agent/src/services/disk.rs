@@ -23,6 +23,9 @@ pub trait DiskService: Send + Sync {
     /// Create a disk at the given path with the given format.
     async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u32) -> anyhow::Result<()>;
 
+    /// Create a qemu disk snapshot.
+    async fn create_disk_snapshot(&self, target: &Path, origin: &Path, format: HardDiskFormat) -> anyhow::Result<()>;
+
     /// Create the ISO for an application.
     async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> Result<(), CreateIsoError>;
 }
@@ -65,13 +68,8 @@ impl DefaultDiskService {
         }
         Ok(())
     }
-}
 
-#[async_trait]
-impl DiskService for DefaultDiskService {
-    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u32) -> anyhow::Result<()> {
-        let format = format.to_string();
-        let args = ["create", "-f", &format, &path.to_string_lossy(), &format!("{size_gib}G")];
+    async fn qemu_img(&self, args: &[&str]) -> anyhow::Result<()> {
         let output = Command::new(&self.qemu_img_path)
             .args(args)
             .output()
@@ -82,6 +80,21 @@ impl DiskService for DefaultDiskService {
         } else {
             bail!("qemu-img failed: {}", String::from_utf8_lossy(&output.stderr))
         }
+    }
+}
+
+#[async_trait]
+impl DiskService for DefaultDiskService {
+    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u32) -> anyhow::Result<()> {
+        let format = format.to_string();
+        let args = ["create", "-f", &format, &path.to_string_lossy(), &format!("{size_gib}G")];
+        self.qemu_img(&args).await
+    }
+
+    async fn create_disk_snapshot(&self, target: &Path, origin: &Path, format: HardDiskFormat) -> anyhow::Result<()> {
+        let format = format.to_string();
+        let args = ["create", "-f", &format, "-b", &origin.to_string_lossy(), "-F", &format, &target.to_string_lossy()];
+        self.qemu_img(&args).await
     }
 
     async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> Result<(), CreateIsoError> {

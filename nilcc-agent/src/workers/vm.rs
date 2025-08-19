@@ -153,8 +153,9 @@ impl VmWorker {
                 error!("Failed to stop VM: {e}");
             }
         };
-        // Process all disks and the ISO at once
-        let paths = self.spec.hard_disks.iter().map(|s| &s.path).chain(self.spec.cdrom_iso_path.as_ref());
+        // Process all non read only disks and the ISO at once
+        let writeable_disks = self.spec.hard_disks.iter().filter(|d| !d.read_only);
+        let paths = writeable_disks.map(|s| &s.path).chain(self.spec.cdrom_iso_path.as_ref());
         for path in paths {
             let disk_display = path.display();
             info!("Deleting disk {disk_display}");

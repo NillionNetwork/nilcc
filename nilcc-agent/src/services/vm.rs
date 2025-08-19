@@ -102,9 +102,9 @@ impl DefaultVmService {
             cpu: workload.cpus,
             ram_mib: workload.memory_mb,
             hard_disks: vec![
-                HardDiskSpec { path: base_disk, format: HardDiskFormat::Qcow2 },
-                HardDiskSpec { path: verity_disk, format: HardDiskFormat::Raw },
-                HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw },
+                HardDiskSpec { path: base_disk, format: HardDiskFormat::Qcow2, read_only: false },
+                HardDiskSpec { path: verity_disk, format: HardDiskFormat::Raw, read_only: true },
+                HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw, read_only: false },
             ],
             cdrom_iso_path: Some(iso_path),
             gpus: workload.gpus.clone(),
@@ -136,21 +136,23 @@ impl DefaultVmService {
         Ok(disk_path)
     }
 
-    async fn copy_disk(
+    async fn create_disk_snapshot(
         &self,
         workload: &Workload,
         original_disk: &Path,
         disk_type: &str,
+        disk_format: HardDiskFormat,
     ) -> Result<PathBuf, StartVmError> {
-        let disk_name = format!("{}.{disk_type}.qcow2", workload.id);
+        let disk_name = format!("{}.{disk_type}.{disk_format}", workload.id);
         let disk_path = self.state_path.join(disk_name);
         if disk_path.exists() {
             info!("Not copying base image because it already exists");
             return Ok(disk_path);
         }
-        fs::copy(original_disk, &disk_path)
+        self.disk_service
+            .create_disk_snapshot(&disk_path, original_disk, disk_format)
             .await
-            .map_err(|e| StartVmError(format!("failed to copy {disk_type} disk: {e}")))?;
+            .map_err(|e| StartVmError(format!("failed to create {disk_type} disk snapshot: {e}")))?;
         Ok(disk_path)
     }
 
@@ -201,8 +203,9 @@ impl VmService for DefaultVmService {
                 let cvm_files = if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
                 let (iso_path, docker_compose_hash) = self.create_application_iso(&workload).await?;
                 let state_disk = self.create_state_disk(&workload).await?;
-                let base_disk = self.copy_disk(&workload, &cvm_files.base_disk, "base").await?;
-                let verity_disk = self.copy_disk(&workload, &cvm_files.verity_disk, "verity").await?;
+                let base_disk =
+                    self.create_disk_snapshot(&workload, &cvm_files.base_disk, "base", HardDiskFormat::Qcow2).await?;
+                let verity_disk = cvm_files.verity_disk.clone();
                 let cvm_files = CvmFiles {
                     kernel: cvm_files.kernel.clone(),
                     base_disk,
@@ -313,6 +316,7 @@ mod tests {
 
     struct Context {
         service: DefaultVmService,
+        #[allow(dead_code)]
         state_path: TempDir,
     }
 
@@ -410,8 +414,9 @@ mod tests {
         fs::write(&builder.cvm_config.cpu.verity_disk, verity_disk_contents).await.expect("failed to write");
 
         let id = workload.id;
-        let base_path = builder.state_path.path().display();
-        let state_disk_path = PathBuf::from(format!("{base_path}/{id}.state.raw"));
+        let state_path = builder.state_path.path();
+        let state_disk_path = state_path.join(format!("{id}.state.raw"));
+        let base_disk_path = state_path.join(format!("{id}.base.qcow2"));
 
         builder.disk_service.expect_create_application_iso().return_once(move |_, _| Ok(()));
         builder
@@ -419,18 +424,15 @@ mod tests {
             .expect_create_disk()
             .with(eq(state_disk_path), eq(HardDiskFormat::Raw), eq(1))
             .return_once(move |_, _, _| Ok(()));
+        builder
+            .disk_service
+            .expect_create_disk_snapshot()
+            .with(eq(base_disk_path.clone()), eq(builder.cvm_config.cpu.base_disk.clone()), eq(HardDiskFormat::Qcow2))
+            .return_once(move |_, _, _| Ok(()));
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
         builder.nilcc_api_client.expect_report_vm_event().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
         ctx.service.create_vm(workload, InitialVmState::Enabled).await.expect("failed to start");
-
-        let found_base_disk_contents =
-            fs::read(ctx.state_path.path().join(format!("{id}.base.qcow2"))).await.expect("failed to read base disk");
-        let found_verity_disk_contents = fs::read(ctx.state_path.path().join(format!("{id}.verity.qcow2")))
-            .await
-            .expect("failed to read verity disk");
-        assert_eq!(base_disk_contents, found_base_disk_contents.as_slice());
-        assert_eq!(verity_disk_contents, found_verity_disk_contents.as_slice());
     }
 }

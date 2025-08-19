@@ -35,6 +35,9 @@ pub struct HardDiskSpec {
 
     /// The hard disk format
     pub format: HardDiskFormat,
+
+    /// Whether the disk should be set to read only.
+    pub read_only: bool,
 }
 
 /// A hard disk format.
@@ -214,13 +217,14 @@ impl QemuClient {
         // --- Main system drive ---
         let mut scsi_device_count = 0;
         for disk in &spec.hard_disks {
-            let HardDiskSpec { path, format } = disk;
+            let HardDiskSpec { path, format, read_only } = disk;
             let path_display = path.display();
             let disk_id = format!("disk{scsi_device_count}");
             let scsi_id = format!("scsi{scsi_device_count}");
+            let read_only_opt = if *read_only { ",read-only=on" } else { "" };
             args.extend([
                 "-drive".into(),
-                format!("file={path_display},if=none,id={disk_id},format={format}"),
+                format!("file={path_display},if=none,id={disk_id},format={format}{read_only_opt}"),
                 "-device".into(),
                 format!("virtio-scsi-pci,id={scsi_id},disable-legacy=on,iommu_platform=true"),
                 "-device".into(),
@@ -392,8 +396,8 @@ mod tests {
             cpu: 2,
             ram_mib: 2048,
             hard_disks: vec![
-                HardDiskSpec { path: "/tmp/1.qcow2".into(), format: HardDiskFormat::Qcow2 },
-                HardDiskSpec { path: "/tmp/2.raw".into(), format: HardDiskFormat::Raw },
+                HardDiskSpec { path: "/tmp/1.qcow2".into(), format: HardDiskFormat::Qcow2, read_only: true },
+                HardDiskSpec { path: "/tmp/2.raw".into(), format: HardDiskFormat::Raw, read_only: false },
             ],
             cdrom_iso_path: Some("/tmp/cd.iso".into()),
             gpus: vec![GpuAddress("A".into()), GpuAddress("B".into())],
@@ -449,7 +453,7 @@ mod tests {
             "root=/dev/foo1",
             // Drive 1 (.qcow2)
             "-drive",
-            "file=/tmp/1.qcow2,if=none,id=disk0,format=qcow2",
+            "file=/tmp/1.qcow2,if=none,id=disk0,format=qcow2,read-only=on",
             "-device",
             "virtio-scsi-pci,id=scsi0,disable-legacy=on,iommu_platform=true",
             "-device",
@@ -507,7 +511,7 @@ mod tests {
         let spec = VmSpec {
             cpu: 1,
             ram_mib: 512,
-            hard_disks: vec![HardDiskSpec { path: hard_disk_path, format: hard_disk_format }],
+            hard_disks: vec![HardDiskSpec { path: hard_disk_path, format: hard_disk_format, read_only: true }],
             cdrom_iso_path: None,
             gpus: Vec::new(),
             port_forwarding: vec![],
