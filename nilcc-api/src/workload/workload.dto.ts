@@ -49,6 +49,14 @@ export const CreateWorkloadRequest = z
           },
         ],
       }),
+    domain: z
+      .string()
+      .optional()
+      .openapi({
+        description:
+          "The optional domain to use for this workload. If none is provided, a nilcc-managed domain will be generated.",
+        examples: ["example.com"],
+      }),
     publicContainerName: z
       .string()
       .min(1, "public container name cannot be empty")
@@ -118,6 +126,10 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   }),
   accountId: z.string().openapi({
     description: "The account this workload belongs to.",
+  }),
+  metalInstanceDomain: z.string().openapi({
+    description:
+      "The domain for the metal instance host that is running this workload. This can be used when using a custom domain for a workload as the target for a CNAME record.",
   }),
 }).openapi({ ref: "CreateWorkloadResponse" });
 export type CreateWorkloadResponse = z.infer<typeof CreateWorkloadResponse>;

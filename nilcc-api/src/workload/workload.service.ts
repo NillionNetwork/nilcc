@@ -73,6 +73,7 @@ export class WorkloadService {
       id: uuidv4(),
       metalInstance,
       account,
+      domain: request.domain,
       createdAt: now,
       updatedAt: now,
     });
@@ -86,21 +87,19 @@ export class WorkloadService {
     };
     await eventRepository.save(event);
 
-    const domain = await this.createCnameForWorkload(
-      bindings,
-      createdWorkload.id,
-      metalInstance.id,
+    const domain =
+      request.domain || `${entity.id}.${bindings.config.workloadsDnsDomain}`;
+    await bindings.services.nilccAgentClient.createWorkload(
+      metalInstance,
+      entity,
+      domain,
     );
-    try {
-      await bindings.services.nilccAgentClient.createWorkload(
-        metalInstance,
-        entity,
-        domain,
+    if (request.domain === undefined) {
+      await this.createCnameForWorkload(
+        bindings,
+        createdWorkload.id,
+        metalInstance.id,
       );
-    } catch (e) {
-      bindings.log.warn("Could not create workload, removing CNAME record");
-      await this.removeCnameForWorkload(bindings, entity.id);
-      throw e;
     }
     return createdWorkload;
   }
@@ -113,7 +112,7 @@ export class WorkloadService {
     const repository = this.getRepository(bindings, tx);
     return await repository.find({
       where: { account },
-      relations: ["account"],
+      relations: ["account", "metalInstance"],
     });
   }
 
@@ -124,7 +123,9 @@ export class WorkloadService {
     tx: QueryRunner,
   ): Promise<WorkloadEntity | null> {
     const repository = this.getRepository(bindings, tx);
-    return await this.findWorkload(repository, workloadId, account);
+    return await this.findWorkload(repository, workloadId, account, [
+      "metalInstance",
+    ]);
   }
 
   async remove(
@@ -142,7 +143,9 @@ export class WorkloadService {
     }
 
     await repository.delete({ id: workloadId });
-    await this.removeCnameForWorkload(bindings, workloadId);
+    if (workload.domain === undefined) {
+      await this.removeCnameForWorkload(bindings, workloadId);
+    }
     await bindings.services.nilccAgentClient.deleteWorkload(
       workload.metalInstance,
       workloadId,

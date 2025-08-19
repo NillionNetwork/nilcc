@@ -71,7 +71,7 @@ export class Route53DnsService implements DnsService {
       },
     });
     this.log.info(
-      `Creating ${recordType} record ${fullDomain} pointing to ${to}`,
+      `Creating ${recordType} record ${fullDomain} pointing to ${to} on zone ${this.zoneId}`,
     );
     await this.route53.send(command);
   }
@@ -88,7 +88,9 @@ export class Route53DnsService implements DnsService {
       this.log.warn(`Domain ${fullDomain} does not exist, ignoring`);
       return;
     }
-    this.log.info(`Removing record for domain ${fullDomain}`);
+    this.log.info(
+      `Removing record for domain ${fullDomain} on zone ${this.zoneId}`,
+    );
     const command = new ChangeResourceRecordSetsCommand({
       HostedZoneId: this.zoneId,
       ChangeBatch: {
@@ -162,10 +164,8 @@ export class LocalStackDnsService extends Route53DnsService {
       },
     });
 
-    const zoneId = await LocalStackDnsService.createHostedZone(
-      subdomain,
-      route53,
-    );
+    const zoneId = await LocalStackDnsService.createHostedZone(zone, route53);
+    log.info(`Found zone id ${zoneId} for zone ${zone}`);
     return new LocalStackDnsService(zone, subdomain, zoneId, route53, log);
   }
 

@@ -66,6 +66,7 @@ export function create(options: ControllerOptions): void {
         workloadMapper.entityToResponse(
           workload,
           bindings.config.workloadsDnsDomain,
+          bindings.config.metalInstancesDnsDomain,
         ),
       );
     },
@@ -106,6 +107,7 @@ export function list(options: ControllerOptions): void {
           workloadMapper.entityToResponse(
             w,
             bindings.config.workloadsDnsDomain,
+            bindings.config.metalInstancesDnsDomain,
           ),
         ),
       );
@@ -154,6 +156,7 @@ export function read(options: ControllerOptions): void {
         workloadMapper.entityToResponse(
           workload,
           bindings.config.workloadsDnsDomain,
+          bindings.config.metalInstancesDnsDomain,
         ),
       );
     },
