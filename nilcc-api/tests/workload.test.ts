@@ -78,6 +78,9 @@ services:
     expect(workload.domain).equals(
       `${workload.workloadId}.workloads.public.localhost`,
     );
+    expect(workload.metalInstanceDomain).equals(
+      `${myMetalInstance.metalInstanceId}.agents.private.localhost`,
+    );
     // store it for other tests to re-use it
     myWorkload = workload;
   });
@@ -143,6 +146,34 @@ services:
     expect(eventsBody.events).toHaveLength(2);
     const eventKinds = eventsBody.events.map((e) => e.details.kind);
     expect(eventKinds).toEqual(["created", "starting"]);
+  });
+
+  it("should allow creating a workload using a custom domain", async ({
+    expect,
+    clients,
+  }) => {
+    const createWorkloadRequest: CreateWorkloadRequest = {
+      name: "some",
+      dockerCompose: `
+services:
+  app:
+    image: nginx
+    ports:
+      - '80'
+`,
+      domain: "foo.com",
+      publicContainerName: "app",
+      publicContainerPort: 80,
+      memory: 4,
+      cpus: 2,
+      disk: 40,
+      gpus: 0,
+    };
+    const workload = await clients.user
+      .createWorkload(createWorkloadRequest)
+      .submit();
+    expect(workload.domain).toBe("foo.com");
+    await clients.user.deleteWorkload(workload.workloadId).submit();
   });
 
   it("should now allow cross account operations", async ({

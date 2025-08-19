@@ -54,6 +54,9 @@ export class WorkloadEntity {
   })
   files?: Record<string, string>;
 
+  @Column({ type: "varchar", nullable: true })
+  domain?: string;
+
   @Column({ type: "varchar" })
   serviceToExpose: string;
 
