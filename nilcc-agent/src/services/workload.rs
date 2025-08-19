@@ -303,9 +303,17 @@ impl WorkloadService for DefaultWorkloadService {
 
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        let mut repo = self.repository_provider.workloads(Default::default()).await?;
-        repo.find(id).await?;
-        self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let workload = repo.find(id).await?;
+        if workload.enabled {
+            info!("Restarting workload {id}");
+            self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        } else {
+            info!("Enabling workload {id}");
+            self.vm_service.enable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+            repo.set_enabled(id, true).await?;
+            repo.commit().await?;
+        }
         Ok(())
     }
 
