@@ -111,6 +111,10 @@ struct LaunchArgs {
     #[clap(short, long = "file")]
     files: Vec<KeyValue>,
 
+    /// Add docker credentials, in the format `<server>:<username>:<password>`
+    #[clap(long)]
+    docker_credentials: Vec<DockerCredentials>,
+
     /// The container entrypoint, in the format `<container-name>:<container-port>`
     #[clap(long)]
     entrypoint: Entrypoint,
@@ -254,6 +258,28 @@ impl FromStr for Entrypoint {
     }
 }
 
+#[derive(Clone)]
+struct DockerCredentials {
+    server: String,
+    username: String,
+    password: String,
+}
+
+impl FromStr for DockerCredentials {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<_> = s.splitn(3, ':').collect();
+        if parts.len() != 3 {
+            return Err("not enough ':' in docker credentials");
+        }
+        let server = parts[0].into();
+        let username = parts[1].into();
+        let password = parts[2].into();
+        Ok(Self { server, username, password })
+    }
+}
+
 fn load_dotenv(path: &Path) -> anyhow::Result<HashMap<String, String>> {
     let file = File::open(path).context("Failed to open .env file")?;
     let reader = BufReader::new(file);
@@ -276,6 +302,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         env_vars,
         dotenv,
         files,
+        docker_credentials,
         entrypoint,
         cpus,
         gpus,
@@ -298,6 +325,14 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         docker_compose,
         env_vars,
         files,
+        docker_credentials: docker_credentials
+            .into_iter()
+            .map(|c| nilcc_agent_models::workloads::create::DockerCredentials {
+                server: c.server,
+                username: c.username,
+                password: c.password,
+            })
+            .collect(),
         public_container_name: entrypoint.container,
         public_container_port: entrypoint.port,
         memory_mb,

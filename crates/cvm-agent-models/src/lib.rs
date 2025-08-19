@@ -37,7 +37,7 @@ pub mod bootstrap {
     }
 
     /// A set of docker credentials to use.
-    #[derive(Deserialize, Serialize)]
+    #[derive(Clone, Deserialize, Serialize)]
     pub struct DockerCredentials {
         /// The username.
         pub username: String,

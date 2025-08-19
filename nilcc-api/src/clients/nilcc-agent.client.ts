@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 import z from "zod";
 import { AgentCreateWorkloadError, AgentRequestError } from "#/common/errors";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
+import type { DockerCredentials } from "#/workload/workload.dto";
 import type { WorkloadEntity } from "#/workload/workload.entity";
 
 const ALLOWED_CREATE_WORKLOAD_ERRORS: string[] = [
@@ -77,6 +78,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars,
       files: workload.files,
+      dockerCredentials: workload.dockerCredentials,
       publicContainerName: workload.serviceToExpose,
       publicContainerPort: workload.servicePortToExpose,
       memoryMb: workload.memory,
@@ -228,6 +230,7 @@ type CreateWorkloadRequest = {
   dockerCompose: string;
   envVars?: Record<string, string>;
   files?: Record<string, string>;
+  dockerCredentials?: DockerCredentials[];
   publicContainerName: string;
   publicContainerPort: number;
   memoryMb: number;

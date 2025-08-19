@@ -1,6 +1,7 @@
 use crate::{repositories::sqlite::SqliteTransactionContext, resources::GpuAddress};
 use async_trait::async_trait;
 use chrono::Utc;
+use nilcc_agent_models::workloads::create::DockerCredentials;
 use sqlx::prelude::FromRow;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -17,6 +18,8 @@ pub struct Workload {
     pub env_vars: HashMap<String, String>,
     #[sqlx(json)]
     pub files: HashMap<String, Vec<u8>>,
+    #[sqlx(json)]
+    pub docker_credentials: Vec<DockerCredentials>,
     pub public_container_name: String,
     pub public_container_port: u16,
     pub memory_mb: u32,
@@ -60,6 +63,7 @@ impl fmt::Debug for Workload {
             ports,
             domain,
             enabled: running,
+            docker_credentials,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -77,6 +81,7 @@ impl fmt::Debug for Workload {
             .field("ports", ports)
             .field("domain", domain)
             .field("running", running)
+            .field("docker_credentials", docker_credentials)
             .finish()
     }
 }
@@ -163,6 +168,7 @@ INSERT INTO workloads (
     docker_compose,
     env_vars,
     files,
+    docker_credentials,
     public_container_name,
     public_container_port,
     memory_mb,
@@ -174,13 +180,14 @@ INSERT INTO workloads (
     enabled,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ";
         let Workload {
             id,
             docker_compose,
             env_vars,
             files,
+            docker_credentials,
             public_container_name,
             public_container_port,
             memory_mb,
@@ -197,6 +204,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             .bind(docker_compose)
             .bind(sqlx::types::Json(env_vars))
             .bind(sqlx::types::Json(files))
+            .bind(sqlx::types::Json(docker_credentials))
             .bind(public_container_name)
             .bind(public_container_port)
             .bind(memory_mb)
@@ -261,6 +269,11 @@ mod tests {
             docker_compose: "hi".into(),
             env_vars: HashMap::from([("FOO".into(), "value".into())]),
             files: HashMap::from([("foo.txt".into(), vec![1, 2, 3])]),
+            docker_credentials: vec![DockerCredentials {
+                server: "registry.example.com".into(),
+                username: "foo".into(),
+                password: "bar".into(),
+            }],
             public_container_name: "container-1".into(),
             public_container_port: 80,
             memory_mb: 1024,

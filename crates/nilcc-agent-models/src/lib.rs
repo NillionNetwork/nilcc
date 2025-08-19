@@ -43,6 +43,9 @@ pub mod workloads {
             #[validate(custom(function = "validate_files"))]
             pub files: HashMap<String, Vec<u8>>,
 
+            #[serde(default)]
+            pub docker_credentials: Vec<DockerCredentials>,
+
             pub public_container_name: String,
 
             pub public_container_port: u16,
@@ -60,6 +63,19 @@ pub mod workloads {
 
             #[validate(regex(path  = DOMAIN_REGEX))]
             pub domain: String,
+        }
+
+        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+        #[serde(rename_all = "camelCase")]
+        pub struct DockerCredentials {
+            /// The docker registry server.
+            pub server: String,
+
+            /// The username to use.
+            pub username: String,
+
+            /// The password to use.
+            pub password: String,
         }
 
         #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -29,6 +29,9 @@ services:
     files: {
       "foo_-choop/bar42_beep.txt": "aGkgbW9t",
     },
+    dockerCredentials: [
+      { server: "registry.example.com", username: "foo", password: "bar" },
+    ],
     publicContainerName: "app",
     publicContainerPort: 80,
     memory: 4,

@@ -13,6 +13,8 @@ export const workloadMapper = {
       name: workload.name,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars ?? undefined,
+      dockerCredentials: workload.dockerCredentials ?? undefined,
+      files: workload.files ?? undefined,
       publicContainerName: workload.serviceToExpose,
       publicContainerPort: workload.servicePortToExpose,
       memory: workload.memory,
