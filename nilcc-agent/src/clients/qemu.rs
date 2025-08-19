@@ -92,11 +92,18 @@ pub struct VmSpec {
     /// The kernel parameters.
     pub kernel_args: Option<String>,
 
-    /// If true, show VM display using GTK.
-    pub display_gtk: bool,
+    /// The display mode to use.
+    pub display: VmDisplayMode,
 
     /// Enable CVM (Confidential VM) support.
     pub enable_cvm: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum VmDisplayMode {
+    #[default]
+    None,
+    Console,
 }
 
 #[derive(Error, Debug)]
@@ -126,6 +133,9 @@ pub type Result<T> = std::result::Result<T, QemuClientError>;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmClient: Send + Sync {
+    /// Build all argument needed to start a vm given the provided spec.
+    fn build_start_vm_args(&self, spec: &VmSpec, socket_path: &Path) -> Result<Vec<String>>;
+
     /// Start a VM with the given spec that we will be able to talk to via the socket in the given
     /// path.
     async fn start_vm(&self, socket_path: &Path, spec: VmSpec) -> Result<()>;
@@ -154,8 +164,63 @@ impl QemuClient {
         Self { qemu_bin: qemu_bin.into() }
     }
 
+    async fn connect_qmp(&self, qmp_sock_path: &Path) -> Result<(QmpCommandService, QmpDriverTaskHandle)> {
+        debug!("Connecting to QMP socket at: {}", qmp_sock_path.display());
+
+        let pre_negotiation_stream: QmpStreamNegotiation<QmpReadStreamHalf, QmpWriteStreamHalf> =
+            QmpStreamTokio::open_uds(qmp_sock_path).await.map_err(|io_err| {
+                QemuClientError::Qmp(format!(
+                    "Failed to connect to QMP socket at '{}': {io_err}",
+                    qmp_sock_path.display()
+                ))
+            })?;
+
+        let negotiated_stream: NegotiatedQmpStream =
+            pre_negotiation_stream.negotiate().await.map_err(|io_err: io::Error| {
+                QemuClientError::Qmp(format!(
+                    "QMP negotiation failed for socket at '{}': {io_err}",
+                    qmp_sock_path.display()
+                ))
+            })?;
+
+        debug!("QMP connection established and negotiated for socket: {}", qmp_sock_path.display());
+        Ok(negotiated_stream.spawn_tokio())
+    }
+
+    async fn execute_qmp_command<C>(&self, qmp_sock: &Path, command: C) -> Result<<C as QapiCommandTrait>::Ok>
+    where
+        C: QapiCommandTrait + QmpCommand,
+    {
+        if !self.is_vm_running(qmp_sock).await {
+            return Err(QemuClientError::VmNotRunning);
+        }
+
+        let (qmp, driver) = self.connect_qmp(qmp_sock).await?;
+
+        let response = qmp.execute(command).await.map_err(|exec_err: ExecuteError| {
+            QemuClientError::Qmp(format!("QMP command '{}' execution failed:: {exec_err}", C::NAME))
+        })?;
+
+        // Explicitly drop the service handle to signal that no more commands will be sent and to allow the driver_task to shut down if it depends on this.
+        drop(qmp);
+        driver.await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
+
+        Ok(response)
+    }
+
+    async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
+        debug!("Executing: {} {}", command.display(), args.join(" "));
+
+        let output = Command::new(command).args(args).output().await?;
+
+        Ok(CommandOutput { status: output.status, stderr: String::from_utf8_lossy(&output.stderr).trim().to_string() })
+    }
+}
+
+#[async_trait]
+impl VmClient for QemuClient {
     /// Build complete QEMU command-line args for starting a VM.
-    async fn build_vm_start_cli_args(&self, spec: &VmSpec, socket_path: &Path) -> Result<Vec<String>> {
+    fn build_start_vm_args(&self, spec: &VmSpec, socket_path: &Path) -> Result<Vec<String>> {
         let mut args: Vec<String> = Vec::new();
 
         // --- CVM support ---
@@ -169,17 +234,15 @@ impl QemuClient {
         }
 
         // --- Display ---
-        if spec.display_gtk {
-            args.extend(["-device".into(), "virtio-vga".into(), "-display".into(), "gtk,gl=off".into()]);
-        } else {
-            args.extend(["-display".into(), "none".into()]);
-        }
+        match spec.display {
+            VmDisplayMode::None => args.extend(["-display".into(), "none".into(), "-daemonize".into()]),
+            VmDisplayMode::Console => args.extend(["-nographic".into(), "-serial".into(), "mon:stdio".into()]),
+        };
 
         // --- Base machine + CPU / RAM ---
         args.extend([
             "-enable-kvm".into(),
             "-no-reboot".into(),
-            "-daemonize".into(),
             "-cpu".into(),
             "EPYC-v4".into(),
             "-smp".into(),
@@ -279,68 +342,13 @@ impl QemuClient {
         Ok(args)
     }
 
-    async fn connect_qmp(&self, qmp_sock_path: &Path) -> Result<(QmpCommandService, QmpDriverTaskHandle)> {
-        debug!("Connecting to QMP socket at: {}", qmp_sock_path.display());
-
-        let pre_negotiation_stream: QmpStreamNegotiation<QmpReadStreamHalf, QmpWriteStreamHalf> =
-            QmpStreamTokio::open_uds(qmp_sock_path).await.map_err(|io_err| {
-                QemuClientError::Qmp(format!(
-                    "Failed to connect to QMP socket at '{}': {io_err}",
-                    qmp_sock_path.display()
-                ))
-            })?;
-
-        let negotiated_stream: NegotiatedQmpStream =
-            pre_negotiation_stream.negotiate().await.map_err(|io_err: io::Error| {
-                QemuClientError::Qmp(format!(
-                    "QMP negotiation failed for socket at '{}': {io_err}",
-                    qmp_sock_path.display()
-                ))
-            })?;
-
-        debug!("QMP connection established and negotiated for socket: {}", qmp_sock_path.display());
-        Ok(negotiated_stream.spawn_tokio())
-    }
-
-    async fn execute_qmp_command<C>(&self, qmp_sock: &Path, command: C) -> Result<<C as QapiCommandTrait>::Ok>
-    where
-        C: QapiCommandTrait + QmpCommand,
-    {
-        if !self.is_vm_running(qmp_sock).await {
-            return Err(QemuClientError::VmNotRunning);
-        }
-
-        let (qmp, driver) = self.connect_qmp(qmp_sock).await?;
-
-        let response = qmp.execute(command).await.map_err(|exec_err: ExecuteError| {
-            QemuClientError::Qmp(format!("QMP command '{}' execution failed:: {exec_err}", C::NAME))
-        })?;
-
-        // Explicitly drop the service handle to signal that no more commands will be sent and to allow the driver_task to shut down if it depends on this.
-        drop(qmp);
-        driver.await.map_err(|e| QemuClientError::Qmp(e.to_string()))?;
-
-        Ok(response)
-    }
-
-    async fn invoke_cli_command(command: &Path, args: &[&str]) -> Result<CommandOutput> {
-        debug!("Executing: {} {}", command.display(), args.join(" "));
-
-        let output = Command::new(command).args(args).output().await?;
-
-        Ok(CommandOutput { status: output.status, stderr: String::from_utf8_lossy(&output.stderr).trim().to_string() })
-    }
-}
-
-#[async_trait]
-impl VmClient for QemuClient {
     /// Start an existing (stopped) VM.
     async fn start_vm(&self, socket_path: &Path, spec: VmSpec) -> Result<()> {
         if self.is_vm_running(socket_path).await {
             return Err(QemuClientError::VmAlreadyRunning);
         }
 
-        let args = self.build_vm_start_cli_args(&spec, socket_path).await?;
+        let args = self.build_start_vm_args(&spec, socket_path)?;
         let args: Vec<_> = args.iter().map(Deref::deref).collect();
 
         let output = Self::invoke_cli_command(&self.qemu_bin, &args).await?;
@@ -406,11 +414,11 @@ mod tests {
             initrd_path: Some("/tmp/initrd".into()),
             kernel_path: Some("/tmp/kernel".into()),
             kernel_args: Some("root=/dev/foo1".into()),
-            display_gtk: false,
+            display: Default::default(),
             enable_cvm: true,
         };
         let socket_path = Path::new("/tmp/vm.socket");
-        let args = client.build_vm_start_cli_args(&spec, &socket_path).await.expect("failed to build command line");
+        let args = client.build_start_vm_args(&spec, &socket_path).expect("failed to build command line");
         let expected = [
             // SNP
             "-machine",
@@ -420,10 +428,10 @@ mod tests {
             // Display
             "-display",
             "none",
+            "-daemonize",
             // Basic configs
             "-enable-kvm",
             "-no-reboot",
-            "-daemonize",
             // CPU
             "-cpu",
             "EPYC-v4",
@@ -519,7 +527,7 @@ mod tests {
             initrd_path: None,
             kernel_path: None,
             kernel_args: None,
-            display_gtk: false,
+            display: Default::default(),
             enable_cvm: false,
         };
 

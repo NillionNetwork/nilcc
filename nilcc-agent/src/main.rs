@@ -6,7 +6,7 @@ use nilcc_agent::{
     clients::{
         cvm_agent::DefaultCvmAgentClient,
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
-        qemu::QemuClient,
+        qemu::{QemuClient, VmClient, VmDisplayMode},
     },
     config::{AgentConfig, AgentMode},
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
@@ -18,7 +18,7 @@ use nilcc_agent::{
             IsoSpec,
         },
         proxy::{HaProxyProxyService, ProxyService, ProxyServiceArgs},
-        vm::{DefaultVmService, VmServiceArgs},
+        vm::{DefaultVmService, VmService, VmServiceArgs},
         workload::{DefaultWorkloadService, WorkloadService, WorkloadServiceArgs},
     },
     version,
@@ -29,6 +29,7 @@ use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use tokio::signal;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, level_filters::LevelFilter, warn};
+use uuid::Uuid;
 
 const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(10);
 
@@ -51,6 +52,16 @@ enum Command {
         /// Path to the agent configuration file
         #[clap(long, short)]
         config: PathBuf,
+    },
+
+    /// Run the agent in daemon mode and connect to the nilcc API.
+    Debug {
+        /// Path to the agent configuration file
+        #[clap(long, short)]
+        config: PathBuf,
+
+        /// The identifier for the workload to debug.
+        workload_id: Uuid,
     },
 
     /// Display system resources.
@@ -155,6 +166,44 @@ async fn process_acme_events(mut state: AcmeState<io::Error, io::Error>) {
         }
     }
     warn!("Reached end of ACME event stream")
+}
+
+async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
+    info!("Setting up dependencies");
+    let nilcc_api_client: Arc<dyn NilccApiClient> = Arc::new(DummyNilccApiClient);
+
+    let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
+    let repository_provider = SqliteRepositoryProvider::new(db.clone());
+    let workload = repository_provider.workloads(Default::default()).await?.find(workload_id).await?;
+    let state_path = tempfile::tempdir().context("Failed to create tempdir")?;
+    info!("Storing state in {}", state_path.path().display());
+
+    let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin.clone()));
+    let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
+    let vm_service = DefaultVmService::new(VmServiceArgs {
+        vm_client: vm_client.clone(),
+        nilcc_api_client,
+        cvm_agent_client: cvm_agent_client.clone(),
+        state_path: state_path.path().into(),
+        disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
+        cvm_config: config.cvm,
+        zerossl_config: config.zerossl,
+        docker_config: config.docker,
+    })
+    .await?;
+    let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
+    spec.kernel_args.as_mut().expect("no kernel args").push_str(" console=ttyS0");
+    spec.display = VmDisplayMode::Console;
+    spec.port_forwarding.clear();
+
+    let socket_path = state_path.path().join("qemu.sock");
+    let args = vm_client.build_start_vm_args(&spec, &socket_path)?;
+    let mut child = std::process::Command::new(&config.qemu.system_bin)
+        .args(args)
+        .spawn()
+        .context("Failed to start qemu-system")?;
+    child.wait().context("Failed to wait for child process")?;
+    Ok(())
 }
 
 async fn run_daemon(config: AgentConfig) -> Result<()> {
@@ -293,6 +342,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Daemon { config } => {
             let agent_config = load_config(config).context("Loading agent configuration")?;
             run_daemon(agent_config).await?;
+            Ok(())
+        }
+        Command::Debug { config, workload_id } => {
+            let agent_config = load_config(config).context("Loading agent configuration")?;
+            debug_workload(agent_config, workload_id).await?;
             Ok(())
         }
         Command::Resources => {
