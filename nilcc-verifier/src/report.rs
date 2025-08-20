@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use clap::ValueEnum;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader};
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader, VmTypeArtifacts};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use sev::firmware::guest::AttestationReport;
@@ -83,14 +83,18 @@ impl ReportFetcher {
         let download_path = self.cache_path.join(nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), (*vm_type).into())
+        let vm_type = (*vm_type).into();
+        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type])
             .without_disk_images()
             .without_artifact_overwrite()
             .with_artifacts_url(self.artifacts_url.clone());
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
         let artifacts = runtime.block_on(downloader.download(&download_path))?;
-        Ok(ReportBundle { report, cpu_count: *cpu_count, artifacts })
+        let Artifacts { ovmf_path, initrd_path, mut type_artifacts } = artifacts;
+        let VmTypeArtifacts { kernel_path, filesystem_root_hash, .. } =
+            type_artifacts.remove(&vm_type).expect("missing vm type artifacts");
+        Ok(ReportBundle { report, cpu_count: *cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash })
     }
 }
 
@@ -98,5 +102,8 @@ impl ReportFetcher {
 pub struct ReportBundle {
     pub report: AttestationReport,
     pub cpu_count: u32,
-    pub artifacts: Artifacts,
+    pub ovmf_path: PathBuf,
+    pub initrd_path: PathBuf,
+    pub kernel_path: PathBuf,
+    pub filesystem_root_hash: [u8; 32],
 }
