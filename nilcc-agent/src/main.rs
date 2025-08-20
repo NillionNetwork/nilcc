@@ -248,15 +248,13 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
 
 async fn download_artifacts(args: DownloadArtifactsArgs) -> Result<()> {
     let DownloadArtifactsArgs { download_path, version, vm_type } = args;
-    let vm_types: &[_] = match vm_type {
-        VmTypeArtifacts::Cpu => &[VmType::Cpu],
-        VmTypeArtifacts::Gpu => &[VmType::Gpu],
-        VmTypeArtifacts::All => &[VmType::Cpu, VmType::Gpu],
+    let vm_types = match vm_type {
+        VmTypeArtifacts::Cpu => vec![VmType::Cpu],
+        VmTypeArtifacts::Gpu => vec![VmType::Gpu],
+        VmTypeArtifacts::All => vec![VmType::Cpu, VmType::Gpu],
     };
-    for vm_type in vm_types {
-        let downloader = ArtifactsDownloader::new(version.clone(), *vm_type);
-        downloader.download(&download_path).await.context("Failed to download artifacts")?;
-    }
+    let downloader = ArtifactsDownloader::new(version.clone(), vm_types);
+    downloader.download(&download_path).await.context("Failed to download artifacts")?;
     Ok(())
 }
 

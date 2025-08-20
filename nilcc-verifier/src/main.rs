@@ -1,9 +1,9 @@
-use crate::report::VmType;
+use crate::report::{ReportBundle, VmType};
 use anyhow::{anyhow, Context};
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader};
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader, VmTypeArtifacts};
 use report::ReportFetcher;
 use std::{fs::File, io::stdin, path::PathBuf};
 use tracing::{error, info, level_filters::LevelFilter};
@@ -188,10 +188,10 @@ fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
     let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint).context("fetching report")?;
-    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, .. } = bundle.artifacts;
+    let ReportBundle { cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash, .. } = bundle;
 
     let measurement = MeasurementGenerator {
-        vcpus: bundle.cpu_count,
+        vcpus: cpu_count,
         ovmf: ovmf_path,
         kernel: kernel_path,
         initrd: initrd_path,
@@ -210,14 +210,16 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let MeasurementHashArgs { artifact_cache, artifacts_url, vm_type, cpus, docker_compose_hash, nilcc_version } = args;
     let download_path = artifact_cache.join(&nilcc_version);
     let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
-    let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vm_type.into())
+    let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type.into()])
         .without_disk_images()
         .without_artifact_overwrite()
         .with_artifacts_url(artifacts_url);
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
     let artifacts = runtime.block_on(downloader.download(&download_path))?;
-    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, .. } = artifacts;
+    let Artifacts { ovmf_path, initrd_path, mut type_artifacts } = artifacts;
+    let VmTypeArtifacts { kernel_path, filesystem_root_hash, .. } =
+        type_artifacts.remove(&vm_type.into()).expect("missing type artifacts");
     let measurement = MeasurementGenerator {
         vcpus: cpus,
         ovmf: ovmf_path,

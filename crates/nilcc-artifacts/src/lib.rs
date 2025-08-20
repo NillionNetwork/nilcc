@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use futures_util::StreamExt;
+use std::collections::HashMap;
+use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 use tokio::fs;
@@ -15,15 +17,15 @@ const ARTIFACTS_URL: &str = "https://nilcc.s3.eu-west-1.amazonaws.com";
 #[derive(Clone, Debug)]
 pub struct ArtifactsDownloader {
     version: String,
-    vm_type: VmType,
+    vm_types: Vec<VmType>,
     artifacts_url: String,
     disk_images: bool,
     always_download: bool,
 }
 
 impl ArtifactsDownloader {
-    pub fn new(version: String, vm_type: VmType) -> Self {
-        Self { version, vm_type, artifacts_url: ARTIFACTS_URL.into(), disk_images: true, always_download: true }
+    pub fn new(version: String, vm_types: Vec<VmType>) -> Self {
+        Self { version, vm_types, artifacts_url: ARTIFACTS_URL.into(), disk_images: true, always_download: true }
     }
 
     pub fn with_artifacts_url(mut self, artifacts_url: String) -> Self {
@@ -42,34 +44,37 @@ impl ArtifactsDownloader {
     }
 
     pub async fn download(&self, target_dir: &Path) -> anyhow::Result<Artifacts> {
-        let vm_type = match &self.vm_type {
-            VmType::Gpu => "gpu",
-            VmType::Cpu => "cpu",
-        };
-        info!("Downloading {vm_type} artifacts to {}", target_dir.display());
+        info!("Downloading artifacts to {}", target_dir.display());
 
         let ovmf_path = self.download_artifact("vm_images/ovmf/OVMF.fd", target_dir).await?;
-        let kernel_path = self.download_artifact(&format!("vm_images/kernel/{vm_type}-vmlinuz"), target_dir).await?;
         let initrd_path = self.download_artifact("initramfs/initramfs.cpio.gz", target_dir).await?;
-        let filesystem_root_hash_path =
-            self.download_artifact(&format!("vm_images/cvm-{vm_type}-verity/root-hash"), target_dir).await?;
-        let hex_filesystem_root_hash = fs::read_to_string(filesystem_root_hash_path)
-            .await
-            .context("reading local copy of filesystem root hash")?;
-        let mut filesystem_root_hash: [u8; 32] = [0; 32];
-        hex::decode_to_slice(hex_filesystem_root_hash.trim(), &mut filesystem_root_hash)
-            .context("decoding filesystem root hash")?;
-        let (base_disk, verity_disk) = match &self.disk_images {
-            true => {
-                let base_disk = self.download_artifact(&format!("vm_images/cvm-{vm_type}.qcow2"), target_dir).await?;
-                let verity_disk = self
-                    .download_artifact(&format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev"), target_dir)
-                    .await?;
-                (Some(base_disk), Some(verity_disk))
-            }
-            false => (None, None),
-        };
-        Ok(Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, base_disk, verity_disk })
+        let mut type_artifacts = HashMap::new();
+        for vm_type in &self.vm_types {
+            let kernel_path =
+                self.download_artifact(&format!("vm_images/kernel/{vm_type}-vmlinuz"), target_dir).await?;
+            let filesystem_root_hash_path =
+                self.download_artifact(&format!("vm_images/cvm-{vm_type}-verity/root-hash"), target_dir).await?;
+            let hex_filesystem_root_hash = fs::read_to_string(filesystem_root_hash_path)
+                .await
+                .context("reading local copy of filesystem root hash")?;
+            let mut filesystem_root_hash: [u8; 32] = [0; 32];
+            hex::decode_to_slice(hex_filesystem_root_hash.trim(), &mut filesystem_root_hash)
+                .context("decoding filesystem root hash")?;
+            let (base_disk, verity_disk) = match &self.disk_images {
+                true => {
+                    let base_disk =
+                        self.download_artifact(&format!("vm_images/cvm-{vm_type}.qcow2"), target_dir).await?;
+                    let verity_disk = self
+                        .download_artifact(&format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev"), target_dir)
+                        .await?;
+                    (Some(base_disk), Some(verity_disk))
+                }
+                false => (None, None),
+            };
+            let artifacts = VmTypeArtifacts { kernel_path, base_disk, verity_disk, filesystem_root_hash };
+            type_artifacts.insert(*vm_type, artifacts);
+        }
+        Ok(Artifacts { ovmf_path, initrd_path, type_artifacts })
     }
 
     async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> anyhow::Result<PathBuf> {
@@ -110,18 +115,32 @@ impl ArtifactsDownloader {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum VmType {
     Gpu,
     Cpu,
 }
 
+impl fmt::Display for VmType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Gpu => write!(f, "gpu"),
+            Self::Cpu => write!(f, "cpu"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Artifacts {
     pub ovmf_path: PathBuf,
-    pub kernel_path: PathBuf,
     pub initrd_path: PathBuf,
-    pub filesystem_root_hash: [u8; 32],
+    pub type_artifacts: HashMap<VmType, VmTypeArtifacts>,
+}
+
+#[derive(Clone, Debug)]
+pub struct VmTypeArtifacts {
+    pub kernel_path: PathBuf,
     pub base_disk: Option<PathBuf>,
     pub verity_disk: Option<PathBuf>,
+    pub filesystem_root_hash: [u8; 32],
 }
