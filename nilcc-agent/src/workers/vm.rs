@@ -4,7 +4,7 @@ use crate::{
         nilcc_api::{NilccApiClient, VmEvent},
         qemu::{QemuClientError, VmClient, VmSpec},
     },
-    config::{DockerConfig, ZeroSslConfig},
+    config::ZeroSslConfig,
 };
 use cvm_agent_models::bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials};
 use metrics::{counter, gauge};
@@ -37,7 +37,7 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) socket_path: PathBuf,
     pub(crate) state: InitialVmState,
     pub(crate) zerossl_config: ZeroSslConfig,
-    pub(crate) docker_config: DockerConfig,
+    pub(crate) docker_credentials: Vec<DockerCredentials>,
 }
 
 pub(crate) struct VmWorker {
@@ -51,7 +51,7 @@ pub(crate) struct VmWorker {
     receiver: Receiver<WorkerCommand>,
     vm_state: VmState,
     zerossl_config: ZeroSslConfig,
-    docker_config: DockerConfig,
+    docker_credentials: Vec<DockerCredentials>,
 }
 
 impl VmWorker {
@@ -66,7 +66,7 @@ impl VmWorker {
             cvm_agent_port,
             state,
             zerossl_config,
-            docker_config,
+            docker_credentials,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -85,7 +85,7 @@ impl VmWorker {
                 receiver,
                 vm_state,
                 zerossl_config,
-                docker_config,
+                docker_credentials,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -232,11 +232,7 @@ impl VmWorker {
                                 eab_key_id: self.zerossl_config.eab_key_id.clone(),
                                 eab_mac_key: self.zerossl_config.eab_mac_key.clone(),
                             },
-                            docker: vec![DockerCredentials {
-                                username: self.docker_config.username.clone(),
-                                password: self.docker_config.password.clone(),
-                                server: None,
-                            }],
+                            docker: self.docker_credentials.clone(),
                         };
                         if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
                             warn!("Failed to bootstrap agent: {e:#}");
@@ -375,7 +371,7 @@ mod tests {
             socket_path: socket,
             state: InitialVmState::Enabled,
             zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
-            docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
+            docker_credentials: vec![],
         };
         let join_handle = {
             let handle = VmWorker::spawn(args);

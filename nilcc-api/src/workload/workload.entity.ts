@@ -2,6 +2,7 @@ import { Column, Entity, ManyToOne, OneToMany, PrimaryColumn } from "typeorm";
 import { z } from "zod";
 import { AccountEntity } from "#/account/account.entity";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
+import type { DockerCredentials } from "./workload.dto";
 
 @Entity()
 export class WorkloadEntity {
@@ -53,6 +54,17 @@ export class WorkloadEntity {
     },
   })
   files?: Record<string, string>;
+
+  @Column({
+    type: "text",
+    nullable: true,
+    transformer: {
+      to: (value?: DockerCredentials[]) =>
+        value ? JSON.stringify(value) : undefined,
+      from: (value?: string) => (value ? JSON.parse(value) : undefined),
+    },
+  })
+  dockerCredentials?: DockerCredentials[];
 
   @Column({ type: "varchar", nullable: true })
   domain?: string;

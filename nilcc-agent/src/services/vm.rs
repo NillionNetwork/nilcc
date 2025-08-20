@@ -11,6 +11,7 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
+use cvm_agent_models::bootstrap::DockerCredentials;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -202,17 +203,28 @@ impl VmService for DefaultVmService {
             None => {
                 info!("Creating disks for VM {id}");
                 let spec = self.create_workload_spec(&workload).await?;
+                let cvm_agent_port = workload.cvm_agent_port();
+                let mut docker_credentials: Vec<_> = workload
+                    .docker_credentials
+                    .into_iter()
+                    .map(|c| DockerCredentials { username: c.username, password: c.password, server: Some(c.server) })
+                    .collect();
+                docker_credentials.push(DockerCredentials {
+                    username: self.docker_config.username.clone(),
+                    password: self.docker_config.password.clone(),
+                    server: None,
+                });
                 let args = VmWorkerArgs {
                     workload_id: id,
                     vm_client: self.vm_client.clone(),
                     nilcc_api_client: self.nilcc_api_client.clone(),
                     cvm_agent_client: self.cvm_agent_client.clone(),
-                    cvm_agent_port: workload.cvm_agent_port(),
+                    cvm_agent_port,
                     spec,
                     socket_path,
                     state,
                     zerossl_config: self.zerossl_config.clone(),
-                    docker_config: self.docker_config.clone(),
+                    docker_credentials,
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -403,6 +415,7 @@ mod tests {
             docker_compose: "compose".into(),
             env_vars: Default::default(),
             files: Default::default(),
+            docker_credentials: Default::default(),
             public_container_name: "api".into(),
             public_container_port: 80,
             memory_mb: 1024,

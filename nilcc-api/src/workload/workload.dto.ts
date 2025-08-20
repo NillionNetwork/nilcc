@@ -4,6 +4,22 @@ import { Uuid } from "#/common/types";
 
 const FILENAME_REGEX = /^[\w/._-]+$/;
 
+export const DockerCredentials = z.object({
+  server: z.string().openapi({
+    description: "The server to authenticate against.",
+    examples: ["registry.example.com"],
+  }),
+  username: z.string().openapi({
+    description: "The username to use.",
+    examples: ["username"],
+  }),
+  password: z.string().openapi({
+    description: "The password to use.",
+    examples: ["password"],
+  }),
+});
+export type DockerCredentials = z.infer<typeof DockerCredentials>;
+
 export const CreateWorkloadRequest = z
   .object({
     name: z
@@ -49,6 +65,10 @@ export const CreateWorkloadRequest = z
           },
         ],
       }),
+    dockerCredentials: DockerCredentials.array().optional().openapi({
+      description:
+        "The optional docker credentials to use to authenticate against private registries.",
+    }),
     domain: z
       .string()
       .optional()
