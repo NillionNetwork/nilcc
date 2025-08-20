@@ -1,9 +1,10 @@
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use clap::ValueEnum;
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use sev::firmware::guest::AttestationReport;
-use std::{fs, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use tracing::info;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -27,11 +28,20 @@ pub struct EnvironmentSpec {
     pub cpu_count: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, ValueEnum)]
+#[derive(Copy, Clone, Debug, Deserialize, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum VmType {
     Gpu,
     Cpu,
+}
+
+impl From<VmType> for nilcc_artifacts::VmType {
+    fn from(vm_type: VmType) -> Self {
+        match vm_type {
+            VmType::Gpu => Self::Gpu,
+            VmType::Cpu => Self::Cpu,
+        }
+    }
 }
 
 pub struct ReportFetcher {
@@ -70,58 +80,17 @@ impl ReportFetcher {
         info!("CVM is running nilcc-version {nilcc_version}, using VM type '{vm_type:?}' and has {cpu_count} CPUs");
 
         // Create the cache directory if it doesn't exist already.
-        fs::create_dir_all(self.cache_path.join(nilcc_version)).context("creating cache directory")?;
+        let download_path = self.cache_path.join(nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let artifacts = self.download_artifacts(&environment).context("downloading artifacts")?;
-        Ok(ReportBundle { report, cpu_count: *cpu_count, artifacts })
-    }
-
-    pub fn download_artifacts(&self, spec: &EnvironmentSpec) -> anyhow::Result<Artifacts> {
-        let version = &spec.nilcc_version;
-        let vm_type = match &spec.vm_type {
-            VmType::Gpu => "gpu",
-            VmType::Cpu => "cpu",
-        };
-
-        let ovmf_path = self.download_artifact(version, "vm_images/ovmf/OVMF.fd")?;
-        let kernel_path = self.download_artifact(version, &format!("vm_images/kernel/{vm_type}-vmlinuz"))?;
-        let initrd_path = self.download_artifact(version, "initramfs/initramfs.cpio.gz")?;
-        let filesystem_root_hash_path =
-            self.download_artifact(version, &format!("vm_images/cvm-{vm_type}-verity/root-hash"))?;
-        let hex_filesystem_root_hash =
-            fs::read_to_string(filesystem_root_hash_path).context("reading local copy of filesystem root hash")?;
-        let mut filesystem_root_hash: [u8; 32] = [0; 32];
-        hex::decode_to_slice(hex_filesystem_root_hash.trim(), &mut filesystem_root_hash)
-            .context("decoding filesystem root hash")?;
-        Ok(Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash })
-    }
-
-    fn download_artifact(&self, version: &str, artifact_name: &str) -> anyhow::Result<PathBuf> {
-        let local_path = self.cache_path.join(version).join(artifact_name);
-        if local_path.exists() {
-            info!("Not downloading {artifact_name} because it already exists in cache directory");
-            return Ok(local_path);
-        }
-        info!("Need to download {artifact_name}");
-        let parent = local_path.parent().ok_or_else(|| anyhow!("path has no parent"))?;
-        fs::create_dir_all(parent).context("creating cache directory")?;
-
-        let remote_path = format!("/{version}/{artifact_name}");
+        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), (*vm_type).into())
+            .without_disk_images()
+            .without_artifact_overwrite()
+            .with_artifacts_url(self.artifacts_url.clone());
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
-        let data = runtime
-            .block_on(async { self.download_object(&remote_path).await })
-            .map_err(|e| anyhow!("failed to download {remote_path}: {e}"))?;
-        fs::write(&local_path, data.as_slice()).context("writing data to cache")?;
-        Ok(local_path)
-    }
-
-    async fn download_object(&self, path: &str) -> anyhow::Result<Vec<u8>> {
-        let url = format!("{}{path}", self.artifacts_url);
-        let result = reqwest::get(url).await?;
-        let bytes = result.bytes().await?;
-        Ok(bytes.into())
+        let artifacts = runtime.block_on(downloader.download(&download_path))?;
+        Ok(ReportBundle { report, cpu_count: *cpu_count, artifacts })
     }
 }
 
@@ -130,12 +99,4 @@ pub struct ReportBundle {
     pub report: AttestationReport,
     pub cpu_count: u32,
     pub artifacts: Artifacts,
-}
-
-#[derive(Clone, Debug)]
-pub struct Artifacts {
-    pub ovmf_path: PathBuf,
-    pub kernel_path: PathBuf,
-    pub initrd_path: PathBuf,
-    pub filesystem_root_hash: [u8; 32],
 }

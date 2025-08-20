@@ -10,7 +10,7 @@ clap = { version = "4.5", features = ["derive", "string", "env"] }
 hex = { version = "0.4", features = ["serde"] }
 openssl = { version = "^0.10", features = ["vendored"] }
 rand = "0.9"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sev = { version = "6.1", default-features = false, features = ["openssl", "snp"] }
@@ -19,6 +19,8 @@ tokio = { version = "1.45", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 x509-parser = { version = "0.17.0", features = ["verify"] } 
+
+nilcc-artifacts = { path = "../crates/nilcc-artifacts" }
 
 [dev-dependencies]
 rstest = { version = "0.25", default-features = false }

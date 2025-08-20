@@ -1,0 +1,127 @@
+use anyhow::anyhow;
+use anyhow::Context;
+use futures_util::StreamExt;
+use std::path::Path;
+use std::path::PathBuf;
+use tokio::fs;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use tokio::io::BufWriter;
+use tracing::debug;
+use tracing::info;
+
+const ARTIFACTS_URL: &str = "https://nilcc.s3.eu-west-1.amazonaws.com";
+
+#[derive(Clone, Debug)]
+pub struct ArtifactsDownloader {
+    version: String,
+    vm_type: VmType,
+    artifacts_url: String,
+    disk_images: bool,
+    always_download: bool,
+}
+
+impl ArtifactsDownloader {
+    pub fn new(version: String, vm_type: VmType) -> Self {
+        Self { version, vm_type, artifacts_url: ARTIFACTS_URL.into(), disk_images: true, always_download: true }
+    }
+
+    pub fn with_artifacts_url(mut self, artifacts_url: String) -> Self {
+        self.artifacts_url = artifacts_url;
+        self
+    }
+
+    pub fn without_disk_images(mut self) -> Self {
+        self.disk_images = false;
+        self
+    }
+
+    pub fn without_artifact_overwrite(mut self) -> Self {
+        self.always_download = false;
+        self
+    }
+
+    pub async fn download(&self, target_dir: &Path) -> anyhow::Result<Artifacts> {
+        let vm_type = match &self.vm_type {
+            VmType::Gpu => "gpu",
+            VmType::Cpu => "cpu",
+        };
+        info!("Downloading {vm_type} artifacts to {}", target_dir.display());
+
+        let ovmf_path = self.download_artifact("vm_images/ovmf/OVMF.fd", target_dir).await?;
+        let kernel_path = self.download_artifact(&format!("vm_images/kernel/{vm_type}-vmlinuz"), target_dir).await?;
+        let initrd_path = self.download_artifact("initramfs/initramfs.cpio.gz", target_dir).await?;
+        let filesystem_root_hash_path =
+            self.download_artifact(&format!("vm_images/cvm-{vm_type}-verity/root-hash"), target_dir).await?;
+        let hex_filesystem_root_hash = fs::read_to_string(filesystem_root_hash_path)
+            .await
+            .context("reading local copy of filesystem root hash")?;
+        let mut filesystem_root_hash: [u8; 32] = [0; 32];
+        hex::decode_to_slice(hex_filesystem_root_hash.trim(), &mut filesystem_root_hash)
+            .context("decoding filesystem root hash")?;
+        let (base_disk, verity_disk) = match &self.disk_images {
+            true => {
+                let base_disk = self.download_artifact(&format!("vm_images/cvm-{vm_type}.qcow2"), target_dir).await?;
+                let verity_disk = self
+                    .download_artifact(&format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev"), target_dir)
+                    .await?;
+                (Some(base_disk), Some(verity_disk))
+            }
+            false => (None, None),
+        };
+        Ok(Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, base_disk, verity_disk })
+    }
+
+    async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> anyhow::Result<PathBuf> {
+        let local_path = target_dir.join(artifact_name);
+        if local_path.exists() {
+            if self.always_download {
+                info!("Artifact {artifact_name} already exists, overwriting it");
+            } else {
+                info!("Not downloading {artifact_name} because it already exists in cache directory");
+                return Ok(local_path);
+            }
+        }
+        info!("Downloading {artifact_name}");
+        let parent = local_path.parent().ok_or_else(|| anyhow!("path has no parent"))?;
+        fs::create_dir_all(parent).await.context("creating cache directory")?;
+
+        let version = &self.version;
+        let remote_path = format!("/{version}/{artifact_name}");
+        self.download_object(&remote_path, &local_path)
+            .await
+            .map_err(|e| anyhow!("failed to download {remote_path}: {e}"))?;
+        Ok(local_path)
+    }
+
+    async fn download_object(&self, url_path: &str, target_path: &Path) -> anyhow::Result<()> {
+        let url = format!("{}{url_path}", self.artifacts_url);
+        let result = reqwest::get(url).await?.error_for_status()?;
+        let mut stream = result.bytes_stream();
+        let file = File::create(target_path).await.context("Failed to create target file")?;
+        let mut file = BufWriter::new(file);
+        while let Some(bytes) = stream.next().await {
+            let bytes = bytes?;
+            debug!("Writing {} bytes chunk", bytes.len());
+            file.write_all(&bytes).await?;
+        }
+        file.flush().await?;
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum VmType {
+    Gpu,
+    Cpu,
+}
+
+#[derive(Clone, Debug)]
+pub struct Artifacts {
+    pub ovmf_path: PathBuf,
+    pub kernel_path: PathBuf,
+    pub initrd_path: PathBuf,
+    pub filesystem_root_hash: [u8; 32],
+    pub base_disk: Option<PathBuf>,
+    pub verity_disk: Option<PathBuf>,
+}
