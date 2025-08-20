@@ -1,9 +1,10 @@
-use crate::report::{EnvironmentSpec, VmType};
+use crate::report::VmType;
 use anyhow::{anyhow, Context};
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use report::{Artifacts, ReportFetcher};
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader};
+use report::ReportFetcher;
 use std::{fs::File, io::stdin, path::PathBuf};
 use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
@@ -187,7 +188,7 @@ fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
     let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint).context("fetching report")?;
-    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash } = bundle.artifacts;
+    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, .. } = bundle.artifacts;
 
     let measurement = MeasurementGenerator {
         vcpus: bundle.cpu_count,
@@ -207,12 +208,16 @@ fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
 
 fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let MeasurementHashArgs { artifact_cache, artifacts_url, vm_type, cpus, docker_compose_hash, nilcc_version } = args;
+    let download_path = artifact_cache.join(&nilcc_version);
     let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
-    let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
-    let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count: cpus };
-    let artifacts = fetcher.download_artifacts(&environment).context("fetching artifacts")?;
-    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash } = artifacts;
-
+    let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vm_type.into())
+        .without_disk_images()
+        .without_artifact_overwrite()
+        .with_artifacts_url(artifacts_url);
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
+    let artifacts = runtime.block_on(downloader.download(&download_path))?;
+    let Artifacts { ovmf_path, kernel_path, initrd_path, filesystem_root_hash, .. } = artifacts;
     let measurement = MeasurementGenerator {
         vcpus: cpus,
         ovmf: ovmf_path,

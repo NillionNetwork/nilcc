@@ -8,5 +8,5 @@ members = [
   "nilcc-attester",
   "nilcc-agent",
   "nilcc-agent-cli", 
-  "nilcc-verifier",
+  "nilcc-verifier", "crates/nilcc-artifacts",
 ]

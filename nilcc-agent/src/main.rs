@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use axum_server::Handle;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     clients::{
@@ -24,8 +24,9 @@ use nilcc_agent::{
     version,
     workers::heartbeat::HeartbeatWorker,
 };
+use nilcc_artifacts::{ArtifactsDownloader, VmType};
 use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
-use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{fmt, fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use tokio::signal;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, level_filters::LevelFilter, warn};
@@ -66,6 +67,10 @@ enum Command {
 
     /// Display system resources.
     Resources,
+
+    /// Download resources.
+    #[clap(subcommand)]
+    Download(DownloadCommand),
 }
 
 #[derive(Subcommand)]
@@ -99,6 +104,41 @@ enum IsoCommand {
         /// The path to the docker compose to be ran.
         docker_compose_path: PathBuf,
     },
+}
+
+#[derive(Subcommand)]
+enum DownloadCommand {
+    /// Download artifacts.
+    Artifacts(DownloadArtifactsArgs),
+}
+
+#[derive(Args)]
+struct DownloadArtifactsArgs {
+    /// The base path where artifacts will be downloaded.
+    download_path: PathBuf,
+
+    /// The version to download
+    version: String,
+
+    #[clap(long, default_value_t = VmTypeArtifacts::All)]
+    vm_type: VmTypeArtifacts,
+}
+
+#[derive(Clone, ValueEnum)]
+enum VmTypeArtifacts {
+    Cpu,
+    Gpu,
+    All,
+}
+
+impl fmt::Display for VmTypeArtifacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cpu => write!(f, "cpu"),
+            Self::Gpu => write!(f, "gpu"),
+            Self::All => write!(f, "all"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -203,6 +243,20 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         .spawn()
         .context("Failed to start qemu-system")?;
     child.wait().context("Failed to wait for child process")?;
+    Ok(())
+}
+
+async fn download_artifacts(args: DownloadArtifactsArgs) -> Result<()> {
+    let DownloadArtifactsArgs { download_path, version, vm_type } = args;
+    let vm_types: &[_] = match vm_type {
+        VmTypeArtifacts::Cpu => &[VmType::Cpu],
+        VmTypeArtifacts::Gpu => &[VmType::Gpu],
+        VmTypeArtifacts::All => &[VmType::Cpu, VmType::Gpu],
+    };
+    for vm_type in vm_types {
+        let downloader = ArtifactsDownloader::new(version.clone(), *vm_type);
+        downloader.download(&download_path).await.context("Failed to download artifacts")?;
+    }
     Ok(())
 }
 
@@ -355,6 +409,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{resources}");
             Ok(())
         }
+        Command::Download(DownloadCommand::Artifacts(args)) => download_artifacts(args).await,
     }
 }
 

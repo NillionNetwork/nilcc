@@ -42,6 +42,7 @@ validator = { version = "0.20", features = ["derive"] }
 
 cvm-agent-models = { path = "../crates/cvm-agent-models" }
 nilcc-agent-models = { path = "../crates/nilcc-agent-models" }
+nilcc-artifacts = { path = "../crates/nilcc-artifacts" }
 
 [dev-dependencies]
 mockall = "0.13"
