@@ -308,6 +308,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     HeartbeatWorker::spawn(nilcc_api_client.clone());
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
+    system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client,

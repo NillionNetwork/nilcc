@@ -1,8 +1,12 @@
-use crate::config::ReservedResourcesConfig;
+use crate::{
+    config::ReservedResourcesConfig,
+    repositories::sqlite::{ProviderMode, RepositoryProvider},
+};
 use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeSet,
     fmt, io,
     net::{IpAddr, Ipv4Addr},
 };
@@ -16,14 +20,14 @@ const NEW_VFIO_PCI_ID_PATH: &str = "/sys/bus/pci/drivers/vfio-pci/new_id";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SystemResources {
-    pub(crate) hostname: String,
-    pub(crate) memory_mb: u32,
-    pub(crate) reserved_memory_mb: u32,
-    pub(crate) disk_space_gb: u32,
-    pub(crate) reserved_disk_space_gb: u32,
-    pub(crate) cpus: u32,
-    pub(crate) reserved_cpus: u32,
-    pub(crate) gpus: Option<Gpus>,
+    pub hostname: String,
+    pub memory_mb: u32,
+    pub reserved_memory_mb: u32,
+    pub disk_space_gb: u32,
+    pub reserved_disk_space_gb: u32,
+    pub cpus: u32,
+    pub reserved_cpus: u32,
+    pub gpus: Option<Gpus>,
 }
 
 impl SystemResources {
@@ -159,6 +163,36 @@ impl SystemResources {
         }
         bail!("not public addresses available");
     }
+
+    pub async fn adjust_gpu_assignment(&self, provider: &dyn RepositoryProvider) -> anyhow::Result<()> {
+        info!("Validating GPU assignment");
+        let mut repo = provider.workloads(Default::default()).await?;
+        let workloads = repo.list().await?;
+        let gpus: BTreeSet<_> = self.gpus.as_ref().map(|g| g.addresses.iter().collect()).unwrap_or_default();
+        let assigned_gpus: BTreeSet<_> = workloads.iter().flat_map(|w| w.gpus.iter()).collect();
+        if gpus == assigned_gpus {
+            info!("Assigned GPUs match the current assignment");
+            return Ok(());
+        } else if gpus.len() != assigned_gpus.len() {
+            // We can't do anything if GPUs have disappeared
+            bail!("Have {} assigned GPUs but only {} available", assigned_gpus.len(), gpus.len());
+        }
+        info!("GPU addresses have changed, re-assigning them");
+
+        let mut gpus = gpus.into_iter().cloned();
+        let mut repo = provider.workloads(ProviderMode::Transactional).await?;
+        for workload in workloads {
+            if workload.gpus.is_empty() {
+                continue;
+            }
+
+            let new_gpus = gpus.by_ref().take(workload.gpus.len()).collect();
+            info!("Assigning GPUs for workload {} from {:?} to {:?}", workload.id, workload.gpus, new_gpus);
+            repo.set_gpus(workload.id, new_gpus).await?;
+        }
+        repo.commit().await?;
+        Ok(())
+    }
 }
 
 trait IsPublic {
@@ -243,9 +277,9 @@ impl fmt::Display for GpuAddress {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct Gpus {
-    pub(crate) model: String,
-    pub(crate) addresses: Vec<GpuAddress>,
+pub struct Gpus {
+    pub model: String,
+    pub addresses: Vec<GpuAddress>,
 }
 
 impl Gpus {
@@ -257,6 +291,30 @@ impl Gpus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::{
+        sqlite::{SqliteDb, SqliteRepositoryProvider},
+        workload::Workload,
+    };
+    use uuid::Uuid;
+
+    fn make_workload(domain: &str, gpus: &[GpuAddress]) -> Workload {
+        Workload {
+            id: Uuid::new_v4(),
+            docker_compose: Default::default(),
+            env_vars: Default::default(),
+            files: Default::default(),
+            docker_credentials: Default::default(),
+            public_container_name: Default::default(),
+            public_container_port: Default::default(),
+            memory_mb: Default::default(),
+            cpus: 1.try_into().unwrap(),
+            disk_space_gb: 1.try_into().unwrap(),
+            gpus: gpus.iter().cloned().collect(),
+            ports: [150, 151, 152],
+            domain: domain.into(),
+            enabled: true,
+        }
+    }
 
     #[tokio::test]
     async fn gather() {
@@ -300,5 +358,62 @@ mod tests {
         let input = "01:00.0 0302: 10de:2331 (rev a1)";
         let id = SystemResources::parse_device_id(input).expect("failed to parse");
         assert_eq!(id, "2331");
+    }
+
+    #[tokio::test]
+    async fn adjust_gpus() {
+        let mut resources = SystemResources::gather(Default::default()).await.expect("failed to gather");
+        resources.gpus = Some(Gpus { model: "foo".into(), addresses: vec!["aa".into(), "bb".into()] });
+        let workloads = vec![make_workload("a.com", &["bb".into()]), make_workload("b.com", &["cc".into()])];
+        let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
+        let provider = SqliteRepositoryProvider::new(db);
+        {
+            let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
+            for workload in &workloads {
+                repo.create(workload.clone()).await.expect("failed to create");
+            }
+        }
+        resources.adjust_gpu_assignment(&provider).await.expect("failed to adjust");
+        let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
+        let updated_workloads = repo.list().await.expect("failed to list");
+        let gpus: BTreeSet<_> = updated_workloads.iter().flat_map(|w| w.gpus.iter().cloned()).collect();
+        let expected_gpus = ["aa".into(), "bb".into()].into_iter().collect();
+        assert_eq!(gpus, expected_gpus);
+    }
+
+    #[tokio::test]
+    async fn no_gpus() {
+        let mut resources = SystemResources::gather(Default::default()).await.expect("failed to gather");
+        resources.gpus = Some(Gpus { model: "foo".into(), addresses: vec![] });
+        let workloads = vec![make_workload("a.com", &["aa".into()])];
+        let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
+        let provider = SqliteRepositoryProvider::new(db);
+        {
+            let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
+            for workload in &workloads {
+                repo.create(workload.clone()).await.expect("failed to create");
+            }
+        }
+        resources.adjust_gpu_assignment(&provider).await.expect_err("adjustment succeeded");
+    }
+
+    #[tokio::test]
+    async fn same_gpus() {
+        let mut resources = SystemResources::gather(Default::default()).await.expect("failed to gather");
+        resources.gpus = Some(Gpus { model: "foo".into(), addresses: vec!["aa".into()] });
+        let workloads = vec![make_workload("a.com", &["aa".into()])];
+        let db = SqliteDb::connect("sqlite://:memory:").await.expect("failed to create db");
+        let provider = SqliteRepositoryProvider::new(db);
+        {
+            let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
+            for workload in &workloads {
+                repo.create(workload.clone()).await.expect("failed to create");
+            }
+        }
+        resources.adjust_gpu_assignment(&provider).await.expect("adjustment failed");
+
+        let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
+        let updated_workloads = repo.list().await.expect("failed to list");
+        assert_eq!(updated_workloads, workloads);
     }
 }

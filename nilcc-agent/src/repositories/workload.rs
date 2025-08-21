@@ -112,6 +112,9 @@ pub trait WorkloadRepository: Send + Sync {
     /// Set the `enabled` column for a workload.
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
 
+    /// Set the `gpus` column for a workload.
+    async fn set_gpus(&mut self, id: Uuid, gpus: Vec<GpuAddress>) -> Result<(), WorkloadRepositoryError>;
+
     /// Commit any changes that were performed on this repository.
     async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError>;
 }
@@ -248,6 +251,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         Ok(())
     }
 
+    async fn set_gpus(&mut self, id: Uuid, gpus: Vec<GpuAddress>) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET gpus = ? WHERE id = ?";
+        sqlx::query(query).bind(sqlx::types::Json(gpus)).bind(id).execute(&mut *self.ctx).await?;
+        Ok(())
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError> {
         Ok(self.ctx.commit().await?)
     }
@@ -279,7 +288,7 @@ mod tests {
             memory_mb: 1024,
             cpus: 1.try_into().unwrap(),
             disk_space_gb: 10.try_into().unwrap(),
-            gpus: vec![GpuAddress("aa:bb".into())],
+            gpus: vec!["aa:bb".into()],
             ports: [1080, 1443, 2000],
             domain: "example.com".into(),
             enabled: true,
@@ -298,6 +307,9 @@ mod tests {
 
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
+
+        repo.set_gpus(workload.id, vec!["cc:dd".into()]).await.expect("failed to update");
+        assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);
 
         let workload_same_domain = Workload { id: Uuid::new_v4(), ..workload };
         let err = repo.create(workload_same_domain.clone()).await.expect_err("insertion succeeded");
