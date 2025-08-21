@@ -173,12 +173,15 @@ impl SystemResources {
         if gpus == assigned_gpus {
             info!("Assigned GPUs match the current assignment");
             return Ok(());
-        } else if gpus.len() != assigned_gpus.len() {
+        } else if assigned_gpus.len() > gpus.len() {
             // We can't do anything if GPUs have disappeared
             bail!("Have {} assigned GPUs but only {} available", assigned_gpus.len(), gpus.len());
+        } else if assigned_gpus.iter().all(|gpu| gpus.contains(gpu)) {
+            info!("All assigned GPUs are still present");
+            return Ok(());
         }
-        info!("GPU addresses have changed, re-assigning them");
 
+        info!("GPU addresses have changed, re-assigning them");
         let mut gpus = gpus.into_iter().cloned();
         let mut repo = provider.workloads(ProviderMode::Transactional).await?;
         for workload in workloads {
