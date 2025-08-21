@@ -165,6 +165,9 @@ impl VmWorker {
         }
         self.submit_event(VmEvent::Stopped).await;
         self.vm_state = VmState::Stopped;
+        if let Err(e) = fs::remove_file(&self.socket_path).await {
+            error!("Failed to delete qemu socket: {e}");
+        }
         gauge!("vms_running_total").decrement(1);
     }
 
