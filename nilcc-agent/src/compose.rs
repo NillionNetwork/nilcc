@@ -1,6 +1,7 @@
 use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use docker_compose_types::{
-    Compose, ComposeNetworks, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, TopLevelVolumes, Volumes,
+    Compose, ComposeNetworks, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, Service, TopLevelVolumes,
+    Volumes,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -27,53 +28,22 @@ pub(crate) fn validate_docker_compose(
     }
     let top_level_volumes = validate_top_level_volumes(&compose.volumes)?;
     let mut found_public_container = false;
-    for (name, service) in &compose.services.0 {
-        let service = service.as_ref().ok_or_else(|| Error::Invalid(format!("no body in service '{name}'")))?;
-        let names = iter::once(name).chain(service.container_name.as_ref());
-        for name in names {
+    for (service_name, service) in &compose.services.0 {
+        let service = service.as_ref().ok_or_else(|| Error::Invalid(format!("no body in service '{service_name}'")))?;
+        let container_names = iter::once(service_name).chain(service.container_name.as_ref());
+        for container_name in container_names {
             // Make sure it doesn't contain a substring of our reserved container names
             for reserved in RESERVED_CONTAINERS {
-                if name.contains(reserved) {
-                    return Err(Error::ReservedContainerName(name.clone()));
+                if container_name.contains(reserved) {
+                    return Err(Error::ReservedContainerName(container_name.clone(), service_name.clone()));
                 }
             }
-            if name == public_container_name {
+            if container_name == public_container_name {
                 found_public_container = true;
             }
         }
-
-        validate_ports(&service.ports)?;
-        if !service.cap_add.is_empty() {
-            return Err(Error::Capabilities);
-        }
-        if service.privileged {
-            return Err(Error::PrivilegedService);
-        }
-        if !service.security_opt.is_empty() {
-            return Err(Error::SecurityOpt);
-        }
-        if !service.devices.is_empty() {
-            return Err(Error::Devices);
-        }
-        if service.pid.is_some() {
-            return Err(Error::Pid);
-        }
-        if service.ipc.is_some() {
-            return Err(Error::Ipc);
-        }
-        if service.network_mode.is_some() {
-            return Err(Error::NetworkMode);
-        }
-        for volume in &service.volumes {
-            validate_volumes(volume, &top_level_volumes)?;
-        }
-        if let Some(env) = &service.env_file {
-            validate_env_file(env)?;
-        }
-        validate_extends(&service.extends)?;
-        if service.cgroup_parent.is_some() {
-            return Err(Error::Cgroups);
-        }
+        validate_service(service, &top_level_volumes)
+            .map_err(|e| Error::InvalidService(service_name.to_string(), e))?;
     }
     if compose.includes.is_some() {
         return Err(Error::Includes);
@@ -87,6 +57,44 @@ pub(crate) fn validate_docker_compose(
     } else {
         Err(Error::PublicContainer(public_container_name.to_string()))
     }
+}
+
+fn validate_service(service: &Service, top_level_volumes: &HashSet<&str>) -> Result<(), ServiceValidationError> {
+    use ServiceValidationError as Error;
+    validate_ports(&service.ports)?;
+    if !service.cap_add.is_empty() {
+        return Err(Error::Capabilities);
+    }
+    if service.privileged {
+        return Err(Error::PrivilegedService);
+    }
+    if !service.security_opt.is_empty() {
+        return Err(Error::SecurityOpt);
+    }
+    if !service.devices.is_empty() {
+        return Err(Error::Devices);
+    }
+    if service.pid.is_some() {
+        return Err(Error::Pid);
+    }
+    if service.ipc.is_some() {
+        return Err(Error::Ipc);
+    }
+    if service.network_mode.is_some() {
+        return Err(Error::NetworkMode);
+    }
+    for volume in &service.volumes {
+        validate_volumes(volume, top_level_volumes)?;
+    }
+    if let Some(env) = &service.env_file {
+        validate_env_file(env)?;
+    }
+    validate_extends(&service.extends)?;
+    if service.cgroup_parent.is_some() {
+        return Err(Error::Cgroups);
+    }
+
+    Ok(())
 }
 
 fn validate_top_level_volumes(volumes: &TopLevelVolumes) -> Result<HashSet<&str>, DockerComposeValidationError> {
@@ -104,7 +112,7 @@ fn validate_top_level_volumes(volumes: &TopLevelVolumes) -> Result<HashSet<&str>
     Ok(output)
 }
 
-fn validate_ports(ports: &Ports) -> Result<(), DockerComposeValidationError> {
+fn validate_ports(ports: &Ports) -> Result<(), ServiceValidationError> {
     match ports {
         Ports::Short(ports) => {
             for port in ports {
@@ -124,8 +132,8 @@ fn validate_ports(ports: &Ports) -> Result<(), DockerComposeValidationError> {
     Ok(())
 }
 
-fn extract_published_ports(s: &str) -> Result<Option<PublishedPort>, DockerComposeValidationError> {
-    use DockerComposeValidationError::InvalidPorts;
+fn extract_published_ports(s: &str) -> Result<Option<PublishedPort>, ServiceValidationError> {
+    use ServiceValidationError::InvalidPorts;
     let s = match s.split_once('/') {
         Some((s, protocol)) => {
             if !matches!(protocol, "udp" | "tcp") {
@@ -143,12 +151,12 @@ fn extract_published_ports(s: &str) -> Result<Option<PublishedPort>, DockerCompo
 }
 
 trait PublishedPortExt {
-    fn validate(&self) -> Result<(), DockerComposeValidationError>;
+    fn validate(&self) -> Result<(), ServiceValidationError>;
 }
 
 impl PublishedPortExt for PublishedPort {
-    fn validate(&self) -> Result<(), DockerComposeValidationError> {
-        use DockerComposeValidationError as Error;
+    fn validate(&self) -> Result<(), ServiceValidationError> {
+        use ServiceValidationError as Error;
         let ports = match self {
             Self::Single(port) => *port..=*port,
             Self::Range(spec) => match spec.split_once('-') {
@@ -175,8 +183,8 @@ impl PublishedPortExt for PublishedPort {
     }
 }
 
-fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Result<(), DockerComposeValidationError> {
-    use DockerComposeValidationError as Error;
+fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Result<(), ServiceValidationError> {
+    use ServiceValidationError as Error;
     let Volumes::Simple(spec) = volume else {
         return Err(Error::LongFormVolumes);
     };
@@ -188,8 +196,8 @@ fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Resu
     validate_volume_path(source)
 }
 
-fn validate_volume_path(path: &str) -> Result<(), DockerComposeValidationError> {
-    use DockerComposeValidationError as Error;
+fn validate_volume_path(path: &str) -> Result<(), ServiceValidationError> {
+    use ServiceValidationError as Error;
     if !path.starts_with("$FILES") && !path.starts_with("${FILES}") {
         return Err(Error::FilesEnvVar);
     }
@@ -200,7 +208,7 @@ fn validate_volume_path(path: &str) -> Result<(), DockerComposeValidationError> 
     }
 }
 
-fn validate_env_file(env: &EnvFile) -> Result<(), DockerComposeValidationError> {
+fn validate_env_file(env: &EnvFile) -> Result<(), ServiceValidationError> {
     match env {
         EnvFile::Simple(path) => validate_volume_path(path),
         EnvFile::List(paths) => {
@@ -212,8 +220,8 @@ fn validate_env_file(env: &EnvFile) -> Result<(), DockerComposeValidationError> 
     }
 }
 
-fn validate_extends(attrs: &HashMap<String, String>) -> Result<(), DockerComposeValidationError> {
-    use DockerComposeValidationError as Error;
+fn validate_extends(attrs: &HashMap<String, String>) -> Result<(), ServiceValidationError> {
+    use ServiceValidationError as Error;
     if attrs.is_empty() {
         return Ok(());
     }
@@ -253,9 +261,36 @@ pub(crate) enum DockerComposeValidationError {
     #[error("cannot use reserved key: '{0}'")]
     ReservedEnv(&'static str),
 
-    #[error("cannot use reserved container name '{0}'")]
-    ReservedContainerName(String),
+    #[error("cannot use reserved container name '{0}' in service '{1}'")]
+    ReservedContainerName(String, String),
 
+    #[error("container {0} is not part of compose file")]
+    PublicContainer(String),
+
+    #[error("volume definitions cannot contain any attributes")]
+    VolumeAttributes,
+
+    #[error("cannot use includes")]
+    Includes,
+
+    #[error("cannot use secrets")]
+    Secrets,
+
+    #[error("cannot set network driver")]
+    NetworkDriver,
+
+    #[error("cannot set network driver opts")]
+    NetworkDriverOpts,
+
+    #[error("cannot set network ipam")]
+    NetworkIpam,
+
+    #[error("invalid service '{0}': {1}")]
+    InvalidService(String, ServiceValidationError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ServiceValidationError {
     #[error("cannot extend service in external file")]
     ExtendFile,
 
@@ -264,9 +299,6 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("invalid ports definition")]
     InvalidPorts,
-
-    #[error("container {0} is not part of compose file")]
-    PublicContainer(String),
 
     #[error("volumes can only use short form")]
     LongFormVolumes,
@@ -280,9 +312,6 @@ pub(crate) enum DockerComposeValidationError {
     #[error("mounts cannot use '../'")]
     MountDotDot,
 
-    #[error("volume definitions cannot contain any attributes")]
-    VolumeAttributes,
-
     #[error("privileged services are not allowed")]
     PrivilegedService,
 
@@ -291,12 +320,6 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use cgroups")]
     Cgroups,
-
-    #[error("cannot use includes")]
-    Includes,
-
-    #[error("cannot use secrets")]
-    Secrets,
 
     #[error("cannot use security-opt")]
     SecurityOpt,
@@ -312,29 +335,34 @@ pub(crate) enum DockerComposeValidationError {
 
     #[error("cannot use network-mode")]
     NetworkMode,
-
-    #[error("cannot set network driver")]
-    NetworkDriver,
-
-    #[error("cannot set network driver opts")]
-    NetworkDriverOpts,
-
-    #[error("cannot set network ipam")]
-    NetworkIpam,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
+    use std::fmt;
+
+    impl From<DockerComposeValidationError> for ServiceValidationError {
+        fn from(e: DockerComposeValidationError) -> Self {
+            match e {
+                DockerComposeValidationError::InvalidService(_, e) => e,
+                _ => panic!("not a service validation error: {e}"),
+            }
+        }
+    }
 
     fn validate_success(compose: &str, public_container_name: &str) {
         validate_docker_compose(compose, public_container_name).expect("validation failed");
     }
 
-    fn validate_failure(compose: &str, public_container_name: &str, expected: DockerComposeValidationError) {
+    fn validate_failure<E>(compose: &str, public_container_name: &str, expected: E)
+    where
+        DockerComposeValidationError: Into<E>,
+        E: fmt::Display,
+    {
         let err = validate_docker_compose(compose, public_container_name).expect_err("validation succeeded");
-        assert_eq!(err.to_string(), expected.to_string());
+        assert_eq!(err.into().to_string(), expected.to_string());
     }
 
     #[test]
@@ -438,7 +466,7 @@ services:
     command: "caddy"
     privileged: true
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::PrivilegedService);
+        validate_failure(compose, "api", ServiceValidationError::PrivilegedService);
     }
 
     #[test]
@@ -451,7 +479,7 @@ services:
     cap_add:
       - NET_ADMIN
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::Capabilities);
+        validate_failure(compose, "api", ServiceValidationError::Capabilities);
     }
 
     #[test]
@@ -463,7 +491,7 @@ services:
     command: "caddy"
     cgroup_parent: foo
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::Cgroups);
+        validate_failure(compose, "api", ServiceValidationError::Cgroups);
     }
 
     #[test]
@@ -476,7 +504,7 @@ services:
     extends:
       file: potato.yaml
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::ExtendFile);
+        validate_failure(compose, "api", ServiceValidationError::ExtendFile);
     }
 
     #[test]
@@ -516,7 +544,7 @@ services:
     security_opt:
       - foo
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::SecurityOpt);
+        validate_failure(compose, "api", ServiceValidationError::SecurityOpt);
     }
 
     #[test]
@@ -529,7 +557,7 @@ services:
     devices:
       - foo
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::Devices);
+        validate_failure(compose, "api", ServiceValidationError::Devices);
     }
 
     #[test]
@@ -541,7 +569,7 @@ services:
     command: "caddy"
     pid: "42"
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::Pid);
+        validate_failure(compose, "api", ServiceValidationError::Pid);
     }
 
     #[test]
@@ -553,7 +581,7 @@ services:
     command: "caddy"
     ipc: "42"
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::Ipc);
+        validate_failure(compose, "api", ServiceValidationError::Ipc);
     }
 
     #[test]
@@ -565,7 +593,7 @@ services:
     command: "caddy"
     network_mode: "42"
 "#;
-        validate_failure(compose, "api", DockerComposeValidationError::NetworkMode);
+        validate_failure(compose, "api", ServiceValidationError::NetworkMode);
     }
 
     #[test]
@@ -700,7 +728,7 @@ services:
       - "{spec}:42"
 "#
         );
-        validate_failure(&compose, "api", DockerComposeValidationError::ReservedPort(port));
+        validate_failure(&compose, "api", ServiceValidationError::ReservedPort(port));
     }
 
     #[test]
@@ -713,7 +741,7 @@ services:
       - target: 42
         published: 80
 ";
-        validate_failure(compose, "api", DockerComposeValidationError::ReservedPort(80));
+        validate_failure(compose, "api", ServiceValidationError::ReservedPort(80));
     }
 
     #[rstest]
@@ -728,7 +756,11 @@ services:
     command: "caddy"
 "#
         );
-        validate_failure(&compose, service, DockerComposeValidationError::ReservedContainerName(service.into()));
+        validate_failure(
+            &compose,
+            service,
+            DockerComposeValidationError::ReservedContainerName(service.into(), service.into()),
+        );
     }
 
     #[rstest]
@@ -745,7 +777,11 @@ services:
     command: "caddy"
 "#
         );
-        validate_failure(&compose, "api", DockerComposeValidationError::ReservedContainerName(container_name));
+        validate_failure(
+            &compose,
+            "api",
+            DockerComposeValidationError::ReservedContainerName(container_name, "api".into()),
+        );
     }
 
     #[rstest]
@@ -765,10 +801,10 @@ services:
     }
 
     #[rstest]
-    #[case::no_colom("/tmp/hello", DockerComposeValidationError::VolumeColon)]
-    #[case::no_files("/tmp/hello:", DockerComposeValidationError::FilesEnvVar)]
-    #[case::dotdot("$FILES/../proc/foo:", DockerComposeValidationError::MountDotDot)]
-    fn invalid_volume_source(#[case] source: &'static str, #[case] error: DockerComposeValidationError) {
+    #[case::no_colom("/tmp/hello", ServiceValidationError::VolumeColon)]
+    #[case::no_files("/tmp/hello:", ServiceValidationError::FilesEnvVar)]
+    #[case::dotdot("$FILES/../proc/foo:", ServiceValidationError::MountDotDot)]
+    fn invalid_volume_source(#[case] source: &'static str, #[case] error: ServiceValidationError) {
         let compose = format!(
             r#"
 services:
@@ -782,9 +818,9 @@ services:
     }
 
     #[rstest]
-    #[case::no_files("/tmp/hello", DockerComposeValidationError::FilesEnvVar)]
-    #[case::dotdot("$FILES/../proc/foo", DockerComposeValidationError::MountDotDot)]
-    fn invalid_env_file(#[case] env_file: &'static str, #[case] error: DockerComposeValidationError) {
+    #[case::no_files("/tmp/hello", ServiceValidationError::FilesEnvVar)]
+    #[case::dotdot("$FILES/../proc/foo", ServiceValidationError::MountDotDot)]
+    fn invalid_env_file(#[case] env_file: &'static str, #[case] error: ServiceValidationError) {
         let compose = format!(
             r#"
 services:
