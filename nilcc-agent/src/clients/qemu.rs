@@ -13,7 +13,6 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{
-    fs,
     io::{ReadHalf, WriteHalf},
     net::UnixStream,
     process::Command,
@@ -154,6 +153,7 @@ pub struct QemuClient {
     qemu_bin: PathBuf,
 }
 
+#[derive(Debug)]
 pub struct CommandOutput {
     pub status: ExitStatus,
     pub stderr: String,
@@ -355,10 +355,6 @@ impl VmClient for QemuClient {
         if !output.status.success() {
             return Err(QemuClientError::Io(io::Error::other(format!("qemu failed: {}", output.stderr))));
         }
-
-        while !fs::try_exists(socket_path).await? {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
         Ok(())
     }
 
@@ -390,6 +386,7 @@ impl VmClient for QemuClient {
 mod tests {
     use super::*;
     use crate::services::disk::{DefaultDiskService, DiskService};
+    use tokio::fs;
     use tracing_test::traced_test;
 
     fn make_client() -> QemuClient {

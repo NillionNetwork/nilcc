@@ -7,7 +7,7 @@ use crate::{
     config::{CvmConfig, CvmFiles, DockerConfig, ZeroSslConfig},
     repositories::workload::Workload,
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
-    workers::vm::{InitialVmState, VmWorker, VmWorkerArgs, VmWorkerHandle},
+    workers::vm::{VmWorker, VmWorkerArgs, VmWorkerHandle},
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -28,12 +28,10 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
-    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError>;
+    async fn create_vm(&self, workload: Workload) -> Result<(), StartVmError>;
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
-    async fn disable_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
-    async fn enable_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -191,7 +189,7 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn create_vm(&self, workload: Workload, state: InitialVmState) -> Result<(), StartVmError> {
+    async fn create_vm(&self, workload: Workload) -> Result<(), StartVmError> {
         let id = workload.id;
         let socket_path = self.state_path.join(format!("{id}.sock"));
         let mut workers = self.workers.lock().await;
@@ -222,7 +220,6 @@ impl VmService for DefaultVmService {
                     cvm_agent_port,
                     spec,
                     socket_path,
-                    state,
                     zerossl_config: self.zerossl_config.clone(),
                     docker_credentials,
                 };
@@ -268,34 +265,6 @@ impl VmService for DefaultVmService {
         match workers.get(&id) {
             Some(worker) => {
                 worker.restart_vm().await;
-                Ok(())
-            }
-            None => {
-                error!("VM {id} is not being managed by any worker");
-                Err(VmNotManaged)
-            }
-        }
-    }
-
-    async fn disable_vm(&self, id: Uuid) -> Result<(), VmNotManaged> {
-        let workers = self.workers.lock().await;
-        match workers.get(&id) {
-            Some(worker) => {
-                worker.stop_vm().await;
-                Ok(())
-            }
-            None => {
-                error!("VM {id} is not being managed by any worker");
-                Err(VmNotManaged)
-            }
-        }
-    }
-
-    async fn enable_vm(&self, id: Uuid) -> Result<(), VmNotManaged> {
-        let workers = self.workers.lock().await;
-        match workers.get(&id) {
-            Some(worker) => {
-                worker.start_vm().await;
                 Ok(())
             }
             None => {
@@ -452,6 +421,6 @@ mod tests {
         builder.nilcc_api_client.expect_report_vm_event().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service.create_vm(workload, InitialVmState::Enabled).await.expect("failed to start");
+        ctx.service.create_vm(workload).await.expect("failed to start");
     }
 }
