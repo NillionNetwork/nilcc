@@ -8,7 +8,6 @@ use crate::{
         proxy::{ProxiedVm, ProxyService},
         vm::{StartVmError, VmService},
     },
-    workers::vm::InitialVmState,
 };
 use async_trait::async_trait;
 use nilcc_agent_models::workloads::create::CreateWorkloadRequest;
@@ -226,9 +225,14 @@ impl WorkloadService for DefaultWorkloadService {
         let mut repo = self.repository_provider.workloads(Default::default()).await?;
         let workloads = repo.list().await?;
         for workload in workloads {
-            info!("Starting existing workload {}", workload.id);
-            let initial_state = if workload.enabled { InitialVmState::Enabled } else { InitialVmState::Disabled };
-            self.vm_service.create_vm(workload, initial_state).await?;
+            let id = workload.id;
+            if workload.enabled {
+                info!("Starting existing workload {id}");
+                self.vm_service.create_vm(workload).await?;
+            } else {
+                info!("Not starting workload {id} because it's disabled");
+                continue;
+            }
         }
         Ok(())
     }
@@ -266,7 +270,7 @@ impl WorkloadService for DefaultWorkloadService {
 
         info!("Scheduling VM {id}");
         let proxied_vm = ProxiedVm::from(&workload);
-        self.vm_service.create_vm(workload, InitialVmState::Enabled).await?;
+        self.vm_service.create_vm(workload).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
         repo.commit().await?;
 
@@ -312,7 +316,7 @@ impl WorkloadService for DefaultWorkloadService {
             self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         } else {
             info!("Enabling workload {id}");
-            self.vm_service.enable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+            self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
             repo.set_enabled(id, true).await?;
             repo.commit().await?;
         }
@@ -327,7 +331,7 @@ impl WorkloadService for DefaultWorkloadService {
             return Ok(());
         }
         info!("Disabling workload {id}");
-        self.vm_service.disable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        self.vm_service.delete_vm(id).await;
         repo.set_enabled(id, false).await?;
         repo.commit().await?;
         Ok(())
@@ -340,8 +344,8 @@ impl WorkloadService for DefaultWorkloadService {
             info!("Workload {id} is already enabled");
             return Ok(());
         }
-        info!("Enabling workload {id}");
-        self.vm_service.enable_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        info!("Starting workload {id}");
+        self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         repo.set_enabled(id, true).await?;
         repo.commit().await?;
         Ok(())
@@ -573,12 +577,7 @@ mod tests {
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
         builder.repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder.repository.expect_commit().once().return_once(|| Ok(()));
-        builder
-            .vm_service
-            .expect_create_vm()
-            .with(eq(workload), eq(InitialVmState::Enabled))
-            .once()
-            .return_once(|_, _| Ok(()));
+        builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));
         builder
             .proxy_service
             .expect_start_vm_proxy()
