@@ -9,7 +9,7 @@ pub struct AgentConfig {
     pub vm_store: PathBuf,
 
     /// Confidential VM configuration.
-    pub cvm: CvmConfig,
+    pub cvm: CvmConfigs,
 
     /// Qemu configuration.
     pub qemu: QemuConfig,
@@ -44,6 +44,48 @@ pub struct AgentConfig {
     /// The optional TLS configuration.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
+pub enum CvmConfigs {
+    Explicit(CvmConfig),
+    BasePath {
+        // The base path where all configs are.
+        base_path: PathBuf,
+    },
+}
+
+impl TryInto<CvmConfig> for CvmConfigs {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<CvmConfig, Self::Error> {
+        match self {
+            Self::Explicit(config) => Ok(config),
+            Self::BasePath { base_path: path } => {
+                let build_cvm_files = |vm_type: &str| -> anyhow::Result<CvmFiles> {
+                    let verity_root_hash_path = path.join(format!("vm_images/cvm-{vm_type}-verity/root-hash"));
+                    let verity_root_hash = std::fs::read_to_string(&verity_root_hash_path)
+                        .context("Could not read verity hash")?
+                        .trim()
+                        .into();
+                    Ok(CvmFiles {
+                        kernel: path.join(format!("vm_images/kernel/{vm_type}-vmlinuz")),
+                        base_disk: path.join(format!("vm_images/cvm-{vm_type}.qcow2")),
+                        verity_disk: path.join(format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev")),
+                        verity_root_hash,
+                    })
+                };
+                Ok(CvmConfig {
+                    initrd: path.join("initramfs/initramfs.cpio.gz"),
+                    bios: path.join("vm_images/ovmf/OVMF.fd"),
+                    cpu: build_cvm_files("cpu")?,
+                    gpu: build_cvm_files("gpu")?,
+                })
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]

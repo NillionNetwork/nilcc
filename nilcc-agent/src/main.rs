@@ -226,7 +226,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: state_path.path().into(),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_config: config.cvm,
+        cvm_config: config.cvm.try_into().context("Reading CVM files")?,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
     })
@@ -316,7 +316,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_config: config.cvm,
+        cvm_config: config.cvm.try_into().context("Reading CVM files")?,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
     })
