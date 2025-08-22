@@ -14,9 +14,8 @@ KERNEL_DIR=$BUILD_DIR/kernel
 
 mkdir -p $INITRD_DIR $KERNEL_DIR
 
-KERNEL_DEB=$(ls $SCRIPT_PATH/../kernel/build/guest/linux-image-6.11.0-snp-guest-*.deb | grep -v 'dbg_6.11')
-[[ ${#KERNEL_DEB[@]} == 0 ]] && echo "Kernel not found, run 'kernel/build.sh guest' first" && exit 1
-[[ ${#KERNEL_DEB[@]} > 1 ]] && echo "More than one kernel package found, only one can be used" && exit 1
+KERNEL_DEB=$SCRIPT_PATH/../kernel/build/guest/linux-image.deb
+[[ ! -f "$KERNEL_DEB" ]] && echo "Kernel not found, run 'kernel/build.sh guest' first" && exit 1
 
 cp "$KERNEL_DEB" $KERNEL_DIR/kernel.deb
 

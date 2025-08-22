@@ -30,8 +30,12 @@ fi
 docker run --rm -v "$SCRIPT_PATH:/kernel" ubuntu:24.04 bash /kernel/docker_build.sh $1
 sudo chown -R $(whoami) $SCRIPT_PATH/build/
 
-cp $SCRIPT_PATH/build/$1/AMDSEV/linux/*.deb $SCRIPT_PATH/build/$1
+mv $SCRIPT_PATH/build/$1/AMDSEV/linux/linux-headers-* $SCRIPT_PATH/build/$1/linux-headers.deb
+mv $SCRIPT_PATH/build/$1/AMDSEV/linux/linux-image-*-dbg_* $SCRIPT_PATH/build/$1/linux-image-dbg.deb
+mv $SCRIPT_PATH/build/$1/AMDSEV/linux/linux-image-*_*.deb $SCRIPT_PATH/build/$1/linux-image.deb
+mv $SCRIPT_PATH/build/$1/AMDSEV/linux/linux-libc-dev* $SCRIPT_PATH/build/$1/linux-libc-dev.deb
+
 echo "Build finished, artifacts in build/$1"
 
 [[ ! -d $SCRIPT_PATH/../dist/kernel/$1 ]] && mkdir -p $SCRIPT_PATH/../dist/kernel/$1
-cp $SCRIPT_PATH/build/$1/AMDSEV/linux/*.deb "$SCRIPT_PATH/../dist/kernel/$1"
+cp $SCRIPT_PATH/build/$1/*.deb "$SCRIPT_PATH/../dist/kernel/$1"
