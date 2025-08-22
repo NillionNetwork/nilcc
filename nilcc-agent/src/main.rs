@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use axum_server::Handle;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -8,7 +8,7 @@ use nilcc_agent::{
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::{QemuClient, VmClient, VmDisplayMode},
     },
-    config::{AgentConfig, AgentMode},
+    config::{AgentConfig, AgentMode, CvmConfig},
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
     routes::{build_router, AppState, Clients, Services},
@@ -278,6 +278,11 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
+    let cvm_config: CvmConfig = config.cvm.try_into().context("Reading CVM files")?;
+    if system_resources.gpus.is_some() && cvm_config.gpu.is_none() {
+        bail!("machine has GPUs but has no configured GPU CVM files");
+    }
+
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let repository_provider = SqliteRepositoryProvider::new(db.clone());
     let proxied_vms = {
@@ -316,7 +321,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_config: config.cvm.try_into().context("Reading CVM files")?,
+        cvm_config,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
     })

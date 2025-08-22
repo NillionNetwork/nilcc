@@ -81,7 +81,7 @@ impl TryInto<CvmConfig> for CvmConfigs {
                     initrd: path.join("initramfs/initramfs.cpio.gz"),
                     bios: path.join("vm_images/ovmf/OVMF.fd"),
                     cpu: build_cvm_files("cpu")?,
-                    gpu: build_cvm_files("gpu")?,
+                    gpu: build_cvm_files("gpu").ok(),
                 })
             }
         }
@@ -100,7 +100,7 @@ pub struct CvmConfig {
     pub cpu: CvmFiles,
 
     /// The disk, kernel and verity files for the gpu cvm.
-    pub gpu: CvmFiles,
+    pub gpu: Option<CvmFiles>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -231,7 +231,11 @@ impl VmService for DefaultVmService {
     }
 
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError> {
-        let cvm_files = if workload.gpus.is_empty() { &self.cvm_config.cpu } else { &self.cvm_config.gpu };
+        let cvm_files = if workload.gpus.is_empty() {
+            &self.cvm_config.cpu
+        } else {
+            self.cvm_config.gpu.as_ref().expect("no gpu files")
+        };
         let (iso_path, docker_compose_hash) = self.create_application_iso(workload).await?;
         let state_disk = self.create_state_disk(workload).await?;
         let base_disk =
@@ -364,12 +368,7 @@ mod tests {
                         verity_disk: base_path.join("cpu-verity-disk"),
                         verity_root_hash: "cpu-root-hash".into(),
                     },
-                    gpu: CvmFiles {
-                        base_disk: base_path.join("gpu-base-disk"),
-                        kernel: base_path.join("gpu-kernel"),
-                        verity_disk: base_path.join("gpu-verity-disk"),
-                        verity_root_hash: "gpu-root-hash".into(),
-                    },
+                    gpu: None,
                 },
                 zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
                 docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
