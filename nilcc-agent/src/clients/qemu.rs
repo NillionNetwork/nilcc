@@ -384,9 +384,11 @@ impl VmClient for QemuClient {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::services::disk::{DefaultDiskService, DiskService};
-    use tokio::fs;
+    use tokio::{fs, time::sleep};
     use tracing_test::traced_test;
 
     fn make_client() -> QemuClient {
@@ -532,6 +534,11 @@ mod tests {
 
         // Start it and make sure it's running
         client.start_vm(&socket_path, spec).await.unwrap();
+        for _ in 0..50 {
+            if !socket_path.exists() {
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
         assert!(client.is_vm_running(&socket_path).await);
 
         // Stop is and make sure it's not running anymore.
