@@ -87,6 +87,9 @@ export class WorkloadEntity {
   @Column({ type: "int" })
   disk: number;
 
+  @Column({ type: "int" })
+  creditRate: number;
+
   @Column({ type: "varchar", default: "scheduled" })
   status: "scheduled" | "starting" | "running" | "stopped" | "error";
 

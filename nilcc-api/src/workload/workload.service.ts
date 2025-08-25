@@ -5,7 +5,9 @@ import type { Container } from "#/clients/nilcc-agent.client";
 import {
   AccessDenied,
   EntityNotFound,
+  InvalidWorkloadTier,
   NoInstancesAvailable,
+  NotEnoughCredits,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
@@ -20,11 +22,14 @@ import type {
   ListWorkloadEventsRequest,
   WorkloadEvent,
 } from "#/workload-event/workload-event.dto";
+import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
 import type {
   CreateWorkloadRequest,
   WorkloadSystemLogsRequest,
 } from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
+
+const MINIMUM_EXECUTION_DURATION: number = 5;
 
 export class WorkloadService {
   getRepository(
@@ -43,6 +48,30 @@ export class WorkloadService {
     account: AccountEntity,
     tx: QueryRunner,
   ): Promise<WorkloadEntity> {
+    const tier = await tx.manager.getRepository(WorkloadTierEntity).findOneBy({
+      cpus: request.cpus,
+      memory: request.memory,
+      disk: request.disk,
+      gpus: request.gpus,
+    });
+    if (tier === null) {
+      throw new InvalidWorkloadTier();
+    }
+    const repository = this.getRepository(bindings, tx);
+    // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
+    const totalAccountSpendRow = await repository
+      .createQueryBuilder("workload")
+      .where("workload.accountId = :accountId", { accountId: account.id })
+      .select("SUM(workload.creditRate) as sum")
+      .getRawOne();
+    const totalAccountSpend = Number(totalAccountSpendRow.sum || 0);
+    if (
+      (totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION >
+      account.credits
+    ) {
+      throw new NotEnoughCredits();
+    }
+
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(
         {
@@ -63,7 +92,6 @@ export class WorkloadService {
       metalInstances[Math.floor(Math.random() * metalInstances.length)];
 
     // Assign the first available metal instance to the workload
-    const repository = this.getRepository(bindings, tx);
     const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
     const now = new Date();
     const entity = repository.create({
@@ -76,6 +104,7 @@ export class WorkloadService {
       domain: request.domain,
       createdAt: now,
       updatedAt: now,
+      creditRate: tier.cost,
     });
     const createdWorkload = await repository.save(entity);
 

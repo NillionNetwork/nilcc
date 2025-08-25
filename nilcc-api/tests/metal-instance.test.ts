@@ -129,6 +129,16 @@ services:
       disk: 40,
       gpus: 0,
     };
+    await clients.admin
+      .createTier({
+        name: "tiny",
+        cost: 1,
+        cpus: 2,
+        gpus: 0,
+        memoryMb: 4,
+        diskGb: 40,
+      })
+      .submit();
     const workload = await clients.user
       .createWorkload(createWorkloadRequest)
       .submit();

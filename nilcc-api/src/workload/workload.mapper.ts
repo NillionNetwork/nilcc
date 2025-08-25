@@ -21,6 +21,7 @@ export const workloadMapper = {
       cpus: workload.cpus,
       gpus: workload.gpus,
       disk: workload.disk,
+      creditRate: workload.creditRate,
       status: workload.status,
       domain,
       metalInstanceDomain: `${workload.metalInstance.id}.${metalInstancesDomain}`,
