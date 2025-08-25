@@ -32,6 +32,10 @@ export const PathsV1 = {
     submit: PathSchema.parse("/api/v1/workload-events/submit"),
     list: PathSchema.parse("/api/v1/workload-events/list"),
   },
+  workloadTiers: {
+    create: PathSchema.parse("/api/v1/workload-tiers/create"),
+    list: PathSchema.parse("/api/v1/workload-tiers/list"),
+  },
   metalInstance: {
     register: PathSchema.parse("/api/v1/metal-instances/register"),
     heartbeat: PathSchema.parse("/api/v1/metal-instances/heartbeat"),

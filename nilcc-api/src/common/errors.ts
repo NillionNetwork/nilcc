@@ -1,5 +1,6 @@
 import type { ContentfulStatusCode } from "hono/dist/types/utils/http-status";
 import { StatusCodes } from "http-status-codes";
+import { QueryFailedError } from "typeorm";
 
 export abstract class AppError extends Error {
   kind = "INTERNAL";
@@ -67,13 +68,13 @@ export class EntityNotFound extends AppError {
   }
 }
 
-export class AccountAlreadyExists extends AppError {
-  override kind = "ACCOUNT_ALREADY_EXISTS";
+export class EntityAlreadyExists extends AppError {
+  override kind = "ALREADY_EXISTS";
   override statusCode: ContentfulStatusCode = StatusCodes.CONFLICT;
 
-  constructor() {
+  constructor(entity: string) {
     super();
-    this.description = "account already exists";
+    this.description = `${entity} already exists`;
   }
 }
 
@@ -85,4 +86,8 @@ export class AccessDenied extends AppError {
     super();
     this.description = "access denied";
   }
+}
+
+export function isUniqueConstraint(e: unknown): boolean {
+  return e instanceof QueryFailedError && e.driverError.code === "23505";
 }

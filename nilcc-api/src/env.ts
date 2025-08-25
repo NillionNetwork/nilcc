@@ -16,6 +16,7 @@ import {
   LocalStackDnsService,
   Route53DnsService,
 } from "./dns/dns.service";
+import { WorkloadTierService } from "./workload-tier/workload-tier.service";
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export const FeatureFlag = {
@@ -54,6 +55,7 @@ export type DnsServices = {
 export type AppServices = {
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
+  workloadTier: WorkloadTierService;
   account: AccountService;
   dns: DnsServices;
   nilccAgentClient: NilccAgentClient;
@@ -154,6 +156,7 @@ async function buildServices(
 
   const metalInstanceService = new MetalInstanceService();
   const workloadService = new WorkloadService();
+  const workloadTierService = new WorkloadTierService();
   const accountService = new AccountService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
@@ -165,6 +168,7 @@ async function buildServices(
   return {
     metalInstance: metalInstanceService,
     workload: workloadService,
+    workloadTier: workloadTierService,
     account: accountService,
     dns,
     nilccAgentClient,

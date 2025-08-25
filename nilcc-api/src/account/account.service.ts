@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
-import { QueryFailedError, type QueryRunner, type Repository } from "typeorm";
+import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
-import { AccountAlreadyExists } from "#/common/errors";
+import { EntityAlreadyExists, isUniqueConstraint } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import { AccountEntity } from "./account.entity";
 
@@ -28,8 +28,8 @@ export class AccountService {
         createdAt: new Date(),
       });
     } catch (e: unknown) {
-      if (e instanceof QueryFailedError && e.driverError.code === "23505") {
-        throw new AccountAlreadyExists();
+      if (isUniqueConstraint(e)) {
+        throw new EntityAlreadyExists("account");
       }
       throw e;
     }

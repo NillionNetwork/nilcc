@@ -19,9 +19,19 @@ export const OpenApiSpecCommonErrorResponses = {
   },
   401: {
     description: ReasonPhrases.UNAUTHORIZED,
+    content: {
+      "application/json": {
+        schema: resolver(ApiErrorResponse),
+      },
+    },
   },
   403: {
     description: ReasonPhrases.FORBIDDEN,
+    content: {
+      "application/json": {
+        schema: resolver(ApiErrorResponse),
+      },
+    },
   },
   404: {
     description: ReasonPhrases.NOT_FOUND,

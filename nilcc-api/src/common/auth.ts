@@ -3,6 +3,10 @@ import { Temporal } from "temporal-polyfill";
 import type { AppBindings } from "#/env";
 import type { ApiErrorResponse } from "./handler";
 
+export function adminOrUserAuthentication(bindings: AppBindings) {
+  return requireApiKey(bindings.config.adminApiKey);
+}
+
 export function adminAuthentication(bindings: AppBindings) {
   return requireApiKey(bindings.config.adminApiKey);
 }

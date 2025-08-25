@@ -12,6 +12,7 @@ import { Account1755033746208 } from "migrations/1755033746208-Account";
 import { WorkloadAccount1755195024670 } from "migrations/1755195024670-WorkloadAccount";
 import { WorkloadDomain1755621623214 } from "migrations/1755621623214-WorkloadDomain";
 import { DockerCredentials1755638110882 } from "migrations/1755638110882-DockerCredentials";
+import { Tiers1756136984989 } from "migrations/1756136984989-Tiers";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -20,6 +21,7 @@ import {
   WorkloadEventEntity,
 } from "#/workload/workload.entity";
 import { AccountEntity } from "./account/account.entity";
+import { WorkloadTierEntity } from "./workload-tier/workload-tier.entity";
 
 export async function buildDataSource(config: EnvVars): Promise<DataSource> {
   const dataSource = new DataSource({
@@ -30,6 +32,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       WorkloadEntity,
       MetalInstanceEntity,
       WorkloadEventEntity,
+      WorkloadTierEntity,
     ],
     subscribers: [NullToUndefinedSubscriber],
     // We can't use globs (e.g. `migrations/*.ts`) here because of some very reasonable problem with typescript
@@ -39,6 +42,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       WorkloadAccount1755195024670,
       WorkloadDomain1755621623214,
       DockerCredentials1755638110882,
+      Tiers1756136984989,
     ],
     synchronize: false,
     logging: false,
