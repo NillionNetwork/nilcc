@@ -56,7 +56,9 @@ export async function buildFixture(): Promise<TestFixture> {
     bindings,
     apiToken: bindings.config.adminApiKey,
   });
-  const account = await admin.createAccount("default account").submit();
+  const account = await admin
+    .createAccount({ name: "default account", credits: 1000 })
+    .submit();
   const clients = {
     admin,
     user: new UserClient({

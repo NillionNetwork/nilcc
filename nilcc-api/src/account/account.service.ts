@@ -1,8 +1,13 @@
 import * as crypto from "node:crypto";
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
-import { EntityAlreadyExists, isUniqueConstraint } from "#/common/errors";
+import {
+  EntityAlreadyExists,
+  EntityNotFound,
+  isUniqueConstraint,
+} from "#/common/errors";
 import type { AppBindings } from "#/env";
+import type { AddCreditsRequest, CreateAccountRequest } from "./account.dto";
 import { AccountEntity } from "./account.entity";
 
 const API_TOKEN_BYTE_LENGTH: number = 16;
@@ -18,14 +23,18 @@ export class AccountService {
     return bindings.dataSource.getRepository(AccountEntity);
   }
 
-  async create(bindings: AppBindings, name: string): Promise<AccountEntity> {
+  async create(
+    bindings: AppBindings,
+    request: CreateAccountRequest,
+  ): Promise<AccountEntity> {
     const repository = this.getRepository(bindings);
     try {
       return await repository.save({
         id: uuidv4(),
-        name,
+        name: request.name,
         apiToken: crypto.randomBytes(API_TOKEN_BYTE_LENGTH).toString("hex"),
         createdAt: new Date(),
+        credits: request.credits,
       });
     } catch (e: unknown) {
       if (isUniqueConstraint(e)) {
@@ -51,5 +60,19 @@ export class AccountService {
   async list(bindings: AppBindings): Promise<AccountEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
+  }
+
+  async addCredits(
+    bindings: AppBindings,
+    request: AddCreditsRequest,
+  ): Promise<AccountEntity> {
+    const repository = this.getRepository(bindings);
+    const account = await repository.findOneBy({ id: request.accountId });
+    if (account === null) {
+      throw new EntityNotFound("account");
+    }
+    account.credits += request.credits;
+    await repository.save(account);
+    return account;
   }
 }

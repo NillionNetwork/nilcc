@@ -16,6 +16,7 @@ export const PathsV1 = {
     create: PathSchema.parse("/api/v1/accounts/create"),
     list: PathSchema.parse("/api/v1/accounts/list"),
     read: PathSchema.parse("/api/v1/accounts/:id"),
+    addCredits: PathSchema.parse("/api/v1/accounts/add-credits"),
   },
   workload: {
     create: PathSchema.parse("/api/v1/workloads/create"),

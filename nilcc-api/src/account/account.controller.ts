@@ -7,7 +7,11 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { pathValidator, payloadValidator } from "#/common/zod-utils";
-import { Account, CreateAccountRequest } from "./account.dto";
+import {
+  Account,
+  AddCreditsRequest,
+  CreateAccountRequest,
+} from "./account.dto";
 import { accountMapper } from "./account.mapper";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -37,10 +41,7 @@ export function create(options: ControllerOptions) {
     payloadValidator(CreateAccountRequest),
     async (c) => {
       const payload = c.req.valid("json");
-      const account = await bindings.services.account.create(
-        bindings,
-        payload.name,
-      );
+      const account = await bindings.services.account.create(bindings, payload);
       return c.json(accountMapper.entityToResponse(account));
     },
   );
@@ -93,6 +94,39 @@ export function read(options: ControllerOptions) {
       if (!account) {
         throw new EntityNotFound("account");
       }
+      return c.json(accountMapper.entityToResponse(account));
+    },
+  );
+}
+
+export function addCredits(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.account.addCredits,
+    describeRoute({
+      tags: ["account"],
+      summary: "Add credits to an account.",
+      description: "This will add credits to the given account.",
+      responses: {
+        200: {
+          description: "The credits were added successfully",
+          content: {
+            "application/json": {
+              schema: resolver(Account),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    adminAuthentication(bindings),
+    payloadValidator(AddCreditsRequest),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const account = await bindings.services.account.addCredits(
+        bindings,
+        payload,
+      );
       return c.json(accountMapper.entityToResponse(account));
     },
   );

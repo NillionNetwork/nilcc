@@ -1,5 +1,5 @@
 import { type ZodType, z } from "zod";
-import { Account } from "#/account/account.dto";
+import { Account, type CreateAccountRequest } from "#/account/account.dto";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
@@ -125,10 +125,10 @@ export class AdminClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
-  createAccount(name: string): RequestPromise<Account> {
+  createAccount(request: CreateAccountRequest): RequestPromise<Account> {
     const promise = this.request(PathsV1.account.create, {
       method: "POST",
-      body: { name },
+      body: request,
     });
     return new RequestPromise(promise, Account);
   }
