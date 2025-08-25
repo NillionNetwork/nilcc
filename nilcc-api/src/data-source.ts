@@ -13,6 +13,7 @@ import { WorkloadAccount1755195024670 } from "migrations/1755195024670-WorkloadA
 import { WorkloadDomain1755621623214 } from "migrations/1755621623214-WorkloadDomain";
 import { DockerCredentials1755638110882 } from "migrations/1755638110882-DockerCredentials";
 import { Tiers1756136984989 } from "migrations/1756136984989-Tiers";
+import { AccountCredits1756146720184 } from "migrations/1756146720184-AccountCredits";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -43,6 +44,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       WorkloadDomain1755621623214,
       DockerCredentials1755638110882,
       Tiers1756136984989,
+      AccountCredits1756146720184,
     ],
     synchronize: false,
     logging: false,

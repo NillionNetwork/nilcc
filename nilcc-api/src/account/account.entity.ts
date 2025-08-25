@@ -12,6 +12,9 @@ export class AccountEntity {
   @Column({ type: "varchar", unique: true })
   apiToken: string;
 
+  @Column({ type: "int" })
+  credits: number;
+
   @OneToMany(
     () => WorkloadEntity,
     (workload) => workload.account,

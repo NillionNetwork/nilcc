@@ -185,7 +185,9 @@ services:
     bindings,
     clients,
   }) => {
-    const account = await clients.admin.createAccount("cross-account").submit();
+    const account = await clients.admin
+      .createAccount({ name: "cross-account", credits: 0 })
+      .submit();
     const client = new UserClient({
       app,
       bindings,

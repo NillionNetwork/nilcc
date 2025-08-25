@@ -8,6 +8,7 @@ export const accountMapper = {
       createdAt: account.createdAt.toISOString(),
       name: account.name,
       apiToken: account.apiToken,
+      credits: account.credits,
     };
   },
 };
