@@ -1,4 +1,5 @@
 import { describeRoute } from "hono-openapi";
+import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
 import { adminAuthentication } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
@@ -6,7 +7,7 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { pathValidator, payloadValidator } from "#/common/zod-utils";
-import { CreateAccountRequest } from "./account.dto";
+import { Account, CreateAccountRequest } from "./account.dto";
 import { accountMapper } from "./account.mapper";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
@@ -23,6 +24,11 @@ export function create(options: ControllerOptions) {
       responses: {
         200: {
           description: "Account created successfully",
+          content: {
+            "application/json": {
+              schema: resolver(Account),
+            },
+          },
         },
         ...OpenApiSpecCommonErrorResponses,
       },

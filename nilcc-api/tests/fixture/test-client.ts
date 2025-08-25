@@ -26,6 +26,10 @@ import {
   type ListWorkloadEventsRequest,
   ListWorkloadEventsResponse,
 } from "#/workload-event/workload-event.dto";
+import {
+  type CreateWorkloadTierRequest,
+  WorkloadTier,
+} from "#/workload-tier/workload-tier.dto";
 
 export type TestClientOptions = {
   app: App;
@@ -86,12 +90,13 @@ export class RequestPromise<T> {
 
   async submit(): Promise<T> {
     const response = await this.promise;
-    const body = await response.json();
     if (response.status !== 200) {
+      const body = await response.text();
       throw new Error(
-        `Request failed with status: ${response.status}: ${JSON.stringify(body)}`,
+        `Request failed with status: ${response.status}: ${body}`,
       );
     }
+    const body = await response.json();
     return this.schema.parse(body);
   }
 
@@ -140,6 +145,14 @@ export class AdminClient extends TestClient {
       method: "GET",
     });
     return new RequestPromise(promise, Account);
+  }
+
+  createTier(request: CreateWorkloadTierRequest): RequestPromise<WorkloadTier> {
+    const promise = this.request(PathsV1.workloadTiers.create, {
+      method: "POST",
+      body: request,
+    });
+    return new RequestPromise(promise, WorkloadTier);
   }
 }
 
@@ -226,6 +239,13 @@ export class UserClient extends TestClient {
       body,
     });
     return new RequestPromise(promise, WorkloadSystemLogsResponse);
+  }
+
+  listTiers(): RequestPromise<WorkloadTier[]> {
+    const promise = this.request(PathsV1.workloadTiers.list, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, WorkloadTier.array());
   }
 }
 
