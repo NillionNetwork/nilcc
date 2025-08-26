@@ -195,6 +195,36 @@ export class UserClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
+  restartWorkload(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workload.restart, {
+      method: "POST",
+      body: {
+        workloadId: id,
+      },
+    });
+    return new RequestPromise(promise, z.unknown());
+  }
+
+  stopWorkload(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workload.stop, {
+      method: "POST",
+      body: {
+        workloadId: id,
+      },
+    });
+    return new RequestPromise(promise, z.unknown());
+  }
+
+  startWorkload(id: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workload.start, {
+      method: "POST",
+      body: {
+        workloadId: id,
+      },
+    });
+    return new RequestPromise(promise, z.unknown());
+  }
+
   listEvents(workloadId: string): RequestPromise<ListWorkloadEventsResponse> {
     const body: ListWorkloadEventsRequest = { workloadId };
     const promise = this.request(PathsV1.workloadEvents.list, {

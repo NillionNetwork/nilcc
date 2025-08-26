@@ -22,6 +22,9 @@ import {
   DeleteWorkloadRequest,
   GetWorkloadResponse,
   ListWorkloadsResponse,
+  RestartWorkloadRequest,
+  StartWorkloadRequest,
+  StopWorkloadRequest,
   WorkloadSystemLogsRequest,
   WorkloadSystemLogsResponse,
 } from "./workload.dto";
@@ -184,6 +187,96 @@ export function remove(options: ControllerOptions): void {
     async (c) => {
       const workloadId = c.req.valid("json").workloadId;
       await bindings.services.workload.remove(
+        bindings,
+        workloadId,
+        c.get("account"),
+        c.get("txQueryRunner"),
+      );
+      return c.json({});
+    },
+  );
+}
+
+export function restart(options: ControllerOptions): void {
+  const { app, bindings } = options;
+
+  app.post(
+    PathsV1.workload.restart,
+    describeRoute({
+      tags: ["workload"],
+      summary: "Restart a workload",
+      description: "This endpoint restarts a workload.",
+      responses: {
+        200: OpenApiSpecEmptySuccessResponses[200],
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    userAuthentication(bindings),
+    payloadValidator(RestartWorkloadRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const workloadId = c.req.valid("json").workloadId;
+      await bindings.services.workload.restart(
+        bindings,
+        workloadId,
+        c.get("account"),
+        c.get("txQueryRunner"),
+      );
+      return c.json({});
+    },
+  );
+}
+
+export function stop(options: ControllerOptions): void {
+  const { app, bindings } = options;
+
+  app.post(
+    PathsV1.workload.stop,
+    describeRoute({
+      tags: ["workload"],
+      summary: "Stop a workload",
+      description: "This endpoint stops a workload.",
+      responses: {
+        200: OpenApiSpecEmptySuccessResponses[200],
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    userAuthentication(bindings),
+    payloadValidator(StopWorkloadRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const workloadId = c.req.valid("json").workloadId;
+      await bindings.services.workload.stop(
+        bindings,
+        workloadId,
+        c.get("account"),
+        c.get("txQueryRunner"),
+      );
+      return c.json({});
+    },
+  );
+}
+
+export function start(options: ControllerOptions): void {
+  const { app, bindings } = options;
+
+  app.post(
+    PathsV1.workload.start,
+    describeRoute({
+      tags: ["workload"],
+      summary: "Start a workload",
+      description: "This endpoint starts a workload.",
+      responses: {
+        200: OpenApiSpecEmptySuccessResponses[200],
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    userAuthentication(bindings),
+    payloadValidator(StartWorkloadRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const workloadId = c.req.valid("json").workloadId;
+      await bindings.services.workload.start(
         bindings,
         workloadId,
         c.get("account"),

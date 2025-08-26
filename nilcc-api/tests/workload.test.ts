@@ -239,6 +239,14 @@ services:
     expect(await client.logs(workload.workloadId).status()).toBe(401);
   });
 
+  it("should allow performing workload actions", async ({ clients }) => {
+    const workloads = await clients.user.listWorkloads().submit();
+    const workload = workloads[0];
+    await clients.user.restartWorkload(workload.workloadId).submit();
+    await clients.user.stopWorkload(workload.workloadId).submit();
+    await clients.user.startWorkload(workload.workloadId).submit();
+  });
+
   it("should not allow overcommitting credits", async ({ expect, clients }) => {
     const workloads = await clients.user.listWorkloads().submit();
     const totalUsage = workloads

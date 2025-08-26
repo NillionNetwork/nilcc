@@ -84,6 +84,12 @@ export class AccountService {
   ): Promise<void> {
     const accountCredits: Record<string, number> = {};
     for (const workload of workloads) {
+      if (workload.status === "stopped") {
+        bindings.log.debug(
+          `Ignoring workload ${workload.id} because it's stopped`,
+        );
+        continue;
+      }
       const existingCredits = accountCredits[workload.account.id];
       if (existingCredits === undefined) {
         accountCredits[workload.account.id] = workload.creditRate;
