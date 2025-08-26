@@ -17,7 +17,6 @@ export function metalInstanceAuthentication(bindings: AppBindings) {
 
 export function userAuthentication(bindings: AppBindings) {
   return async (c: Context, next: Next) => {
-    console.error(c.req.url);
     const apiToken = c.req.header("x-api-key");
     if (!apiToken) {
       return c.json(authError("no x-api-key header provided"), 401);
