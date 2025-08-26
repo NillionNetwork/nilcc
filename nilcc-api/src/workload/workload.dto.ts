@@ -166,6 +166,33 @@ export const DeleteWorkloadRequest = z
   .openapi({ ref: "DeleteWorkloadRequest" });
 export type DeleteWorkloadRequest = z.infer<typeof DeleteWorkloadRequest>;
 
+export const RestartWorkloadRequest = z
+  .object({
+    workloadId: Uuid.openapi({
+      description: "The identifier for the workload to be restarted.",
+    }),
+  })
+  .openapi({ ref: "RestartWorkloadRequest" });
+export type RestartWorkloadRequest = z.infer<typeof RestartWorkloadRequest>;
+
+export const StopWorkloadRequest = z
+  .object({
+    workloadId: Uuid.openapi({
+      description: "The identifier for the workload to be stopped.",
+    }),
+  })
+  .openapi({ ref: "StopWorkloadRequest" });
+export type StopWorkloadRequest = z.infer<typeof StopWorkloadRequest>;
+
+export const StartWorkloadRequest = z
+  .object({
+    workloadId: Uuid.openapi({
+      description: "The identifier for the workload to be started.",
+    }),
+  })
+  .openapi({ ref: "StartWorkloadRequest" });
+export type StartWorkloadRequest = z.infer<typeof StartWorkloadRequest>;
+
 export const GetWorkloadResponse = CreateWorkloadResponse.openapi({
   ref: "GetWorkloadResponse",
 });

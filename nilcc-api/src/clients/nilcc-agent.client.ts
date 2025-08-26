@@ -24,6 +24,21 @@ export interface NilccAgentClient {
     workloadId: string,
   ): Promise<void>;
 
+  restartWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void>;
+
+  stopWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void>;
+
+  startWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void>;
+
   containers(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
@@ -107,28 +122,28 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     metalInstance: MetalInstanceEntity,
     workloadId: string,
   ): Promise<void> {
-    const url = this.makeUrl(metalInstance, "/api/v1/workloads/delete");
+    await this.sendWorkloadAction(metalInstance, workloadId, "delete");
+  }
 
-    const request: DeleteWorkloadRequest = {
-      id: workloadId,
-    };
-    try {
-      this.log.info(
-        `Deleting workload ${workloadId} in agent ${metalInstance.id}`,
-      );
-      await this.post(url, request, metalInstance);
-    } catch (e: unknown) {
-      if (
-        e instanceof AgentRequestError &&
-        e.agentErrorKind === "WORKLOAD_NOT_FOUND"
-      ) {
-        this.log.warn(
-          `Attempted to delete workload ${workloadId} in agent ${metalInstance.id} but it didn't exist`,
-        );
-        return;
-      }
-      throw e;
-    }
+  async restartWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void> {
+    await this.sendWorkloadAction(metalInstance, workloadId, "restart");
+  }
+
+  async stopWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void> {
+    await this.sendWorkloadAction(metalInstance, workloadId, "stop");
+  }
+
+  async startWorkload(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<void> {
+    await this.sendWorkloadAction(metalInstance, workloadId, "start");
   }
 
   async containers(
@@ -223,6 +238,33 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     }
     return schema.parse(body) as z.infer<T>;
   }
+
+  async sendWorkloadAction(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+    action: string,
+  ): Promise<void> {
+    const url = this.makeUrl(metalInstance, `/api/v1/workloads/${action}`);
+
+    try {
+      const request: ActionRequest = { id: workloadId };
+      this.log.info(
+        `Applying ${action} action on workload ${workloadId} in agent ${metalInstance.id}`,
+      );
+      await this.post(url, request, metalInstance);
+    } catch (e: unknown) {
+      if (
+        e instanceof AgentRequestError &&
+        e.agentErrorKind === "WORKLOAD_NOT_FOUND"
+      ) {
+        this.log.warn(
+          `Attempted to ${action} workload ${workloadId} in agent ${metalInstance.id} but it didn't exist`,
+        );
+        return;
+      }
+      throw e;
+    }
+  }
 }
 
 type CreateWorkloadRequest = {
@@ -240,7 +282,7 @@ type CreateWorkloadRequest = {
   domain: string;
 };
 
-type DeleteWorkloadRequest = {
+type ActionRequest = {
   id: string;
 };
 
