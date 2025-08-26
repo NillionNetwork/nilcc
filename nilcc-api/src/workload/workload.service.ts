@@ -256,6 +256,8 @@ export class WorkloadService {
     }
     switch (request.event.kind) {
       case "starting":
+      case "vmRestarted":
+      case "forcedRestart":
         workload.status = "starting";
         break;
       case "running":
@@ -313,6 +315,12 @@ export class WorkloadService {
           break;
         case "stopped":
           details = { kind: "stopped" };
+          break;
+        case "vmRestarted":
+          details = { kind: "vmRestarted" };
+          break;
+        case "forcedRestart":
+          details = { kind: "forcedRestart" };
           break;
         case "failedToStart":
           details = { kind: "failedToStart", error: event.details || "" };

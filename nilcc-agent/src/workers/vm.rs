@@ -71,7 +71,7 @@ impl VmWorker {
                 spec,
                 socket_path,
                 receiver,
-                vm_state: VmState::Starting,
+                vm_state: Default::default(),
                 zerossl_config,
                 docker_credentials,
             };
@@ -156,10 +156,11 @@ impl VmWorker {
     }
 
     async fn restart_vm(&mut self) {
-        info!("Shutting down VM");
+        info!("Shutting down VM because we want an explicit restart");
+        self.submit_event(VmEvent::ForcedRestart).await;
         match self.vm_client.stop_vm(&self.socket_path, true).await {
             Ok(_) => {
-                info!("VM is stopped and will be brought up on next tick");
+                self.start_vm().await;
             }
             Err(QemuClientError::VmNotRunning) => {
                 warn!("VM was not running and will be started on next tick");
@@ -174,7 +175,7 @@ impl VmWorker {
     async fn handle_tick(&mut self) {
         if !self.vm_client.is_vm_running(&self.socket_path).await {
             warn!("VM is no longer running, starting it again");
-            self.submit_event(VmEvent::Stopped).await;
+            self.submit_event(VmEvent::VmRestarted).await;
             self.start_vm().await;
             return;
         }
@@ -232,7 +233,10 @@ impl VmWorker {
     }
 }
 
+#[derive(Default)]
 enum VmState {
+    #[default]
+    Unknown,
     Starting,
     Running,
     Stopped,

@@ -125,7 +125,14 @@ export class WorkloadEventEntity {
   workload: WorkloadEntity;
 
   @Column({ type: "varchar" })
-  event: "created" | "starting" | "running" | "stopped" | "failedToStart";
+  event:
+    | "created"
+    | "starting"
+    | "running"
+    | "stopped"
+    | "vmRestarted"
+    | "forcedRestart"
+    | "failedToStart";
 
   @Column({ type: "varchar", nullable: true })
   details?: string;

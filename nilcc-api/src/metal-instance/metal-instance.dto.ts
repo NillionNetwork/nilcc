@@ -74,6 +74,8 @@ export const WorkloadEventKind = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("created") }),
   z.object({ kind: z.literal("starting") }),
   z.object({ kind: z.literal("stopped") }),
+  z.object({ kind: z.literal("vmRestarted") }),
+  z.object({ kind: z.literal("forcedRestart") }),
   z.object({ kind: z.literal("running") }),
   z.object({ kind: z.literal("failedToStart"), error: z.string() }),
 ]);

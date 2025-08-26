@@ -33,6 +33,8 @@ pub enum VmEvent {
     Starting,
     Running,
     Stopped,
+    ForcedRestart,
+    VmRestarted,
     FailedToStart { error: String },
 }
 
