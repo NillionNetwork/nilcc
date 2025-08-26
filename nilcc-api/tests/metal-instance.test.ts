@@ -1,6 +1,7 @@
 import { describe } from "vitest";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type { CreateWorkloadRequest } from "#/workload/workload.dto";
+import type { MockTimeService } from "./fixture/fixture";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("Metal Instance", () => {
@@ -86,6 +87,7 @@ describe("Metal Instance", () => {
   });
 
   it("should update the last seen timestamp after a heartbeat", async ({
+    bindings,
     expect,
     clients,
   }) => {
@@ -94,18 +96,19 @@ describe("Metal Instance", () => {
       .submit();
     const lastSeen = new Date(instance.lastSeenAt);
 
-    // sleep for a little bit and send a heartbeat
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Move the clock forward by a bit
+    const timeService = bindings.services.time as MockTimeService;
+    timeService.advance(1);
     await clients.metalInstance
       .heartbeat(myMetalInstance.metalInstanceId)
       .submit();
 
-    // now the last seen timestamp should be larger
+    // now the last seen timestamp should have moved the same amount
     const updatedInstance = await clients.admin
       .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
     const currentLastSeen = new Date(updatedInstance.lastSeenAt);
-    expect(currentLastSeen.getTime()).toBeGreaterThan(lastSeen.getTime());
+    expect(currentLastSeen.getTime()).toBe(lastSeen.getTime() + 1000);
   });
 
   it("should allow deleting metal instances", async ({ expect, clients }) => {

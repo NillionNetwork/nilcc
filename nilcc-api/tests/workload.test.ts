@@ -4,6 +4,7 @@ import type {
   CreateWorkloadRequest,
   CreateWorkloadResponse,
 } from "#/workload/workload.dto";
+import type { MockTimeService } from "./fixture/fixture";
 import { createTestFixtureExtension } from "./fixture/it";
 import { UserClient } from "./fixture/test-client";
 
@@ -294,5 +295,56 @@ services:
         })
         .status(),
     ).toBe(200);
+  });
+
+  it("should subtract credits on heartbeat", async ({
+    app,
+    bindings,
+    expect,
+    clients,
+  }) => {
+    let otherAccount = await clients.admin
+      .createAccount({ name: "heartbeat-account", credits: 1500 })
+      .submit();
+    const client = new UserClient({
+      app,
+      bindings,
+      apiToken: otherAccount.apiToken,
+    });
+    await client.createWorkload(createWorkloadRequest).submit();
+
+    const workloads = await clients.user.listWorkloads().submit();
+    const creditRate = workloads
+      .map((w) => w.creditRate)
+      .reduce((a, b) => a + b, 0);
+    const account = await clients.admin
+      .getAccount(workloads[0].accountId)
+      .submit();
+    const timeService = bindings.services.time as MockTimeService;
+    timeService.advance(61);
+
+    // Heartbeat once, this should subtract the credit rate.
+    await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId)
+      .submit();
+    const updatedAccount = await clients.admin
+      .getAccount(workloads[0].accountId)
+      .submit();
+    expect(updatedAccount.credits).toBe(account.credits - creditRate);
+
+    // Heartbeat again, this shouldn't do anything.
+    await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId)
+      .submit();
+    const latestAccount = await clients.admin
+      .getAccount(workloads[0].accountId)
+      .submit();
+    expect(latestAccount.credits).toBe(updatedAccount.credits);
+
+    otherAccount = await clients.admin
+      .getAccount(otherAccount.accountId)
+      .submit();
+    // should be the original minus 1 credit taken by the one workload we're running
+    expect(otherAccount.credits).toBe(1500 - 1);
   });
 });

@@ -93,7 +93,7 @@ export class WorkloadService {
 
     // Assign the first available metal instance to the workload
     const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
-    const now = new Date();
+    const now = bindings.services.time.getTime();
     const entity = repository.create({
       ...request,
       serviceToExpose: request.publicContainerName,
@@ -112,7 +112,7 @@ export class WorkloadService {
       id: uuidv4(),
       workload: entity,
       event: "created",
-      timestamp: new Date(),
+      timestamp: now,
     };
     await eventRepository.save(event);
 
@@ -217,7 +217,7 @@ export class WorkloadService {
       workload,
       event: request.event.kind,
       details,
-      timestamp: new Date(),
+      timestamp: bindings.services.time.getTime(),
     };
     await workloadRepository.save(workload);
     await eventRepository.save(event);

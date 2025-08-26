@@ -58,8 +58,13 @@ export type AppServices = {
   workloadTier: WorkloadTierService;
   account: AccountService;
   dns: DnsServices;
+  time: TimeService;
   nilccAgentClient: NilccAgentClient;
 };
+
+export interface TimeService {
+  getTime(): Date;
+}
 
 export type AppBindings = {
   config: EnvVars;
@@ -164,6 +169,11 @@ async function buildServices(
     config.metalInstancesEndpointPort,
     log,
   );
+  const timeService = new (class {
+    getTime(): Date {
+      return new Date();
+    }
+  })();
 
   return {
     metalInstance: metalInstanceService,
@@ -171,6 +181,7 @@ async function buildServices(
     workloadTier: workloadTierService,
     account: accountService,
     dns,
+    time: timeService,
     nilccAgentClient,
   };
 }

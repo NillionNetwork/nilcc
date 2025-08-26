@@ -76,17 +76,22 @@ export class MetalInstanceService {
     request: HeartbeatRequest,
     tx: QueryRunner,
   ) {
-    const metalInstance = await this.read(
-      bindings,
-      request.metalInstanceId,
-      tx,
-    );
-    if (metalInstance === null) {
+    const repository = this.getRepository(bindings, tx);
+    const instances = await repository.find({
+      where: { id: request.metalInstanceId },
+      relations: ["workloads", "workloads.account"],
+    });
+    if (instances.length === 0) {
       throw new EntityNotFound("metal instance");
     }
-    const repository = this.getRepository(bindings, tx);
-    metalInstance.lastSeenAt = new Date();
-    await repository.save(metalInstance);
+    const now = bindings.services.time.getTime();
+    const instance = instances[0];
+    if (now.getTime() - instance.lastSeenAt.getTime() > 60 * 1000) {
+      bindings.services.account.deductCredits(bindings, instance.workloads, tx);
+    }
+    instance.lastSeenAt = now;
+
+    await repository.save(instance);
   }
 
   async findWithFreeResources(
@@ -105,7 +110,7 @@ export class MetalInstanceService {
       .where(
         "EXTRACT(EPOCH FROM (:now - metalInstance.lastSeenAt)) < :threshold",
         {
-          now: new Date(),
+          now: bindings.services.time.getTime(),
           threshold: bindings.config.metalInstancesIdleThresholdSeconds,
         },
       )
@@ -138,6 +143,7 @@ export class MetalInstanceService {
     tx: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
+    const now = bindings.services.time.getTime();
     currentMetalInstance.agentVersion = metalInstance.agentVersion;
     currentMetalInstance.hostname = metalInstance.hostname;
     currentMetalInstance.token = metalInstance.token;
@@ -153,8 +159,8 @@ export class MetalInstanceService {
 
     currentMetalInstance.gpus = metalInstance.gpus;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
-    currentMetalInstance.updatedAt = new Date();
-    currentMetalInstance.lastSeenAt = new Date();
+    currentMetalInstance.updatedAt = now;
+    currentMetalInstance.lastSeenAt = now;
     await repository.save(currentMetalInstance);
   }
 
@@ -164,7 +170,7 @@ export class MetalInstanceService {
     tx: QueryRunner,
   ) {
     const repository = this.getRepository(bindings, tx);
-    const now = new Date();
+    const now = bindings.services.time.getTime();
     const newMetalInstance = repository.create({
       id: request.metalInstanceId,
       agentVersion: request.agentVersion,

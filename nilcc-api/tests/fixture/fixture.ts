@@ -4,7 +4,12 @@ import type { Hono } from "hono";
 import { type Logger, pino } from "pino";
 import { DataSource } from "typeorm";
 import { buildApp } from "#/app";
-import { type AppBindings, type AppEnv, loadBindings } from "#/env";
+import {
+  type AppBindings,
+  type AppEnv,
+  loadBindings,
+  type TimeService,
+} from "#/env";
 import { AdminClient, MetalInstanceClient, UserClient } from "./test-client";
 
 export type TestClients = {
@@ -19,6 +24,22 @@ export type TestFixture = {
   bindings: AppBindings;
   clients: TestClients;
 };
+
+export class MockTimeService implements TimeService {
+  private time: Date;
+
+  constructor() {
+    this.time = new Date();
+  }
+
+  getTime(): Date {
+    return this.time;
+  }
+
+  advance(seconds: number): void {
+    this.time.setTime(this.time.getTime() + seconds * 1000);
+  }
+}
 
 function createTestLogger(id: string): Logger {
   return pino({
@@ -47,6 +68,7 @@ export async function buildFixture(): Promise<TestFixture> {
   const bindings = (await loadBindings({
     dbUri: thisDescribeDBUri,
   })) as AppBindings;
+  bindings.services.time = new MockTimeService();
 
   log.info("Creating app");
   const { app } = await buildApp(bindings);
