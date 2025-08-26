@@ -39,4 +39,13 @@ describe("Account", () => {
     const details = await clients.admin.getAccount(account.accountId).submit();
     expect(details).toEqual(account);
   });
+
+  it("should allow self lookups", async ({ expect, clients }) => {
+    const me = await clients.user.myAccount().submit();
+    const account = await clients.admin.getAccount(me.accountId).submit();
+
+    const expected: Record<string, unknown> = { ...account };
+    delete expected.apiToken;
+    expect(me).toEqual(expected);
+  });
 });

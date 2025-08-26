@@ -1,5 +1,9 @@
 import { type ZodType, z } from "zod";
-import { Account, type CreateAccountRequest } from "#/account/account.dto";
+import {
+  Account,
+  type CreateAccountRequest,
+  TrimmedAccount,
+} from "#/account/account.dto";
 import type { App } from "#/app";
 import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
@@ -246,6 +250,13 @@ export class UserClient extends TestClient {
       method: "GET",
     });
     return new RequestPromise(promise, WorkloadTier.array());
+  }
+
+  myAccount(): RequestPromise<TrimmedAccount> {
+    const promise = this.request(PathsV1.account.me, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, TrimmedAccount);
   }
 }
 
