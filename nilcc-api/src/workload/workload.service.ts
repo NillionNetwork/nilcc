@@ -194,6 +194,10 @@ export class WorkloadService {
     if (workload === null) {
       throw new EntityNotFound("workload");
     }
+    // Don't allow restarting if we don't have enough credits
+    if (account.credits === 0) {
+      throw new NotEnoughCredits();
+    }
 
     await bindings.services.nilccAgentClient.restartWorkload(
       workload.metalInstance,
@@ -213,6 +217,10 @@ export class WorkloadService {
     ]);
     if (workload === null) {
       throw new EntityNotFound("workload");
+    }
+    // Don't allow starting if we don't have enough credits
+    if (account.credits === 0) {
+      throw new NotEnoughCredits();
     }
 
     await bindings.services.nilccAgentClient.startWorkload(
