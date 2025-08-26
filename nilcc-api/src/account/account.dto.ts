@@ -20,6 +20,11 @@ export const Account = z
   });
 export type Account = z.infer<typeof Account>;
 
+export const TrimmedAccount = Account.omit({ apiToken: true }).openapi({
+  ref: "TrimmedAccount",
+});
+export type TrimmedAccount = z.infer<typeof TrimmedAccount>;
+
 export const CreateAccountRequest = z
   .object({
     name: z.string(),
@@ -39,3 +44,13 @@ export const AddCreditsRequest = z
     ref: "AddCreditsRequest",
   });
 export type AddCreditsRequest = z.infer<typeof AddCreditsRequest>;
+
+export const AccountCreditsResponse = z
+  .object({
+    accountId: z.string(),
+    credits: z.number(),
+  })
+  .openapi({
+    ref: "AccountCreditsResponse",
+  });
+export type AccountCreditsResponse = z.infer<typeof AccountCreditsResponse>;

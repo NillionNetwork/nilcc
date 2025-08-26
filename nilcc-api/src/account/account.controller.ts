@@ -1,7 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
-import { adminAuthentication } from "#/common/auth";
+import { adminAuthentication, userAuthentication } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
@@ -11,6 +11,7 @@ import {
   Account,
   AddCreditsRequest,
   CreateAccountRequest,
+  TrimmedAccount,
 } from "./account.dto";
 import { accountMapper } from "./account.mapper";
 
@@ -82,6 +83,11 @@ export function read(options: ControllerOptions) {
       responses: {
         200: {
           description: "The account information was retrieved successfully",
+          content: {
+            "application/json": {
+              schema: resolver(Account),
+            },
+          },
         },
         ...OpenApiSpecCommonErrorResponses,
       },
@@ -95,6 +101,35 @@ export function read(options: ControllerOptions) {
         throw new EntityNotFound("account");
       }
       return c.json(accountMapper.entityToResponse(account));
+    },
+  );
+}
+
+export function me(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.get(
+    PathsV1.account.me,
+    describeRoute({
+      tags: ["account"],
+      summary: "Get information about the user's account.",
+      description: "This endpoint returns information about the account.",
+      responses: {
+        200: {
+          description: "The account information was retrieved successfully",
+          content: {
+            "application/json": {
+              schema: resolver(TrimmedAccount),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    userAuthentication(bindings),
+    async (c) => {
+      const account = c.get("account");
+      const outputAccount = accountMapper.entityToResponse(account);
+      return c.json(TrimmedAccount.parse(outputAccount));
     },
   );
 }

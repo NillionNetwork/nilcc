@@ -4,6 +4,7 @@ import * as AccountController from "./account.controller";
 export function buildAccountRouter(options: ControllerOptions): void {
   AccountController.create(options);
   AccountController.list(options);
+  AccountController.me(options);
   AccountController.read(options);
   AccountController.addCredits(options);
 }
