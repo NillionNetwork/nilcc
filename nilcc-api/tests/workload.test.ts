@@ -34,9 +34,9 @@ services:
     ],
     publicContainerName: "app",
     publicContainerPort: 80,
-    memory: 4,
-    cpus: 2,
-    disk: 40,
+    memory: 1024,
+    cpus: 1,
+    disk: 10,
     gpus: 0,
   };
 
@@ -65,6 +65,16 @@ services:
     expect,
     clients,
   }) => {
+    await clients.admin
+      .createTier({
+        name: "tiny",
+        cost: 1,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 10,
+      })
+      .submit();
     const status = await clients.user
       .createWorkload(createWorkloadRequest)
       .status();
@@ -84,14 +94,33 @@ services:
     expect(workload.metalInstanceDomain).equals(
       `${myMetalInstance.metalInstanceId}.agents.private.localhost`,
     );
+    expect(workload.creditRate).toBe(1);
     // store it for other tests to re-use it
     myWorkload = workload;
+  });
+
+  it("should not be allowed to create a workload without a matching tier", async ({
+    expect,
+    clients,
+  }) => {
+    const request = { ...createWorkloadRequest, cpus: 5, memory: 13 };
+    expect(await clients.user.createWorkload(request).status()).toBe(400);
   });
 
   it("should fail to create a workload if it doesn't fit in the metal instance", async ({
     expect,
     clients,
   }) => {
+    await clients.admin
+      .createTier({
+        name: "not so tiny",
+        cost: 2,
+        cpus: 63,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 10,
+      })
+      .submit();
     const overloadedWorkloadRequest = {
       ...createWorkloadRequest,
       cpus: 63, // Exceeding the available CPU
@@ -167,9 +196,9 @@ services:
       domain: "foo.com",
       publicContainerName: "app",
       publicContainerPort: 80,
-      memory: 4,
-      cpus: 2,
-      disk: 40,
+      memory: 1024,
+      cpus: 1,
+      disk: 10,
       gpus: 0,
     };
     const workload = await clients.user
@@ -207,5 +236,63 @@ services:
       await client.containerLogs(workload.workloadId, "foo").status(),
     ).toBe(401);
     expect(await client.logs(workload.workloadId).status()).toBe(401);
+  });
+
+  it("should not allow overcommitting credits", async ({ expect, clients }) => {
+    const workloads = await clients.user.listWorkloads().submit();
+    const totalUsage = workloads
+      .map((w) => w.creditRate)
+      .reduce((a, b) => a + b, 0);
+    const account = await clients.admin
+      .getAccount(workloads[0].accountId)
+      .submit();
+    // Compute how much is the maximum credits we can spend per minute
+    const maxCredits = Math.floor((account.credits - totalUsage * 5) / 5);
+    // Create 2 tiers: one with that value + 1 (too expensive), and another one with that value
+    await clients.admin
+      .createTier({
+        name: "too-expensive",
+        cost: maxCredits + 1,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 11,
+      })
+      .submit();
+    await clients.admin
+      .createTier({
+        name: "not-too-expensive",
+        cost: maxCredits,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 12,
+      })
+      .submit();
+
+    // The too expensive one should fail
+    expect(
+      await clients.user
+        .createWorkload({
+          ...createWorkloadRequest,
+          cpus: 1,
+          gpus: 0,
+          memory: 1024,
+          disk: 11,
+        })
+        .status(),
+    ).toBe(412);
+    // The other one should not
+    expect(
+      await clients.user
+        .createWorkload({
+          ...createWorkloadRequest,
+          cpus: 1,
+          gpus: 0,
+          memory: 1024,
+          disk: 12,
+        })
+        .status(),
+    ).toBe(200);
   });
 });

@@ -132,6 +132,9 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   workloadId: Uuid.openapi({
     description: "The identifier for this workload.",
   }),
+  creditRate: z.number().openapi({
+    description: "The rate of credits burned by this workload per minute.",
+  }),
   status: z
     .enum(["scheduled", "starting", "running", "stopped", "error"])
     .openapi({ description: "The status of the workload." }),

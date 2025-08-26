@@ -35,6 +35,16 @@ export class InvalidDockerCompose extends AppError {
   override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
 }
 
+export class InvalidWorkloadTier extends AppError {
+  override kind = "INVALID_WORKLOAD_TIER";
+  override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
+}
+
+export class NotEnoughCredits extends AppError {
+  override kind = "NOT_ENOUGH_CREDITS";
+  override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
+}
+
 export class AgentRequestError extends AppError {
   override kind = "AGENT_COMMUNICATION";
   agentErrorKind: string;
