@@ -102,6 +102,9 @@ export class AccountService {
         bindings.log.error(`Account ${account.id} was not in map`);
         continue;
       }
+      bindings.log.info(
+        `Deducting ${delta} credits from account ${account.id}`,
+      );
       account.credits = Math.max(0, account.credits - delta);
     }
     await repository.save(accounts);
