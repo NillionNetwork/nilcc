@@ -81,7 +81,7 @@ export class AccountService {
     bindings: AppBindings,
     workloads: WorkloadEntity[],
     tx: QueryRunner,
-  ): Promise<void> {
+  ): Promise<WorkloadEntity[]> {
     const accountCredits: Record<string, number> = {};
     for (const workload of workloads) {
       if (workload.status === "stopped") {
@@ -102,6 +102,7 @@ export class AccountService {
     const accounts = await repository.findBy({
       id: In(Object.keys(accountCredits)),
     });
+    const offenders = [];
     for (const account of accounts) {
       const delta = accountCredits[account.id];
       if (delta === undefined) {
@@ -112,7 +113,19 @@ export class AccountService {
         `Deducting ${delta} credits from account ${account.id}`,
       );
       account.credits = Math.max(0, account.credits - delta);
+      if (account.credits === 0) {
+        const accountWorkloads = workloads.filter(
+          (w) => w.account.id === account.id && w.status !== "stopped",
+        );
+        if (accountWorkloads.length > 0) {
+          bindings.log.info(
+            `Need to shutdown ${accountWorkloads.length} workloads for account ${account.id} because it no longer has credits`,
+          );
+          offenders.push(...accountWorkloads);
+        }
+      }
     }
     await repository.save(accounts);
+    return offenders;
   }
 }
