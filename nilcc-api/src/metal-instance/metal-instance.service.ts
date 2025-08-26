@@ -90,7 +90,30 @@ export class MetalInstanceService {
       bindings.log.info(
         `Need to deduct credits for ${instance.workloads.length} workloads running on agent ${instance.id}`,
       );
-      bindings.services.account.deductCredits(bindings, instance.workloads, tx);
+      const offendingWorkloads = await bindings.services.account.deductCredits(
+        bindings,
+        instance.workloads,
+        tx,
+      );
+      if (offendingWorkloads.length > 0) {
+        bindings.log.info(
+          `Have ${offendingWorkloads.length} offending workloads that need to be shutdown`,
+        );
+        try {
+          for (const workload of offendingWorkloads) {
+            bindings.services.workload.stop(
+              bindings,
+              workload.id,
+              workload.account,
+              tx,
+            );
+          }
+        } catch (error: unknown) {
+          bindings.log.error(
+            `Failed to stop workloads: ${JSON.stringify(error)}`,
+          );
+        }
+      }
     }
     instance.lastSeenAt = now;
 
