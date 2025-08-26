@@ -29,7 +29,7 @@ export class MockTimeService implements TimeService {
   private time: Date;
 
   constructor() {
-    this.time = new Date();
+    this.time = new Date(1756227743000);
   }
 
   getTime(): Date {

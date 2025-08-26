@@ -84,9 +84,9 @@ export class MetalInstanceService {
     if (instances.length === 0) {
       throw new EntityNotFound("metal instance");
     }
-    const now = bindings.services.time.getTime();
     const instance = instances[0];
-    if (now.getTime() - instance.lastSeenAt.getTime() > 60 * 1000) {
+    const now = bindings.services.time.getTime();
+    if (now.getMinutes() !== instance.lastSeenAt.getMinutes()) {
       bindings.log.info(
         `Need to deduct credits for ${instance.workloads.length} workloads running on agent ${instance.id}`,
       );
