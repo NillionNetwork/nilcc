@@ -38,11 +38,14 @@ export class InvalidDockerCompose extends AppError {
 export class InvalidWorkloadTier extends AppError {
   override kind = "INVALID_WORKLOAD_TIER";
   override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
+  override description =
+    "no matching workload tier for the requested resources";
 }
 
 export class NotEnoughCredits extends AppError {
   override kind = "NOT_ENOUGH_CREDITS";
   override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
+  override description = "not enough credits in account to run workload";
 }
 
 export class AgentRequestError extends AppError {

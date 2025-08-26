@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import type { QueryRunner, Repository } from "typeorm";
+import { In, type QueryRunner, type Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import {
   EntityAlreadyExists,
@@ -7,6 +7,7 @@ import {
   isUniqueConstraint,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
+import type { WorkloadEntity } from "#/workload/workload.entity";
 import type { AddCreditsRequest, CreateAccountRequest } from "./account.dto";
 import { AccountEntity } from "./account.entity";
 
@@ -74,5 +75,35 @@ export class AccountService {
     account.credits += request.credits;
     await repository.save(account);
     return account;
+  }
+
+  async deductCredits(
+    bindings: AppBindings,
+    workloads: WorkloadEntity[],
+    tx: QueryRunner,
+  ): Promise<void> {
+    const accountCredits: Record<string, number> = {};
+    for (const workload of workloads) {
+      const existingCredits = accountCredits[workload.account.id];
+      if (existingCredits === undefined) {
+        accountCredits[workload.account.id] = workload.creditRate;
+      } else {
+        accountCredits[workload.account.id] =
+          existingCredits + workload.creditRate;
+      }
+    }
+    const repository = this.getRepository(bindings, tx);
+    const accounts = await repository.findBy({
+      id: In(Object.keys(accountCredits)),
+    });
+    for (const account of accounts) {
+      const delta = accountCredits[account.id];
+      if (delta === undefined) {
+        bindings.log.error(`Account ${account.id} was not in map`);
+        continue;
+      }
+      account.credits = Math.max(0, account.credits - delta);
+    }
+    await repository.save(accounts);
   }
 }
