@@ -1,10 +1,11 @@
 use crate::{
     clients::{
         cvm_agent::CvmAgentClient,
-        nilcc_api::{NilccApiClient, VmEvent},
+        nilcc_api::VmEvent,
         qemu::{QemuClientError, VmClient, VmSpec},
     },
     config::ZeroSslConfig,
+    workers::events::EventSender,
 };
 use cvm_agent_models::bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials};
 use metrics::{counter, gauge};
@@ -24,19 +25,18 @@ const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 pub(crate) struct VmWorkerArgs {
     pub(crate) workload_id: Uuid,
     pub(crate) vm_client: Arc<dyn VmClient>,
-    pub(crate) nilcc_api_client: Arc<dyn NilccApiClient>,
     pub(crate) cvm_agent_client: Arc<dyn CvmAgentClient>,
     pub(crate) cvm_agent_port: u16,
     pub(crate) spec: VmSpec,
     pub(crate) socket_path: PathBuf,
     pub(crate) zerossl_config: ZeroSslConfig,
     pub(crate) docker_credentials: Vec<DockerCredentials>,
+    pub(crate) event_sender: EventSender,
 }
 
 pub(crate) struct VmWorker {
     workload_id: Uuid,
     vm_client: Arc<dyn VmClient>,
-    nilcc_api_client: Arc<dyn NilccApiClient>,
     cvm_agent_client: Arc<dyn CvmAgentClient>,
     cvm_agent_port: u16,
     spec: VmSpec,
@@ -45,6 +45,7 @@ pub(crate) struct VmWorker {
     vm_state: VmState,
     zerossl_config: ZeroSslConfig,
     docker_credentials: Vec<DockerCredentials>,
+    event_sender: EventSender,
 }
 
 impl VmWorker {
@@ -52,20 +53,19 @@ impl VmWorker {
         let VmWorkerArgs {
             workload_id,
             vm_client,
-            nilcc_api_client,
             spec,
             socket_path,
             cvm_agent_client,
             cvm_agent_port,
             zerossl_config,
             docker_credentials,
+            event_sender,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
             let worker = VmWorker {
                 workload_id,
                 vm_client,
-                nilcc_api_client,
                 cvm_agent_client,
                 cvm_agent_port,
                 spec,
@@ -74,6 +74,7 @@ impl VmWorker {
                 vm_state: Default::default(),
                 zerossl_config,
                 docker_credentials,
+                event_sender,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -231,10 +232,7 @@ impl VmWorker {
     }
 
     async fn submit_event(&self, event: VmEvent) {
-        info!("Submitting event to API");
-        if let Err(e) = self.nilcc_api_client.report_vm_event(self.workload_id, event).await {
-            error!("Failed to submit event to API: {e:#}");
-        }
+        self.event_sender.send_event(self.workload_id, event).await;
     }
 }
 

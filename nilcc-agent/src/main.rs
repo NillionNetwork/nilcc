@@ -22,7 +22,7 @@ use nilcc_agent::{
         workload::{DefaultWorkloadService, WorkloadService, WorkloadServiceArgs},
     },
     version,
-    workers::heartbeat::HeartbeatWorker,
+    workers::{events::EventWorker, heartbeat::HeartbeatWorker},
 };
 use nilcc_artifacts::{ArtifactsDownloader, VmType};
 use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
@@ -220,15 +220,16 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin.clone()));
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
+    let event_sender = EventWorker::spawn(nilcc_api_client);
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client: vm_client.clone(),
-        nilcc_api_client,
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: state_path.path().into(),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         cvm_config: config.cvm.try_into().context("Reading CVM files")?,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
+        event_sender,
     })
     .await?;
     let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
@@ -315,15 +316,16 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
     system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
+    let event_sender = EventWorker::spawn(nilcc_api_client);
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client,
-        nilcc_api_client,
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
         cvm_config,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
+        event_sender,
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
