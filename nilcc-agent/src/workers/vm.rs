@@ -93,7 +93,11 @@ impl VmWorker {
                     let Some(command) = command else {
                         break;
                     };
+                    let needs_break = matches!(command, WorkerCommand::Delete);
                     self.handle_command(command).await;
+                    if needs_break {
+                        break;
+                    }
                 }
 
                 _ = ticker.tick() => {
