@@ -268,6 +268,9 @@ export class WorkloadService {
       case "forcedRestart":
         workload.status = "starting";
         break;
+      case "awaitingCert":
+        workload.status = "awaitingCert";
+        break;
       case "running":
         workload.status = "running";
         break;
@@ -311,28 +314,10 @@ export class WorkloadService {
     }
     return workload.events.map((event) => {
       let details: WorkloadEventKind;
-      switch (event.event) {
-        case "created":
-          details = { kind: "created" };
-          break;
-        case "starting":
-          details = { kind: "starting" };
-          break;
-        case "running":
-          details = { kind: "running" };
-          break;
-        case "stopped":
-          details = { kind: "stopped" };
-          break;
-        case "vmRestarted":
-          details = { kind: "vmRestarted" };
-          break;
-        case "forcedRestart":
-          details = { kind: "forcedRestart" };
-          break;
-        case "failedToStart":
-          details = { kind: "failedToStart", error: event.details || "" };
-          break;
+      if (event.event === "failedToStart") {
+        details = { kind: "failedToStart", error: event.details || "" };
+      } else {
+        details = { kind: event.event };
       }
       return {
         eventId: event.id,

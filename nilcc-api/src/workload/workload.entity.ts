@@ -91,7 +91,13 @@ export class WorkloadEntity {
   creditRate: number;
 
   @Column({ type: "varchar", default: "scheduled" })
-  status: "scheduled" | "starting" | "running" | "stopped" | "error";
+  status:
+    | "scheduled"
+    | "starting"
+    | "awaitingCert"
+    | "running"
+    | "stopped"
+    | "error";
 
   @ManyToOne(
     () => MetalInstanceEntity,
@@ -128,6 +134,7 @@ export class WorkloadEventEntity {
   event:
     | "created"
     | "starting"
+    | "awaitingCert"
     | "running"
     | "stopped"
     | "vmRestarted"

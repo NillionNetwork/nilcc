@@ -136,7 +136,14 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
     description: "The rate of credits burned by this workload per minute.",
   }),
   status: z
-    .enum(["scheduled", "starting", "running", "stopped", "error"])
+    .enum([
+      "scheduled",
+      "starting",
+      "awaitingCert",
+      "running",
+      "stopped",
+      "error",
+    ])
     .openapi({ description: "The status of the workload." }),
   createdAt: z.string().datetime().openapi({
     description: "The timestamp at which this workload was created.",
