@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryColumn } from "typeorm";
 
-@Entity()
+@Entity({ name: "workload_tiers" })
 export class WorkloadTierEntity {
   @PrimaryColumn({ type: "uuid" })
   id: string;

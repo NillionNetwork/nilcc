@@ -61,7 +61,7 @@ export class WorkloadService {
     // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
     const totalAccountSpendRow = await repository
       .createQueryBuilder("workload")
-      .where("workload.accountId = :accountId", { accountId: account.id })
+      .where("workload.account_id = :accountId", { accountId: account.id })
       .select("SUM(workload.creditRate) as sum")
       .getRawOne();
     const totalAccountSpend = Number(totalAccountSpendRow.sum || 0);
@@ -96,8 +96,8 @@ export class WorkloadService {
     const now = bindings.services.time.getTime();
     const entity = repository.create({
       ...request,
-      serviceToExpose: request.publicContainerName,
-      servicePortToExpose: request.publicContainerPort,
+      publicContainerName: request.publicContainerName,
+      publicContainerPort: request.publicContainerPort,
       id: uuidv4(),
       metalInstance,
       account,

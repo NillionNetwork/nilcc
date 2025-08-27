@@ -1,10 +1,13 @@
+import type { NamingStrategyInterface } from "typeorm";
 import {
+  DefaultNamingStrategy,
   type EntityMetadata,
   type EntitySubscriberInterface,
   EventSubscriber,
   type InsertEvent,
   type LoadEvent,
 } from "typeorm";
+import { snakeCase } from "typeorm/util/StringUtils";
 import "reflect-metadata";
 import type { Context, Next } from "hono";
 import { InitialState1754946297570 } from "migrations/1754946297570-InitialState";
@@ -15,6 +18,7 @@ import { DockerCredentials1755638110882 } from "migrations/1755638110882-DockerC
 import { Tiers1756136984989 } from "migrations/1756136984989-Tiers";
 import { AccountCredits1756146720184 } from "migrations/1756146720184-AccountCredits";
 import { WorkloadCreditRate1756151064011 } from "migrations/1756151064011-WorkloadTier";
+import { BigRename1756308586154 } from "migrations/1756308586154-BigRename";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -47,10 +51,12 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       Tiers1756136984989,
       AccountCredits1756146720184,
       WorkloadCreditRate1756151064011,
+      BigRename1756308586154,
     ],
     synchronize: false,
     logging: false,
     migrationsRun: true,
+    namingStrategy: new SnakeNamingStrategy(),
   });
 
   return dataSource;
@@ -109,3 +115,55 @@ export class NullToUndefinedSubscriber implements EntitySubscriberInterface {
     }
   }
 }
+
+// Taken from https://github.com/tonivj5/typeorm-naming-strategies
+export class SnakeNamingStrategy
+  extends DefaultNamingStrategy
+  implements NamingStrategyInterface
+{
+  override tableName(className: string, customName?: string) {
+    return customName || snakeCase(className);
+  }
+
+  override columnName(
+    propertyName: string,
+    customName: string | undefined,
+    embeddedPrefixes: string[],
+  ) {
+    return (
+      snakeCase(embeddedPrefixes.concat("").join("_")) +
+      (customName || snakeCase(propertyName))
+    );
+  }
+
+  override relationName(propertyName: string) {
+    return snakeCase(propertyName);
+  }
+
+  override joinColumnName(relationName: string, referencedColumnName: string) {
+    return snakeCase(`${relationName}_${referencedColumnName}`);
+  }
+
+  override joinTableName(
+    firstTableName: string,
+    secondTableName: string,
+    firstPropertyName: string,
+  ) {
+    return snakeCase(
+      `${firstTableName}_${firstPropertyName.replace(
+        /\./g,
+        "_",
+      )}_${secondTableName}`,
+    );
+  }
+
+  override joinTableColumnName(
+    tableName: string,
+    propertyName: string,
+    columnName?: string,
+  ) {
+    return snakeCase(`${tableName}_${columnName || propertyName}`);
+  }
+}
+
+export default SnakeNamingStrategy;

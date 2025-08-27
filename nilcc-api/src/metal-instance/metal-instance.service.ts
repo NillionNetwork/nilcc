@@ -143,15 +143,15 @@ export class MetalInstanceService {
       .leftJoin("metalInstance.workloads", "workload")
       .groupBy("metalInstance.id")
       .having(
-        "metalInstance.totalCpus - metalInstance.osReservedCpus - COALESCE(SUM(workload.cpus), 0) > :requiredCpus",
+        "metalInstance.totalCpus - metalInstance.reservedCpus - COALESCE(SUM(workload.cpus), 0) > :requiredCpus",
         { requiredCpus: param.cpus },
       )
       .andHaving(
-        "metalInstance.totalMemory - metalInstance.osReservedMemory - COALESCE(SUM(workload.memory), 0) > :requiredMemory",
+        "metalInstance.totalMemory - metalInstance.reservedMemory - COALESCE(SUM(workload.memory), 0) > :requiredMemory",
         { requiredMemory: param.memory },
       )
       .andHaving(
-        "metalInstance.totalDisk - metalInstance.osReservedDisk - COALESCE(SUM(workload.disk), 0) > :requiredDisk",
+        "metalInstance.totalDisk - metalInstance.reservedDisk - COALESCE(SUM(workload.disk), 0) > :requiredDisk",
         { requiredDisk: param.disk },
       )
       .andHaving(
@@ -175,13 +175,13 @@ export class MetalInstanceService {
     currentMetalInstance.token = metalInstance.token;
 
     currentMetalInstance.totalCpus = metalInstance.cpus.total;
-    currentMetalInstance.osReservedCpus = metalInstance.cpus.reserved;
+    currentMetalInstance.reservedCpus = metalInstance.cpus.reserved;
 
     currentMetalInstance.totalMemory = metalInstance.memoryMb.total;
-    currentMetalInstance.osReservedMemory = metalInstance.memoryMb.reserved;
+    currentMetalInstance.reservedMemory = metalInstance.memoryMb.reserved;
 
     currentMetalInstance.totalDisk = metalInstance.diskSpaceGb.total;
-    currentMetalInstance.osReservedDisk = metalInstance.diskSpaceGb.reserved;
+    currentMetalInstance.reservedDisk = metalInstance.diskSpaceGb.reserved;
 
     currentMetalInstance.gpus = metalInstance.gpus;
     currentMetalInstance.gpuModel = metalInstance.gpuModel;
@@ -204,11 +204,11 @@ export class MetalInstanceService {
       publicIp: request.publicIp,
       hostname: request.hostname,
       totalCpus: request.cpus.total,
-      osReservedCpus: request.cpus.reserved,
+      reservedCpus: request.cpus.reserved,
       totalMemory: request.memoryMb.total,
-      osReservedMemory: request.memoryMb.reserved,
+      reservedMemory: request.memoryMb.reserved,
       totalDisk: request.diskSpaceGb.total,
-      osReservedDisk: request.diskSpaceGb.reserved,
+      reservedDisk: request.diskSpaceGb.reserved,
       gpus: request.gpus,
       gpuModel: request.gpuModel,
       createdAt: now,

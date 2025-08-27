@@ -4,7 +4,7 @@ import { AccountEntity } from "#/account/account.entity";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import type { DockerCredentials } from "./workload.dto";
 
-@Entity()
+@Entity({ name: "workloads" })
 export class WorkloadEntity {
   @PrimaryColumn({ type: "uuid" })
   id: string;
@@ -70,10 +70,10 @@ export class WorkloadEntity {
   domain?: string;
 
   @Column({ type: "varchar" })
-  serviceToExpose: string;
+  publicContainerName: string;
 
   @Column({ type: "int" })
-  servicePortToExpose: number;
+  publicContainerPort: number;
 
   @Column({ type: "int" })
   memory: number;
@@ -112,7 +112,7 @@ export class WorkloadEntity {
   updatedAt: Date;
 }
 
-@Entity()
+@Entity({ name: "workload_events" })
 export class WorkloadEventEntity {
   @PrimaryColumn({ type: "uuid" })
   id: string;
