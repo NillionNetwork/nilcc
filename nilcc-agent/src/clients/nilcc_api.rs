@@ -31,6 +31,7 @@ pub trait NilccApiClient: Send + Sync {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum VmEvent {
     Starting,
+    AwaitingCert,
     Running,
     Stopped,
     ForcedRestart,

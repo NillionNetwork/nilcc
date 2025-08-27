@@ -205,6 +205,7 @@ impl VmWorker {
                             warn!("Failed to bootstrap agent: {e:#}");
                             return;
                         }
+                        self.submit_event(VmEvent::AwaitingCert).await;
                         info!("CVM agent is bootstrapped");
                     }
                     if response.https {
