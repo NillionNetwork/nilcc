@@ -219,14 +219,14 @@ export type WorkloadSystemLogsRequest = z.infer<
   typeof WorkloadSystemLogsRequest
 >;
 
-export const SystemStatsRequest = z
+export const StatsRequest = z
   .object({
     workloadId: Uuid.openapi({
       description: "The identifier for the workload to get system stats from.",
     }),
   })
-  .openapi({ ref: "SystemStatsRequest" });
-export type SystemStatsRequest = z.infer<typeof SystemStatsRequest>;
+  .openapi({ ref: "StatsRequest" });
+export type StatsRequest = z.infer<typeof StatsRequest>;
 
 export const WorkloadSystemLogsResponse = z
   .object({

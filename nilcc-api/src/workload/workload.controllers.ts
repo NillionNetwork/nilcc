@@ -1,7 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
-import { SystemStatsResponse } from "#/clients/nilcc-agent.client";
+import { SystemStatsResponse as StatsResponse } from "#/clients/nilcc-agent.client";
 import { userAuthentication } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import {
@@ -25,8 +25,8 @@ import {
   ListWorkloadsResponse,
   RestartWorkloadRequest,
   StartWorkloadRequest,
+  StatsRequest,
   StopWorkloadRequest,
-  SystemStatsRequest,
   WorkloadSystemLogsRequest,
   WorkloadSystemLogsResponse,
 } from "./workload.dto";
@@ -328,7 +328,7 @@ export function systemLogs(options: ControllerOptions) {
   );
 }
 
-export function systemStats(options: ControllerOptions) {
+export function stats(options: ControllerOptions) {
   const { app, bindings } = options;
   app.post(
     PathsV1.workload.logs,
@@ -342,7 +342,7 @@ export function systemStats(options: ControllerOptions) {
           description: "The system stats",
           content: {
             "application/json": {
-              schema: resolver(SystemStatsResponse),
+              schema: resolver(StatsResponse),
             },
           },
         },
@@ -350,9 +350,9 @@ export function systemStats(options: ControllerOptions) {
       },
     }),
     userAuthentication(bindings),
-    payloadValidator(SystemStatsRequest),
+    payloadValidator(StatsRequest),
     transactionMiddleware(bindings.dataSource),
-    responseValidator(bindings, SystemStatsResponse),
+    responseValidator(bindings, StatsResponse),
     async (c) => {
       const payload = c.req.valid("json");
       const response = await bindings.services.workload.systemStats(

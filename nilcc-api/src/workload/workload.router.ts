@@ -10,4 +10,5 @@ export function buildWorkloadRouter(options: ControllerOptions): void {
   WorkloadController.stop(options);
   WorkloadController.start(options);
   WorkloadController.systemLogs(options);
+  WorkloadController.stats(options);
 }
