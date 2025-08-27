@@ -28,7 +28,7 @@ import type {
 import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
 import type {
   CreateWorkloadRequest,
-  SystemStatsRequest,
+  StatsRequest,
   WorkloadSystemLogsRequest,
 } from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
@@ -356,7 +356,7 @@ export class WorkloadService {
 
   async systemStats(
     bindings: AppBindings,
-    request: SystemStatsRequest,
+    request: StatsRequest,
     account: AccountEntity,
     tx: QueryRunner,
   ): Promise<SystemStatsResponse> {
