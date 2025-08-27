@@ -331,7 +331,7 @@ export function systemLogs(options: ControllerOptions) {
 export function stats(options: ControllerOptions) {
   const { app, bindings } = options;
   app.post(
-    PathsV1.workload.logs,
+    PathsV1.workload.stats,
     describeRoute({
       tags: ["workload"],
       summary: "Get the system stats for a workload",
