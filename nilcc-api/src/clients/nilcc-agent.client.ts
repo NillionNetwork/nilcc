@@ -393,7 +393,7 @@ export const SystemStatsResponse = z.object({
   disks: z
     .object({
       name: z.string().openapi({ description: "The name of this disk." }),
-      mount_point: z
+      mountPoint: z
         .string()
         .openapi({ description: "The mount point for this disk." }),
       filesystem: z.string().openapi({ description: "The filesystem type." }),
