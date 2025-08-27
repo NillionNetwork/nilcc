@@ -1,7 +1,7 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from "typeorm";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
-@Entity()
+@Entity({ name: "metal_instances" })
 export class MetalInstanceEntity {
   @PrimaryColumn({ type: "uuid" })
   id: string;
@@ -22,19 +22,19 @@ export class MetalInstanceEntity {
   totalMemory: number;
 
   @Column({ type: "int" })
-  osReservedMemory: number;
+  reservedMemory: number;
 
   @Column({ type: "int" })
   totalCpus: number;
 
   @Column({ type: "int" })
-  osReservedCpus: number;
+  reservedCpus: number;
 
   @Column({ type: "int" })
   totalDisk: number;
 
   @Column({ type: "int" })
-  osReservedDisk: number;
+  reservedDisk: number;
 
   @Column({ type: "int" })
   gpus: number;

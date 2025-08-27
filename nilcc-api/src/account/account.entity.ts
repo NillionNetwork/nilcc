@@ -1,7 +1,7 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from "typeorm";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
-@Entity()
+@Entity({ name: "accounts" })
 export class AccountEntity {
   @PrimaryColumn({ type: "varchar" })
   id: string;

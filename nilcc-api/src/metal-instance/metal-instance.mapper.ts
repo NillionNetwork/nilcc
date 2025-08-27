@@ -11,15 +11,15 @@ export const metalInstanceMapper = {
       publicIp: metalInstance.publicIp,
       memoryMb: {
         total: metalInstance.totalMemory,
-        reserved: metalInstance.osReservedMemory,
+        reserved: metalInstance.reservedMemory,
       },
       cpus: {
         total: metalInstance.totalCpus,
-        reserved: metalInstance.osReservedCpus,
+        reserved: metalInstance.reservedCpus,
       },
       diskSpaceGb: {
         total: metalInstance.totalDisk,
-        reserved: metalInstance.osReservedDisk,
+        reserved: metalInstance.reservedDisk,
       },
       metalInstanceId: metalInstance.id,
       gpus: metalInstance.gpus,
