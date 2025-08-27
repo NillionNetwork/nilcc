@@ -55,6 +55,11 @@ export interface NilccAgentClient {
     workloadId: string,
     request: SystemLogsRequest,
   ): Promise<Array<string>>;
+
+  systemStats(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<SystemStatsResponse>;
 }
 
 export class DefaultNilccAgentClient implements NilccAgentClient {
@@ -198,6 +203,20 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     );
     const response = await this.get(url, metalInstance, LogsResponse);
     return response.lines;
+  }
+
+  async systemStats(
+    metalInstance: MetalInstanceEntity,
+    workloadId: string,
+  ): Promise<SystemStatsResponse> {
+    const url = this.makeUrl(
+      metalInstance,
+      `/api/v1/workloads/${workloadId}/system/stats`,
+    );
+    this.log.info(
+      `Looking up stats for workload ${workloadId} in agent ${metalInstance.id}`,
+    );
+    return await this.get(url, metalInstance, SystemStatsResponse);
   }
 
   async post(
@@ -349,6 +368,46 @@ export const SystemLogsRequest = z.object({
     .openapi({ description: "The maximum number of lines to get." }),
 });
 export type SystemLogsRequest = z.infer<typeof SystemLogsRequest>;
+
+export const SystemStatsResponse = z.object({
+  memory: z
+    .object({
+      total: z.number().openapi({ description: "The total memory in bytes." }),
+      used: z
+        .number()
+        .openapi({ description: "The total used memory, in bytes." }),
+    })
+    .openapi({ description: "Memory stats." }),
+  cpus: z
+    .object({
+      name: z.string().openapi({ description: "The CPU name." }),
+      usage: z
+        .number()
+        .openapi({ description: "The CPU usage, as a percentage." }),
+      frequency: z
+        .number()
+        .openapi({ description: "The CPU frequency, in MHz." }),
+    })
+    .openapi({ description: "CPU stats." })
+    .array(),
+  disks: z
+    .object({
+      name: z.string().openapi({ description: "The name of this disk." }),
+      mount_point: z
+        .string()
+        .openapi({ description: "The mount point for this disk." }),
+      filesystem: z.string().openapi({ description: "The filesystem type." }),
+      size: z
+        .number()
+        .openapi({ description: "The total size of this disk, in bytes." }),
+      used: z
+        .number()
+        .openapi({ description: "The used space in this disk, in bytes." }),
+    })
+    .openapi({ description: "Disk stats." })
+    .array(),
+});
+export type SystemStatsResponse = z.infer<typeof SystemStatsResponse>;
 
 const LogsResponse = z.object({ lines: z.string().array() });
 

@@ -179,10 +179,10 @@ pub mod stats {
     #[derive(Deserialize, Serialize)]
     #[serde(rename_all = "kebab-case")]
     pub struct MemoryStats {
-        /// The total memory in the CVM.
+        /// The total memory in the CVM, in bytes.
         pub total: u64,
 
-        /// The total used memory.
+        /// The total used memory, in bytes.
         pub used: u64,
     }
 
@@ -213,10 +213,10 @@ pub mod stats {
         /// The type of filesystem.
         pub filesystem: String,
 
-        /// The total size of this disk.
+        /// The total size of this disk, in bytes.
         pub size: u64,
 
-        /// The used space this disk.
+        /// The used space this disk, in bytes.
         pub used: u64,
     }
 }

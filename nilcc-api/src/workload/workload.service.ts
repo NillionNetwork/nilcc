@@ -1,7 +1,10 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
-import type { Container } from "#/clients/nilcc-agent.client";
+import type {
+  Container,
+  SystemStatsResponse,
+} from "#/clients/nilcc-agent.client";
 import {
   AccessDenied,
   EntityNotFound,
@@ -25,6 +28,7 @@ import type {
 import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
 import type {
   CreateWorkloadRequest,
+  SystemStatsRequest,
   WorkloadSystemLogsRequest,
 } from "./workload.dto";
 import { WorkloadEntity, WorkloadEventEntity } from "./workload.entity";
@@ -347,6 +351,28 @@ export class WorkloadService {
       workload.metalInstance,
       workload.id,
       request,
+    );
+  }
+
+  async systemStats(
+    bindings: AppBindings,
+    request: SystemStatsRequest,
+    account: AccountEntity,
+    tx: QueryRunner,
+  ): Promise<SystemStatsResponse> {
+    const repository = this.getRepository(bindings, tx);
+    const workload = await this.findWorkload(
+      repository,
+      request.workloadId,
+      account,
+      ["metalInstance"],
+    );
+    if (workload === null) {
+      throw new EntityNotFound("workload");
+    }
+    return await bindings.services.nilccAgentClient.systemStats(
+      workload.metalInstance,
+      workload.id,
     );
   }
 
