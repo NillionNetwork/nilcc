@@ -25,6 +25,7 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/workloads/:id"),
     delete: PathSchema.parse("/api/v1/workloads/delete"),
     logs: PathSchema.parse("/api/v1/workloads/logs"),
+    stats: PathSchema.parse("/api/v1/workloads/stats"),
     restart: PathSchema.parse("/api/v1/workloads/restart"),
     start: PathSchema.parse("/api/v1/workloads/start"),
     stop: PathSchema.parse("/api/v1/workloads/stop"),

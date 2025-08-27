@@ -1,6 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import z from "zod";
+import { SystemStatsResponse } from "#/clients/nilcc-agent.client";
 import { userAuthentication } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import {
@@ -25,6 +26,7 @@ import {
   RestartWorkloadRequest,
   StartWorkloadRequest,
   StopWorkloadRequest,
+  SystemStatsRequest,
   WorkloadSystemLogsRequest,
   WorkloadSystemLogsResponse,
 } from "./workload.dto";
@@ -321,6 +323,44 @@ export function systemLogs(options: ControllerOptions) {
       );
 
       const response: WorkloadSystemLogsResponse = { lines };
+      return c.json(response);
+    },
+  );
+}
+
+export function systemStats(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workload.logs,
+    describeRoute({
+      tags: ["workload"],
+      summary: "Get the system stats for a workload",
+      description:
+        "This endpoint retrieves the system stats (CPU, memory, disk, etc) for a workload.",
+      responses: {
+        200: {
+          description: "The system stats",
+          content: {
+            "application/json": {
+              schema: resolver(SystemStatsResponse),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    userAuthentication(bindings),
+    payloadValidator(SystemStatsRequest),
+    transactionMiddleware(bindings.dataSource),
+    responseValidator(bindings, SystemStatsResponse),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const response = await bindings.services.workload.systemStats(
+        bindings,
+        payload,
+        c.get("account"),
+        c.get("txQueryRunner"),
+      );
       return c.json(response);
     },
   );
