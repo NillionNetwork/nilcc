@@ -1,9 +1,9 @@
 use crate::version::agent_version;
 use crate::{config::ApiConfig, resources::SystemResources};
-use anyhow::{bail, Context};
+use anyhow::Context;
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use std::net::Ipv4Addr;
 use tracing::info;
@@ -18,13 +18,13 @@ pub trait NilccApiClient: Send + Sync {
         config: &ApiConfig,
         resources: &SystemResources,
         public_ip: Ipv4Addr,
-    ) -> anyhow::Result<()>;
+    ) -> Result<(), NilccApiError>;
 
     /// Report an event that occurred for a VM.
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()>;
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError>;
 
     /// Send a heartbeat to the API.
-    async fn heartbeat(&self) -> anyhow::Result<()>;
+    async fn heartbeat(&self) -> Result<(), NilccApiError>;
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -68,22 +68,17 @@ impl HttpNilccApiClient {
         Ok(Self { client, api_base_url, agent_id })
     }
 
-    async fn send_request<T>(&self, method: Method, url: String, payload: &T) -> anyhow::Result<()>
+    async fn send_request<T>(&self, method: Method, url: String, payload: &T) -> Result<(), NilccApiError>
     where
         T: Serialize,
     {
-        let response = self
-            .client
-            .request(method, url)
-            .json(&payload)
-            .send()
-            .await
-            .context("Failed to send registration request")?;
-
+        let response = self.client.request(method, url).json(&payload).send().await?;
         if response.status().is_success() {
             Ok(())
         } else {
-            bail!("Request failed: status={}, error={}", response.status(), response.text().await.unwrap_or_default());
+            let status = response.status();
+            let message = response.text().await.unwrap_or_default();
+            Err(NilccApiError::Api { status, message })
         }
     }
 
@@ -93,6 +88,15 @@ impl HttpNilccApiClient {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum NilccApiError {
+    #[error("http: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("API error: status={status}, message={message}")]
+    Api { status: StatusCode, message: String },
+}
+
 #[async_trait]
 impl NilccApiClient for HttpNilccApiClient {
     async fn register(
@@ -100,7 +104,7 @@ impl NilccApiClient for HttpNilccApiClient {
         api_config: &ApiConfig,
         resources: &SystemResources,
         public_ip: Ipv4Addr,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), NilccApiError> {
         let url = self.make_url("/api/v1/metal-instances/register");
         let payload = RegisterRequest {
             id: self.agent_id,
@@ -114,19 +118,19 @@ impl NilccApiClient for HttpNilccApiClient {
             gpus: resources.gpus.as_ref().map(|g| g.addresses.len() as u32).unwrap_or_default(),
             gpu_model: resources.gpus.as_ref().map(|g| g.model.clone()),
         };
-        self.send_request(Method::POST, url, &payload).await.context("Failed to register agent")
+        self.send_request(Method::POST, url, &payload).await
     }
 
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError> {
         let url = self.make_url("/api/v1/workload-events/submit");
         let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
-        self.send_request(Method::POST, url, &payload).await.context("Failed to submit event")
+        self.send_request(Method::POST, url, &payload).await
     }
 
-    async fn heartbeat(&self) -> anyhow::Result<()> {
+    async fn heartbeat(&self) -> Result<(), NilccApiError> {
         let url = self.make_url("/api/v1/metal-instances/heartbeat");
         let payload = HeartbeatRequest { id: self.agent_id };
-        self.send_request(Method::POST, url, &payload).await.context("Failed to submit heartbeat")
+        self.send_request(Method::POST, url, &payload).await
     }
 }
 
@@ -139,17 +143,17 @@ impl NilccApiClient for DummyNilccApiClient {
         _api_config: &ApiConfig,
         resources: &SystemResources,
         public_ip: Ipv4Addr,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), NilccApiError> {
         info!("Registering with resources: {resources:?} and public IP: {public_ip}");
         Ok(())
     }
 
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> anyhow::Result<()> {
+    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError> {
         info!("Reporting VM event for {workload_id}: {event:?}");
         Ok(())
     }
 
-    async fn heartbeat(&self) -> anyhow::Result<()> {
+    async fn heartbeat(&self) -> Result<(), NilccApiError> {
         info!("Reporting heartbeat");
         Ok(())
     }

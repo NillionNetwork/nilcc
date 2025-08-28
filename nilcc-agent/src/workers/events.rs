@@ -1,10 +1,11 @@
-use crate::clients::nilcc_api::{NilccApiClient, VmEvent};
+use crate::clients::nilcc_api::{NilccApiClient, NilccApiError, VmEvent};
+use reqwest::StatusCode;
 use std::{sync::Arc, time::Duration};
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     time::sleep,
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(1);
@@ -41,6 +42,10 @@ impl EventWorker {
             info!("Sending event for workload {workload_id}");
             match self.client.report_vm_event(workload_id, event.clone()).await {
                 Ok(_) => return,
+                Err(NilccApiError::Api { status, .. }) if status == StatusCode::NOT_FOUND => {
+                    warn!("API returned 404 for workload {workload_id} event, ignoring");
+                    return;
+                }
                 Err(e) => {
                     error!("Failed to report event for workload {workload_id}: {e:#}");
                     sleep(RETRY_INTERVAL).await;
