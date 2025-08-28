@@ -91,7 +91,6 @@ impl HaProxyProxyService {
     }
 
     async fn reload(&self) -> Result<()> {
-        info!("Reloading HA proxy config");
         let mut socket =
             UnixSocket::new_stream()?.connect(&self.master_socket_path).await.context("Connecting to master socket")?;
         socket.write_all(b"reload\n").await?;
@@ -99,7 +98,6 @@ impl HaProxyProxyService {
     }
 
     async fn validate_config(&self) -> Result<()> {
-        info!("Validating HA proxy config");
         let output = Command::new("haproxy").arg("-c").arg("-f").arg(&self.config_file_path).output().await?;
         if !output.status.success() {
             let stderr_message = String::from_utf8_lossy(&output.stderr);
@@ -134,10 +132,10 @@ impl HaProxyProxyService {
         tokio::fs::write(&self.config_file_path, config_file).await.context("Failed to write HAProxy config file")?;
         if self.reload_config {
             self.validate_config().await.context("Failed to check config")?;
-            self.reload().await
-        } else {
-            Ok(())
+            self.reload().await?;
+            info!("HA proxy config reloaded");
         }
+        Ok(())
     }
 }
 
