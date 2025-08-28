@@ -296,7 +296,6 @@ impl WorkloadService for DefaultWorkloadService {
         repo.delete(id).await?;
         self.proxy_service.stop_vm_proxy(id).await;
         self.vm_service.delete_vm(id).await;
-        repo.commit().await?;
 
         let mut resources = self.resources.lock().await;
         resources.cpus += workload.cpus;
@@ -309,7 +308,7 @@ impl WorkloadService for DefaultWorkloadService {
 
     async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
         let workload = repo.find(id).await?;
         if workload.enabled {
             info!("Restarting workload {id}");
@@ -318,36 +317,33 @@ impl WorkloadService for DefaultWorkloadService {
             info!("Enabling workload {id}");
             self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
             repo.set_enabled(id, true).await?;
-            repo.commit().await?;
         }
         Ok(())
     }
 
     async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
         let workload = repo.find(id).await?;
         if !workload.enabled {
             info!("Workload {id} is already disabled");
             return Ok(());
         }
         info!("Disabling workload {id}");
-        self.vm_service.delete_vm(id).await;
         repo.set_enabled(id, false).await?;
-        repo.commit().await?;
+        self.vm_service.delete_vm(id).await;
         Ok(())
     }
 
     async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
+        let mut repo = self.repository_provider.workloads(Default::default()).await?;
         let workload = repo.find(id).await?;
         if workload.enabled {
             info!("Workload {id} is already enabled");
             return Ok(());
         }
         info!("Starting workload {id}");
-        self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         repo.set_enabled(id, true).await?;
-        repo.commit().await?;
+        self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         Ok(())
     }
 
