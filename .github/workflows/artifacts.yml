@@ -4,6 +4,7 @@ on:
     paths:
       - 'artifacts/**'
       - 'cvm-agent/**'
+      - 'crates/cvm-agent-models/**'
     branches:
       - main
 
