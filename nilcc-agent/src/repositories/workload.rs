@@ -14,6 +14,7 @@ use uuid::Uuid;
 pub struct Workload {
     pub id: Uuid,
     pub docker_compose: String,
+    pub artifacts_version: String,
     #[sqlx(json)]
     pub env_vars: HashMap<String, String>,
     #[sqlx(json)]
@@ -52,6 +53,7 @@ impl fmt::Debug for Workload {
         let Self {
             id,
             docker_compose,
+            artifacts_version,
             env_vars,
             files,
             public_container_name,
@@ -70,6 +72,7 @@ impl fmt::Debug for Workload {
         f.debug_struct("Workload")
             .field("id", id)
             .field("docker_compose", docker_compose)
+            .field("artifacts_version", artifacts_version)
             .field("env_vars", &environment_variables)
             .field("files", &files)
             .field("public_container_name", public_container_name)
@@ -169,6 +172,7 @@ impl<'a> WorkloadRepository for SqliteWorkloadRepository<'a> {
 INSERT INTO workloads (
     id,
     docker_compose,
+    artifacts_version,
     env_vars,
     files,
     docker_credentials,
@@ -183,11 +187,12 @@ INSERT INTO workloads (
     enabled,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ";
         let Workload {
             id,
             docker_compose,
+            artifacts_version,
             env_vars,
             files,
             docker_credentials,
@@ -205,6 +210,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         sqlx::query(query)
             .bind(id)
             .bind(docker_compose)
+            .bind(artifacts_version)
             .bind(sqlx::types::Json(env_vars))
             .bind(sqlx::types::Json(files))
             .bind(sqlx::types::Json(docker_credentials))
@@ -275,6 +281,7 @@ mod tests {
         let mut repo = SqliteWorkloadRepository::new(SqliteTransactionContextInner::Connection(connection).into());
         let workload = Workload {
             id: Uuid::new_v4(),
+            artifacts_version: "default".into(),
             docker_compose: "hi".into(),
             env_vars: HashMap::from([("FOO".into(), "value".into())]),
             files: HashMap::from([("foo.txt".into(), vec![1, 2, 3])]),

@@ -1,4 +1,7 @@
-use crate::repositories::workload::{SqliteWorkloadRepository, WorkloadRepository};
+use crate::repositories::{
+    artifacts::{ArtifactsVersionRepository, SqliteArtifactsVersionRepository},
+    workload::{SqliteWorkloadRepository, WorkloadRepository},
+};
 use async_trait::async_trait;
 use sqlx::{
     pool::PoolConnection,
@@ -107,6 +110,8 @@ pub struct ProviderError(String);
 #[async_trait]
 pub trait RepositoryProvider: Send + Sync {
     async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError>;
+    async fn artifacts_version(&self, mode: ProviderMode)
+        -> Result<Box<dyn ArtifactsVersionRepository>, ProviderError>;
 }
 
 pub struct SqliteRepositoryProvider {
@@ -117,11 +122,8 @@ impl SqliteRepositoryProvider {
     pub fn new(db: SqliteDb) -> Self {
         Self { db }
     }
-}
 
-#[async_trait]
-impl RepositoryProvider for SqliteRepositoryProvider {
-    async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError> {
+    async fn build_ctx(&self, mode: ProviderMode) -> Result<SqliteTransactionContext<'static>, ProviderError> {
         let ctx = match mode {
             ProviderMode::Single => {
                 let connection = self.db.0.acquire().await.map_err(|e| ProviderError(e.to_string()))?;
@@ -131,9 +133,24 @@ impl RepositoryProvider for SqliteRepositoryProvider {
                 let tx = self.db.0.begin().await.map_err(|e| ProviderError(e.to_string()))?;
                 SqliteTransactionContextInner::Transaction(tx)
             }
-        }
-        .into();
+        };
+        Ok(ctx.into())
+    }
+}
+
+#[async_trait]
+impl RepositoryProvider for SqliteRepositoryProvider {
+    async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError> {
+        let ctx = self.build_ctx(mode).await?;
         Ok(Box::new(SqliteWorkloadRepository::new(ctx)))
+    }
+
+    async fn artifacts_version(
+        &self,
+        mode: ProviderMode,
+    ) -> Result<Box<dyn ArtifactsVersionRepository>, ProviderError> {
+        let ctx = self.build_ctx(mode).await?;
+        Ok(Box::new(SqliteArtifactsVersionRepository::new(ctx)))
     }
 }
 

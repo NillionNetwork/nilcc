@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use axum_server::Handle;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -8,7 +8,7 @@ use nilcc_agent::{
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::{QemuClient, VmClient, VmDisplayMode},
     },
-    config::{AgentConfig, AgentMode, CvmConfig},
+    config::{AgentConfig, AgentMode, CvmConfigs},
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
     routes::{build_router, AppState, Clients, Services},
@@ -226,7 +226,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: state_path.path().into(),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_config: config.cvm.try_into().context("Reading CVM files")?,
+        base_cvm_config_path: config.cvm.base_path,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
@@ -259,6 +259,25 @@ async fn download_artifacts(args: DownloadArtifactsArgs) -> Result<()> {
     Ok(())
 }
 
+async fn download_initial_artifacts(
+    provider: &SqliteRepositoryProvider,
+    resources: &SystemResources,
+    config: &CvmConfigs,
+) -> Result<()> {
+    let mut repo = provider.artifacts_version(Default::default()).await?;
+    let version = repo.get().await?;
+    if let Some(version) = version {
+        info!("No need to download initial artifacts since we're configured to use version {version}");
+        return Ok(());
+    }
+    let vm_types = if resources.gpus.is_some() { vec![VmType::Cpu, VmType::Gpu] } else { vec![VmType::Cpu] };
+    let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types);
+    let download_path = config.base_path.join(&config.initial_version);
+    downloader.download(&download_path).await.context("Failed to download artifacts")?;
+    repo.set(&config.initial_version).await.context("Failed to set artifact version in repository")?;
+    Ok(())
+}
+
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     info!("Setting up dependencies");
     let nilcc_api_client: Arc<dyn NilccApiClient> = match config.controller {
@@ -279,13 +298,12 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
 
-    let cvm_config: CvmConfig = config.cvm.try_into().context("Reading CVM files")?;
-    if system_resources.gpus.is_some() && cvm_config.gpu.is_none() {
-        bail!("machine has GPUs but has no configured GPU CVM files");
-    }
-
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let repository_provider = SqliteRepositoryProvider::new(db.clone());
+    download_initial_artifacts(&repository_provider, &system_resources, &config.cvm)
+        .await
+        .context("Failed to download initial artifacts")?;
+
     let proxied_vms = {
         let mut workload_repository = repository_provider.workloads(Default::default()).await?;
         let existing_workloads = workload_repository.list().await.context("Failed to find existing workloads")?;
@@ -322,7 +340,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_config,
+        base_cvm_config_path: config.cvm.base_path,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,

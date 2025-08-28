@@ -3,7 +3,7 @@ use crate::{
         cvm_agent::CvmAgentClient,
         qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
     },
-    config::{CvmConfig, CvmFiles, DockerConfig, ZeroSslConfig},
+    config::{CvmFiles, DockerConfig, ZeroSslConfig},
     repositories::workload::Workload,
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::{
@@ -14,6 +14,7 @@ use crate::{
 use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::bootstrap::DockerCredentials;
+use nilcc_artifacts::VmType;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -45,7 +46,7 @@ pub struct VmServiceArgs {
     pub vm_client: Arc<dyn VmClient>,
     pub cvm_agent_client: Arc<dyn CvmAgentClient>,
     pub disk_service: Box<dyn DiskService>,
-    pub cvm_config: CvmConfig,
+    pub base_cvm_config_path: PathBuf,
     pub zerossl_config: ZeroSslConfig,
     pub docker_config: DockerConfig,
     pub event_sender: EventSender,
@@ -57,7 +58,7 @@ pub struct DefaultVmService {
     disk_service: Box<dyn DiskService>,
     workers: Mutex<HashMap<Uuid, VmWorkerHandle>>,
     state_path: PathBuf,
-    cvm_config: CvmConfig,
+    base_cvm_config_path: PathBuf,
     zerossl_config: ZeroSslConfig,
     docker_config: DockerConfig,
     event_sender: EventSender,
@@ -70,7 +71,7 @@ impl DefaultVmService {
             vm_client,
             cvm_agent_client,
             disk_service,
-            cvm_config,
+            base_cvm_config_path,
             zerossl_config,
             docker_config,
             event_sender,
@@ -82,7 +83,7 @@ impl DefaultVmService {
             disk_service,
             workers: Default::default(),
             state_path,
-            cvm_config,
+            base_cvm_config_path,
             zerossl_config,
             docker_config,
             event_sender,
@@ -95,9 +96,9 @@ impl DefaultVmService {
         iso_path: PathBuf,
         state_disk_path: PathBuf,
         docker_compose_hash: String,
-        cvm_files: CvmFiles,
+        cvm_config: CvmConfig,
     ) -> VmSpec {
-        let CvmFiles { kernel, base_disk, verity_root_hash, verity_disk, .. } = cvm_files;
+        let CvmFiles { kernel, base_disk, verity_root_hash, verity_disk, .. } = cvm_config.vm;
         let kernel_args =
             KernelArgs { filesystem_root_hash: &verity_root_hash, docker_compose_hash: &docker_compose_hash };
         VmSpec {
@@ -115,8 +116,8 @@ impl DefaultVmService {
                 (workload.https_port(), 443),
                 (workload.cvm_agent_port(), CVM_AGENT_PORT),
             ],
-            bios_path: Some(self.cvm_config.bios.clone()),
-            initrd_path: Some(self.cvm_config.initrd.clone()),
+            bios_path: Some(cvm_config.bios),
+            initrd_path: Some(cvm_config.initrd),
             kernel_path: Some(kernel.clone()),
             kernel_args: Some(kernel_args.to_string()),
             display: Default::default(),
@@ -233,24 +234,17 @@ impl VmService for DefaultVmService {
     }
 
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError> {
-        let cvm_files = if workload.gpus.is_empty() {
-            &self.cvm_config.cpu
-        } else {
-            self.cvm_config.gpu.as_ref().expect("no gpu files")
-        };
+        let vm_type = if workload.gpus.is_empty() { VmType::Cpu } else { VmType::Gpu };
+        let config_path = self.base_cvm_config_path.join(&workload.artifacts_version);
+        let mut cvm_config = CvmConfig::from_path(&config_path, vm_type).await.map_err(|e| {
+            StartVmError(format!("failed to load artifacts version {}: {e}", workload.artifacts_version))
+        })?;
         let (iso_path, docker_compose_hash) = self.create_application_iso(workload).await?;
         let state_disk = self.create_state_disk(workload).await?;
-        let base_disk =
-            self.create_disk_snapshot(workload, &cvm_files.base_disk, "base", HardDiskFormat::Qcow2).await?;
-        let verity_disk = cvm_files.verity_disk.clone();
-        let cvm_files = CvmFiles {
-            kernel: cvm_files.kernel.clone(),
-            base_disk,
-            verity_disk,
-            verity_root_hash: cvm_files.verity_root_hash.clone(),
-        };
-
-        let spec = self.create_vm_spec(workload, iso_path, state_disk, docker_compose_hash, cvm_files);
+        // Keep everything the same except the base disk since we'll use a snapshot
+        cvm_config.vm.base_disk =
+            self.create_disk_snapshot(workload, &cvm_config.vm.base_disk, "base", HardDiskFormat::Qcow2).await?;
+        let spec = self.create_vm_spec(workload, iso_path, state_disk, docker_compose_hash, cvm_config);
         Ok(spec)
     }
 
@@ -279,6 +273,38 @@ impl VmService for DefaultVmService {
             }
         }
     }
+}
+
+impl CvmConfig {
+    pub async fn from_path(path: &Path, vm_type: VmType) -> anyhow::Result<Self> {
+        let vm_type = vm_type.to_string();
+        let verity_root_hash_path = path.join(format!("vm_images/cvm-{vm_type}-verity/root-hash"));
+        let verity_root_hash =
+            fs::read_to_string(&verity_root_hash_path).await.context("Could not read verity hash")?.trim().into();
+        let vm = CvmFiles {
+            kernel: path.join(format!("vm_images/kernel/{vm_type}-vmlinuz")),
+            base_disk: path.join(format!("vm_images/cvm-{vm_type}.qcow2")),
+            verity_disk: path.join(format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev")),
+            verity_root_hash,
+        };
+        Ok(CvmConfig {
+            initrd: path.join("initramfs/initramfs.cpio.gz"),
+            bios: path.join("vm_images/ovmf/OVMF.fd"),
+            vm,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CvmConfig {
+    /// The path to the initrd file.
+    pub initrd: PathBuf,
+
+    /// The path to the bios file.
+    pub bios: PathBuf,
+
+    /// The disk, kernel and verity files to be used.
+    pub vm: CvmFiles,
 }
 
 struct KernelArgs<'a> {
@@ -319,7 +345,7 @@ mod tests {
         vm_client: MockVmClient,
         cvm_agent_client: MockCvmAgentClient,
         disk_service: MockDiskService,
-        cvm_config: CvmConfig,
+        base_cvm_config_path: PathBuf,
         zerossl_config: ZeroSslConfig,
         docker_config: DockerConfig,
     }
@@ -331,7 +357,7 @@ mod tests {
                 vm_client,
                 cvm_agent_client,
                 disk_service,
-                cvm_config,
+                base_cvm_config_path,
                 zerossl_config,
                 docker_config,
             } = self;
@@ -340,13 +366,20 @@ mod tests {
                 vm_client: Arc::new(vm_client),
                 cvm_agent_client: Arc::new(cvm_agent_client),
                 disk_service: Box::new(disk_service),
-                cvm_config,
+                base_cvm_config_path,
                 zerossl_config,
                 docker_config,
                 event_sender: EventSender(channel(1).0),
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }
+        }
+
+        async fn write_cvm_file(&self, path: &str, contents: &[u8]) {
+            let path = self.base_cvm_config_path.join(path);
+            let parent = path.parent().expect("no parent");
+            fs::create_dir_all(parent).await.expect("failed to create parents");
+            fs::write(path, contents).await.expect("failed to write contents");
         }
     }
 
@@ -359,17 +392,7 @@ mod tests {
                 vm_client: Default::default(),
                 cvm_agent_client: Default::default(),
                 disk_service: Default::default(),
-                cvm_config: CvmConfig {
-                    initrd: base_path.join("initrd"),
-                    bios: base_path.join("bios"),
-                    cpu: CvmFiles {
-                        base_disk: base_path.join("cpu-base-disk"),
-                        kernel: base_path.join("cpu-kernel"),
-                        verity_disk: base_path.join("cpu-verity-disk"),
-                        verity_root_hash: "cpu-root-hash".into(),
-                    },
-                    gpu: None,
-                },
+                base_cvm_config_path: base_path.join("artifacts"),
                 zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
                 docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
             }
@@ -381,6 +404,7 @@ mod tests {
         let workload = Workload {
             id: Uuid::new_v4(),
             docker_compose: "compose".into(),
+            artifacts_version: "default".into(),
             env_vars: Default::default(),
             files: Default::default(),
             docker_credentials: Default::default(),
@@ -397,8 +421,9 @@ mod tests {
         let mut builder = Builder::default();
         let base_disk_contents = b"totally a disk";
         let verity_disk_contents = b"totally a disk";
-        fs::write(&builder.cvm_config.cpu.base_disk, base_disk_contents).await.expect("failed to write");
-        fs::write(&builder.cvm_config.cpu.verity_disk, verity_disk_contents).await.expect("failed to write");
+        builder.write_cvm_file("default/vm_images/cvm-cpu.qcow2", base_disk_contents).await;
+        builder.write_cvm_file("default/vm_images/cvm-cpu-verity/verity-hash-dev", verity_disk_contents).await;
+        builder.write_cvm_file("default/vm_images/cvm-cpu-verity/root-hash", b"hash").await;
 
         let id = workload.id;
         let state_path = builder.state_path.path();
@@ -414,7 +439,11 @@ mod tests {
         builder
             .disk_service
             .expect_create_disk_snapshot()
-            .with(eq(base_disk_path.clone()), eq(builder.cvm_config.cpu.base_disk.clone()), eq(HardDiskFormat::Qcow2))
+            .with(
+                eq(base_disk_path.clone()),
+                eq(builder.base_cvm_config_path.join("default/vm_images/cvm-cpu.qcow2")),
+                eq(HardDiskFormat::Qcow2),
+            )
             .return_once(move |_, _, _| Ok(()));
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
 
