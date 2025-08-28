@@ -162,7 +162,7 @@ pub mod stats {
 
     /// The stats response.
     #[derive(Deserialize, Serialize)]
-    #[serde(rename_all = "kebab-case")]
+    #[serde(rename_all = "camelCase")]
     pub struct SystemStatsResponse {
         /// Stats about the memory usage.
         pub memory: MemoryStats,
@@ -177,7 +177,7 @@ pub mod stats {
 
     /// Memory stats.
     #[derive(Deserialize, Serialize)]
-    #[serde(rename_all = "kebab-case")]
+    #[serde(rename_all = "camelCase")]
     pub struct MemoryStats {
         /// The total memory in the CVM, in bytes.
         pub total: u64,
@@ -188,7 +188,7 @@ pub mod stats {
 
     /// CPU stats.
     #[derive(Deserialize, Serialize)]
-    #[serde(rename_all = "kebab-case")]
+    #[serde(rename_all = "camelCase")]
     pub struct CpuStats {
         /// The CPU name.
         pub name: String,
@@ -202,7 +202,7 @@ pub mod stats {
 
     /// Disk stats.
     #[derive(Deserialize, Serialize)]
-    #[serde(rename_all = "kebab-case")]
+    #[serde(rename_all = "camelCase")]
     pub struct DiskStats {
         /// The name of this disk.
         pub name: String,
