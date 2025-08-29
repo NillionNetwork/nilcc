@@ -189,9 +189,9 @@ impl SystemResources {
                 continue;
             }
 
-            let new_gpus = gpus.by_ref().take(workload.gpus.len()).collect();
+            let new_gpus: Vec<_> = gpus.by_ref().take(workload.gpus.len()).collect();
             info!("Assigning GPUs for workload {} from {:?} to {:?}", workload.id, workload.gpus, new_gpus);
-            repo.set_gpus(workload.id, new_gpus).await?;
+            repo.set_gpus(workload.id, &new_gpus).await?;
         }
         repo.commit().await?;
         Ok(())
@@ -374,7 +374,7 @@ mod tests {
         {
             let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
             for workload in &workloads {
-                repo.create(workload.clone()).await.expect("failed to create");
+                repo.create(workload).await.expect("failed to create");
             }
         }
         resources.adjust_gpu_assignment(&provider).await.expect("failed to adjust");
@@ -395,7 +395,7 @@ mod tests {
         {
             let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
             for workload in &workloads {
-                repo.create(workload.clone()).await.expect("failed to create");
+                repo.create(&workload).await.expect("failed to create");
             }
         }
         resources.adjust_gpu_assignment(&provider).await.expect_err("adjustment succeeded");
@@ -411,7 +411,7 @@ mod tests {
         {
             let mut repo = provider.workloads(Default::default()).await.expect("failed to list workloads");
             for workload in &workloads {
-                repo.create(workload.clone()).await.expect("failed to create");
+                repo.create(workload).await.expect("failed to create");
             }
         }
         resources.adjust_gpu_assignment(&provider).await.expect("adjustment failed");
