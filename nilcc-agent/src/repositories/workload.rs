@@ -101,7 +101,7 @@ pub enum WorkloadModelStatus {
 #[async_trait]
 pub trait WorkloadRepository: Send + Sync {
     /// Create a workload.
-    async fn create(&mut self, workload: Workload) -> Result<(), WorkloadRepositoryError>;
+    async fn create(&mut self, workload: &Workload) -> Result<(), WorkloadRepositoryError>;
 
     /// Find the details for a workload.
     async fn find(&mut self, id: Uuid) -> Result<Workload, WorkloadRepositoryError>;
@@ -116,7 +116,7 @@ pub trait WorkloadRepository: Send + Sync {
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `gpus` column for a workload.
-    async fn set_gpus(&mut self, id: Uuid, gpus: Vec<GpuAddress>) -> Result<(), WorkloadRepositoryError>;
+    async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError>;
 
     /// Commit any changes that were performed on this repository.
     async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError>;
@@ -167,7 +167,7 @@ impl<'a> SqliteWorkloadRepository<'a> {
 
 #[async_trait]
 impl<'a> WorkloadRepository for SqliteWorkloadRepository<'a> {
-    async fn create(&mut self, workload: Workload) -> Result<(), WorkloadRepositoryError> {
+    async fn create(&mut self, workload: &Workload) -> Result<(), WorkloadRepositoryError> {
         let query = r"
 INSERT INTO workloads (
     id,
@@ -257,7 +257,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         Ok(())
     }
 
-    async fn set_gpus(&mut self, id: Uuid, gpus: Vec<GpuAddress>) -> Result<(), WorkloadRepositoryError> {
+    async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError> {
         let query = "UPDATE workloads SET gpus = ? WHERE id = ?";
         sqlx::query(query).bind(sqlx::types::Json(gpus)).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
@@ -300,10 +300,10 @@ mod tests {
             domain: "example.com".into(),
             enabled: true,
         };
-        repo.create(workload.clone()).await.expect("failed to insert");
+        repo.create(&workload).await.expect("failed to insert");
 
         let workload_same_id = Workload { domain: "other.com".into(), ..workload.clone() };
-        let err = repo.create(workload_same_id).await.expect_err("insertion succeeded");
+        let err = repo.create(&workload_same_id).await.expect_err("insertion succeeded");
         assert!(matches!(err, WorkloadRepositoryError::DuplicateWorkload), "{err:?}");
 
         let found = repo.find(workload.id).await.expect("failed to find");
@@ -315,11 +315,11 @@ mod tests {
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
 
-        repo.set_gpus(workload.id, vec!["cc:dd".into()]).await.expect("failed to update");
+        repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);
 
         let workload_same_domain = Workload { id: Uuid::new_v4(), ..workload };
-        let err = repo.create(workload_same_domain.clone()).await.expect_err("insertion succeeded");
+        let err = repo.create(&workload_same_domain).await.expect_err("insertion succeeded");
         assert!(matches!(err, WorkloadRepositoryError::DuplicateDomain), "{err:?}");
     }
 }

@@ -288,7 +288,7 @@ impl WorkloadService for DefaultWorkloadService {
         let id = workload.id;
         info!("Storing workload {id} in database");
         let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
-        repo.create(workload.clone()).await?;
+        repo.create(&workload).await?;
 
         info!("Scheduling VM {id} using artifacts version {artifacts_version}");
         let proxied_vm = ProxiedVm::from(&workload);
