@@ -18,6 +18,7 @@ use nilcc_agent::{
             IsoSpec,
         },
         proxy::{HaProxyProxyService, ProxyService, ProxyServiceArgs},
+        upgrade::{DefaultUpgradeService, DefaultUpgradeServiceArgs},
         vm::{DefaultVmService, VmService, VmServiceArgs},
         workload::{DefaultWorkloadService, WorkloadService, WorkloadServiceArgs},
     },
@@ -226,7 +227,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: state_path.path().into(),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        base_cvm_config_path: config.cvm.base_path,
+        cvm_artifacts_path: config.cvm.base_path,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
@@ -261,7 +262,7 @@ async fn download_artifacts(args: DownloadArtifactsArgs) -> Result<()> {
 
 async fn download_initial_artifacts(
     provider: &SqliteRepositoryProvider,
-    resources: &SystemResources,
+    vm_types: &[VmType],
     config: &CvmConfigs,
 ) -> Result<()> {
     let mut repo = provider.artifacts_version(Default::default()).await?;
@@ -270,8 +271,7 @@ async fn download_initial_artifacts(
         info!("No need to download initial artifacts since we're configured to use version {version}");
         return Ok(());
     }
-    let vm_types = if resources.gpus.is_some() { vec![VmType::Cpu, VmType::Gpu] } else { vec![VmType::Cpu] };
-    let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types);
+    let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types.to_vec());
     let download_path = config.base_path.join(&config.initial_version);
     downloader.download(&download_path).await.context("Failed to download artifacts")?;
     repo.set(&config.initial_version).await.context("Failed to set artifact version in repository")?;
@@ -297,10 +297,11 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let system_resources =
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
+    let vm_types = if system_resources.gpus.is_some() { vec![VmType::Cpu, VmType::Gpu] } else { vec![VmType::Cpu] };
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let repository_provider = SqliteRepositoryProvider::new(db.clone());
-    download_initial_artifacts(&repository_provider, &system_resources, &config.cvm)
+    download_initial_artifacts(&repository_provider, &vm_types, &config.cvm)
         .await
         .context("Failed to download initial artifacts")?;
 
@@ -333,6 +334,8 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
     system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
+
+    let repository_provider = Arc::new(repository_provider);
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
     let event_sender = EventWorker::spawn(nilcc_api_client);
     let vm_service = DefaultVmService::new(VmServiceArgs {
@@ -340,7 +343,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        base_cvm_config_path: config.cvm.base_path,
+        cvm_artifacts_path: config.cvm.base_path.clone(),
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
@@ -348,7 +351,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
         vm_service: Box::new(vm_service),
-        repository_provider: Box::new(repository_provider),
+        repository_provider: repository_provider.clone(),
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
         proxy_service: Box::new(proxy_service),
@@ -357,12 +360,18 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     .context("Creating workload service")?;
     info!("Bootstrapping existing workloads");
     workload_service.bootstrap().await?;
+
     let workload_service = Arc::new(workload_service);
+    let upgrade_service = Arc::new(DefaultUpgradeService::new(DefaultUpgradeServiceArgs {
+        repository_provider: repository_provider.clone(),
+    }));
     let state = AppState {
-        services: Services { workload: workload_service.clone() },
+        services: Services { workload: workload_service.clone(), upgrade: upgrade_service },
         clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
         agent_domain: config.api.domain.clone(),
+        vm_types,
+        cvm_artifacts_path: config.cvm.base_path,
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();

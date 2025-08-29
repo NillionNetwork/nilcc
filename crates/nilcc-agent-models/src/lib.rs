@@ -8,6 +8,60 @@ use std::sync::LazyLock;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
+pub mod system {
+    use super::*;
+    use chrono::{DateTime, Utc};
+
+    fn validate_artifacts_version(version: &str) -> Result<(), ValidationError> {
+        if version.contains("/") {
+            Err(ValidationError::new("artifacts version can't contain '/'"))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// A request to upgrade the artifacts version.
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UpgradeArtifactsRequest {
+        // The artifacts version to upgrade to.
+        #[validate(custom(function = "validate_artifacts_version"))]
+        pub version: String,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactsVersionResponse {
+        // The artifacts version we are running.
+        pub version: String,
+
+        // Information about the last upgrade, if any.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub last_upgrade: Option<ArtifactUpgrade>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactUpgrade {
+        /// The last upgrade's target version.
+        pub version: String,
+
+        /// The timestamp at which the last upgrade was started.
+        pub started_at: DateTime<Utc>,
+
+        /// The state of the upgrade.
+        pub state: UpgradeState,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "kebab-case", tag = "state")]
+    pub enum UpgradeState {
+        InProgress,
+        Success { finished_at: DateTime<Utc> },
+        Error { finished_at: DateTime<Utc>, error: String },
+    }
+}
+
 pub mod workloads {
     use super::*;
 
