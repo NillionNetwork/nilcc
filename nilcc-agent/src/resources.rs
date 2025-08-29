@@ -304,6 +304,7 @@ mod tests {
         Workload {
             id: Uuid::new_v4(),
             docker_compose: Default::default(),
+            artifacts_version: "default".into(),
             env_vars: Default::default(),
             files: Default::default(),
             docker_credentials: Default::default(),

@@ -1,5 +1,6 @@
 use crate::{
     repositories::{
+        artifacts::ArtifactsVersionRepositoryError,
         sqlite::{ProviderError, ProviderMode, RepositoryProvider},
         workload::{Workload, WorkloadRepositoryError},
     },
@@ -45,6 +46,18 @@ pub enum CreateWorkloadError {
 
     #[error("domain is already managed by another workload")]
     DomainExists,
+}
+
+impl From<ArtifactsVersionRepositoryError> for CreateWorkloadError {
+    fn from(e: ArtifactsVersionRepositoryError) -> Self {
+        Self::Internal(e.to_string())
+    }
+}
+
+impl From<ProviderError> for CreateWorkloadError {
+    fn from(e: ProviderError) -> Self {
+        Self::Internal(e.to_string())
+    }
 }
 
 impl From<StartVmError> for CreateWorkloadError {
@@ -181,7 +194,12 @@ impl DefaultWorkloadService {
         Ok(Self { vm_service, repository_provider, proxy_service, resources })
     }
 
-    fn build_workload(&self, request: CreateWorkloadRequest, resources: &AvailableResources) -> Workload {
+    fn build_workload(
+        &self,
+        request: CreateWorkloadRequest,
+        resources: &AvailableResources,
+        artifacts_version: String,
+    ) -> Workload {
         let CreateWorkloadRequest {
             id,
             docker_compose,
@@ -203,6 +221,7 @@ impl DefaultWorkloadService {
         Workload {
             id,
             docker_compose,
+            artifacts_version,
             env_vars,
             files,
             docker_credentials,
@@ -238,6 +257,13 @@ impl WorkloadService for DefaultWorkloadService {
     }
 
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
+        let artifacts_version = self
+            .repository_provider
+            .artifacts_version(Default::default())
+            .await?
+            .get()
+            .await?
+            .ok_or_else(|| CreateWorkloadError::Internal("no artifacts version configured".into()))?;
         let mut resources = self.resources.lock().await;
         let cpus = request.cpus;
         let gpus = request.gpus as usize;
@@ -258,14 +284,10 @@ impl WorkloadService for DefaultWorkloadService {
         if resources.ports.len() < TOTAL_PORTS {
             return Err(CreateWorkloadError::InsufficientResources("open ports"));
         }
-        let workload = self.build_workload(request, &resources);
+        let workload = self.build_workload(request, &resources, artifacts_version);
         let id = workload.id;
         info!("Storing workload {id} in database");
-        let mut repo = self
-            .repository_provider
-            .workloads(ProviderMode::Transactional)
-            .await
-            .map_err(|e| CreateWorkloadError::Internal(e.to_string()))?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         repo.create(workload.clone()).await?;
 
         info!("Scheduling VM {id}");
@@ -358,7 +380,9 @@ impl WorkloadService for DefaultWorkloadService {
 mod tests {
     use super::*;
     use crate::{
-        repositories::{sqlite::MockRepositoryProvider, workload::MockWorkloadRepository},
+        repositories::{
+            artifacts::MockArtifactsVersionRepository, sqlite::MockRepositoryProvider, workload::MockWorkloadRepository,
+        },
         resources::Gpus,
         services::{
             proxy::{MockProxyService, ProxiedVm},
@@ -371,7 +395,8 @@ mod tests {
 
     struct Builder {
         vm_service: MockVmService,
-        repository: MockWorkloadRepository,
+        workloads_repository: MockWorkloadRepository,
+        artifacts_version_repository: MockArtifactsVersionRepository,
         proxy_service: MockProxyService,
         resources: SystemResources,
         open_ports: Range<u16>,
@@ -388,7 +413,15 @@ mod tests {
         }
 
         async fn try_build(self) -> Result<DefaultWorkloadService, CreateServiceError> {
-            let Self { vm_service, repository, proxy_service, resources, open_ports, existing_workloads } = self;
+            let Self {
+                vm_service,
+                workloads_repository,
+                artifacts_version_repository,
+                proxy_service,
+                resources,
+                open_ports,
+                existing_workloads,
+            } = self;
 
             let mut provider = MockRepositoryProvider::default();
             provider.expect_workloads().once().return_once(|_| {
@@ -396,7 +429,9 @@ mod tests {
                 repo.expect_list().return_once(move || Ok(existing_workloads));
                 Ok(Box::new(repo))
             });
-            provider.expect_workloads().return_once(move |_| Ok(Box::new(repository)));
+            provider.expect_workloads().return_once(move |_| Ok(Box::new(workloads_repository)));
+            provider.expect_artifacts_version().return_once(move |_| Ok(Box::new(artifacts_version_repository)));
+
             let args = WorkloadServiceArgs {
                 vm_service: Box::new(vm_service),
                 repository_provider: Box::new(provider),
@@ -412,7 +447,8 @@ mod tests {
         fn default() -> Self {
             Self {
                 vm_service: Default::default(),
-                repository: Default::default(),
+                workloads_repository: Default::default(),
+                artifacts_version_repository: Default::default(),
                 proxy_service: Default::default(),
                 resources: SystemResources {
                     hostname: "foo".into(),
@@ -434,6 +470,7 @@ mod tests {
         Workload {
             id: Uuid::new_v4(),
             docker_compose: Default::default(),
+            artifacts_version: "default".into(),
             env_vars: Default::default(),
             files: Default::default(),
             docker_credentials: Default::default(),
@@ -549,6 +586,7 @@ mod tests {
         let workload = Workload {
             id: request.id,
             docker_compose: request.docker_compose.clone(),
+            artifacts_version: "default".into(),
             env_vars: request.env_vars.clone(),
             files: request.files.clone(),
             docker_credentials: request.docker_credentials.clone(),
@@ -571,8 +609,9 @@ mod tests {
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder.repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
-        builder.repository.expect_commit().once().return_once(|| Ok(()));
+        builder.artifacts_version_repository.expect_get().return_once(|| Ok(Some("default".into())));
+        builder.workloads_repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
+        builder.workloads_repository.expect_commit().once().return_once(|| Ok(()));
         builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));
         builder
             .proxy_service
