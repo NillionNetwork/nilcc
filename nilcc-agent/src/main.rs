@@ -227,7 +227,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: state_path.path().into(),
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_artifacts_path: config.cvm.base_path,
+        cvm_artifacts_path: config.cvm.artifacts_path,
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
@@ -272,7 +272,7 @@ async fn download_initial_artifacts(
         return Ok(());
     }
     let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types.to_vec());
-    let download_path = config.base_path.join(&config.initial_version);
+    let download_path = config.artifacts_path.join(&config.initial_version);
     downloader.download(&download_path).await.context("Failed to download artifacts")?;
     repo.set(&config.initial_version).await.context("Failed to set artifact version in repository")?;
     Ok(())
@@ -343,7 +343,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         cvm_agent_client: cvm_agent_client.clone(),
         state_path: config.vm_store,
         disk_service: Box::new(DefaultDiskService::new(config.qemu.img_bin)),
-        cvm_artifacts_path: config.cvm.base_path.clone(),
+        cvm_artifacts_path: config.cvm.artifacts_path.clone(),
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
@@ -371,7 +371,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
         resource_limits: config.resources.limits,
         agent_domain: config.api.domain.clone(),
         vm_types,
-        cvm_artifacts_path: config.cvm.base_path,
+        cvm_artifacts_path: config.cvm.artifacts_path,
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();
