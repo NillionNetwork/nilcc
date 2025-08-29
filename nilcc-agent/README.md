@@ -1,4 +1,4 @@
-# nilCC Agent
+# nilcc Agent
 
 A lightweight agent that provides CLI to create and manage VMs in QEMU
 - VM provisioning via `QEMU`
