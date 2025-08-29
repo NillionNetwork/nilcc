@@ -1,3 +1,4 @@
+use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -27,8 +28,14 @@ pub enum UpgradeError {
     #[error("invalid version")]
     InvalidVersion,
 
+    #[error("version already exists in agent")]
+    ExistingVersion,
+
     #[error("an upgrade to version {0} is already in progress")]
     ActiveUpgrade(String),
+
+    #[error("internal error")]
+    Internal,
 }
 
 pub struct DefaultUpgradeServiceArgs {
@@ -62,6 +69,18 @@ impl UpgradeService for DefaultUpgradeService {
             }
             UpgradeState::None | UpgradeState::Done { .. } => (),
         };
+        let mut repo = self.repository_provider.artifacts_version(Default::default()).await.map_err(|e| {
+            error!("Failed to get repository: {e}");
+            UpgradeError::Internal
+        })?;
+        let exists = repo.exists(&version).await.map_err(|e| {
+            error!("Failed to check if version exists: {e}");
+            UpgradeError::Internal
+        })?;
+        if exists {
+            return Err(UpgradeError::ExistingVersion);
+        }
+
         let downloader = ArtifactsDownloader::new(version.clone(), vm_types.clone());
         downloader.validate_exists().await.map_err(|_| UpgradeError::InvalidVersion)?;
 
@@ -149,9 +168,13 @@ impl ArtifactUpgradeWorker {
         let version = &self.version;
         self.downloader.download(&self.target_path).await?;
         info!("Upgrade to version {version} successful");
-        let mut repo =
-            self.repository_provider.artifacts_version(Default::default()).await.context("Failed to get repository")?;
+        let mut repo = self
+            .repository_provider
+            .artifacts_version(ProviderMode::Transactional)
+            .await
+            .context("Failed to get repository")?;
         repo.set(version).await.context("Failed to set version")?;
+        repo.commit().await?;
         Ok(())
     }
 }

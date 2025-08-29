@@ -9,6 +9,12 @@ pub trait ArtifactsVersionRepository: Send + Sync {
 
     /// Get the current artifacts version, if any
     async fn get(&mut self) -> Result<Option<String>, ArtifactsVersionRepositoryError>;
+
+    /// Check if a version already exists.
+    async fn exists(&mut self, version: &str) -> Result<bool, ArtifactsVersionRepositoryError>;
+
+    /// Commit all changes.
+    async fn commit(self: Box<Self>) -> Result<(), ArtifactsVersionRepositoryError>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,20 +36,29 @@ impl<'a> SqliteArtifactsVersionRepository<'a> {
 #[async_trait]
 impl<'a> ArtifactsVersionRepository for SqliteArtifactsVersionRepository<'a> {
     async fn set(&mut self, version: &str) -> Result<(), ArtifactsVersionRepositoryError> {
-        let query = "UPDATE artifacts_version SET version = ?";
-        let result = sqlx::query(query).bind(version).execute(&mut *self.ctx).await?;
-        if result.rows_affected() == 1 {
-            return Ok(());
-        }
-        let query = "INSERT INTO artifacts_version (version) VALUES (?)";
+        let query = "UPDATE artifacts_version SET current = 0";
+        sqlx::query(query).execute(&mut *self.ctx).await?;
+
+        let query = "INSERT INTO artifacts_version (version, current) VALUES (?, 1)";
         sqlx::query(query).bind(version).execute(&mut *self.ctx).await?;
         Ok(())
     }
 
     async fn get(&mut self) -> Result<Option<String>, ArtifactsVersionRepositoryError> {
-        let query = "SELECT version FROM artifacts_version";
+        let query = "SELECT version FROM artifacts_version WHERE current = 1";
         let version: Option<(String,)> = sqlx::query_as(query).fetch_optional(&mut *self.ctx).await?;
         Ok(version.map(|v| v.0))
+    }
+
+    async fn exists(&mut self, version: &str) -> Result<bool, ArtifactsVersionRepositoryError> {
+        let query = "SELECT 1 FROM artifacts_version WHERE version = ?";
+        let row = sqlx::query(query).bind(version).fetch_optional(&mut *self.ctx).await?;
+        Ok(row.is_some())
+    }
+
+    async fn commit(mut self: Box<Self>) -> Result<(), ArtifactsVersionRepositoryError> {
+        self.ctx.commit().await?;
+        Ok(())
     }
 }
 
@@ -66,5 +81,9 @@ mod tests {
 
         repo.set("bbb").await.expect("failed to set");
         assert_eq!(repo.get().await.expect("failed to get").as_deref(), Some("bbb"));
+
+        assert!(repo.exists("aaa").await.expect("lookup failed"));
+        assert!(repo.exists("bbb").await.expect("lookup failed"));
+        assert!(!repo.exists("cc").await.expect("lookup failed"));
     }
 }

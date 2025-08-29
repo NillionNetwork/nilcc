@@ -24,7 +24,8 @@ impl IntoResponse for UpgradeError {
         let discriminant = UpgradeErrorDiscriminants::from(&self);
         let (code, message) = match self {
             Self::InvalidVersion => (StatusCode::BAD_REQUEST, self.to_string()),
-            Self::ActiveUpgrade(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
+            Self::ActiveUpgrade(_) | Self::ExistingVersion => (StatusCode::PRECONDITION_FAILED, self.to_string()),
+            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
         let response = RequestHandlerError::new(message, format!("{discriminant:?}"));
         (code, Json(response)).into_response()
