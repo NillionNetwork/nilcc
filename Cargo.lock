@@ -2256,6 +2256,7 @@ dependencies = [
 name = "nilcc-agent-models"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "convert_case",
  "regex",
  "serde",

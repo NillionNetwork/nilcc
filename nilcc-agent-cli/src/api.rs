@@ -2,6 +2,7 @@ use nilcc_agent_models::errors::RequestHandlerError;
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderName, HeaderValue},
+    StatusCode,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -57,7 +58,8 @@ impl ApiClient {
         if response.status().is_success() {
             Ok(response.json()?)
         } else {
-            let err: RequestHandlerError = response.json()?;
+            let status = response.status();
+            let err: RequestHandlerError = response.json().map_err(|_| RequestError::InvalidError(status))?;
             Err(RequestError::Handler { code: err.error_code, details: err.message })
         }
     }
@@ -74,4 +76,7 @@ pub enum RequestError {
 
     #[error("api error, code = {code}, details = {details}")]
     Handler { code: String, details: String },
+
+    #[error("invalid error response for status: {0}")]
+    InvalidError(StatusCode),
 }

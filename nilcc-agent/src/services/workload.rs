@@ -12,7 +12,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use nilcc_agent_models::workloads::create::CreateWorkloadRequest;
-use std::{collections::BTreeSet, io, ops::Range};
+use std::{collections::BTreeSet, io, ops::Range, sync::Arc};
 use strum::EnumDiscriminants;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -107,7 +107,7 @@ impl From<WorkloadRepositoryError> for WorkloadLookupError {
 
 pub struct WorkloadServiceArgs {
     pub vm_service: Box<dyn VmService>,
-    pub repository_provider: Box<dyn RepositoryProvider>,
+    pub repository_provider: Arc<dyn RepositoryProvider>,
     pub proxy_service: Box<dyn ProxyService>,
     pub resources: SystemResources,
     pub open_ports: Range<u16>,
@@ -152,7 +152,7 @@ pub enum CreateServiceError {
 }
 
 pub struct DefaultWorkloadService {
-    repository_provider: Box<dyn RepositoryProvider>,
+    repository_provider: Arc<dyn RepositoryProvider>,
     vm_service: Box<dyn VmService>,
     proxy_service: Box<dyn ProxyService>,
     resources: Mutex<AvailableResources>,
@@ -434,7 +434,7 @@ mod tests {
 
             let args = WorkloadServiceArgs {
                 vm_service: Box::new(vm_service),
-                repository_provider: Box::new(provider),
+                repository_provider: Arc::new(provider),
                 proxy_service: Box::new(proxy_service),
                 resources,
                 open_ports,

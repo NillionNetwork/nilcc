@@ -43,6 +43,13 @@ impl ArtifactsDownloader {
         self
     }
 
+    pub async fn validate_exists(&self) -> anyhow::Result<()> {
+        let Self { version, artifacts_url, .. } = self;
+        let url = format!("{artifacts_url}/{version}/metadata.json");
+        reqwest::get(url).await?.error_for_status()?;
+        Ok(())
+    }
+
     pub async fn download(&self, target_dir: &Path) -> anyhow::Result<Artifacts> {
         info!("Downloading artifacts to {}", target_dir.display());
 

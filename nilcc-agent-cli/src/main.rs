@@ -14,6 +14,10 @@ use cvm_agent_models::{
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
+use nilcc_agent_models::system::ArtifactUpgrade;
+use nilcc_agent_models::system::ArtifactsVersionResponse;
+use nilcc_agent_models::system::UpgradeArtifactsRequest;
+use nilcc_agent_models::system::UpgradeState;
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
@@ -73,6 +77,10 @@ enum Command {
     /// System commands.
     #[clap(subcommand)]
     System(SystemCommand),
+
+    /// Admin commands
+    #[clap(subcommand)]
+    Admin(AdminCommand),
 }
 
 #[derive(Subcommand)]
@@ -91,6 +99,19 @@ enum SystemCommand {
 
     /// Get system stats.
     Stats(SystemStatsArgs),
+}
+
+#[derive(Subcommand)]
+enum AdminCommand {
+    #[clap(subcommand)]
+    Artifacts(AdminArtifactsCommand),
+}
+
+#[derive(Subcommand)]
+enum AdminArtifactsCommand {
+    Upgrade(UpgradeArtifactsArgs),
+
+    Version,
 }
 
 #[derive(Args)]
@@ -222,6 +243,11 @@ struct SystemStatsArgs {
 struct HealthArgs {
     /// The identifier of the workload to get health stats from.
     id: Uuid,
+}
+
+#[derive(Args)]
+struct UpgradeArtifactsArgs {
+    version: String,
 }
 
 #[derive(Clone)]
@@ -456,6 +482,37 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn upgrade_artifacts(client: ApiClient, args: UpgradeArtifactsArgs) -> anyhow::Result<()> {
+    let UpgradeArtifactsArgs { version } = args;
+    let request = UpgradeArtifactsRequest { version };
+    let _: () = client.post("/api/v1/system/artifacts/upgrade", &request)?;
+    println!("Upgrade scheduled");
+    Ok(())
+}
+
+fn artifacts_version(client: ApiClient) -> anyhow::Result<()> {
+    let response: ArtifactsVersionResponse = client.get("/api/v1/system/artifacts/version")?;
+    let ArtifactsVersionResponse { version, last_upgrade } = response;
+    println!("Version: {version}");
+    match last_upgrade {
+        Some(upgrade) => {
+            let ArtifactUpgrade { version, started_at, state } = upgrade;
+            print!("Upgrade to version {version} was started at {started_at} ");
+            match state {
+                UpgradeState::InProgress => println!("and is {}", Color::Yellow.paint("still in progress")),
+                UpgradeState::Success { finished_at } => {
+                    println!("and was {} at {finished_at}", Color::Green.paint("completed"))
+                }
+                UpgradeState::Error { finished_at, error } => {
+                    println!("and {} at {finished_at} with error: {error}", Color::Red.paint("failed"))
+                }
+            }
+        }
+        None => println!("No upgrades in progress"),
+    };
+    Ok(())
+}
+
 fn bytes_to_mb(bytes: u64) -> u64 {
     bytes / 1024 / 1024
 }
@@ -502,6 +559,10 @@ fn main() {
             SystemCommand::Logs(args) => system_logs(client, args),
             SystemCommand::Stats(args) => system_stats(client, args),
         },
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Upgrade(args))) => {
+            upgrade_artifacts(client, args)
+        }
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Version)) => artifacts_version(client),
     };
     if let Err(e) = result {
         eprintln!("Failed to run command: {e:#}");

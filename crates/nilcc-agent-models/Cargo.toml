@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 convert_case = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 regex = "1.11"
 serde_with = { version = "3.14", features = ["base64"] }

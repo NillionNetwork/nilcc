@@ -46,7 +46,7 @@ pub struct VmServiceArgs {
     pub vm_client: Arc<dyn VmClient>,
     pub cvm_agent_client: Arc<dyn CvmAgentClient>,
     pub disk_service: Box<dyn DiskService>,
-    pub base_cvm_config_path: PathBuf,
+    pub cvm_artifacts_path: PathBuf,
     pub zerossl_config: ZeroSslConfig,
     pub docker_config: DockerConfig,
     pub event_sender: EventSender,
@@ -58,7 +58,7 @@ pub struct DefaultVmService {
     disk_service: Box<dyn DiskService>,
     workers: Mutex<HashMap<Uuid, VmWorkerHandle>>,
     state_path: PathBuf,
-    base_cvm_config_path: PathBuf,
+    cvm_artifacts_path: PathBuf,
     zerossl_config: ZeroSslConfig,
     docker_config: DockerConfig,
     event_sender: EventSender,
@@ -71,7 +71,7 @@ impl DefaultVmService {
             vm_client,
             cvm_agent_client,
             disk_service,
-            base_cvm_config_path,
+            cvm_artifacts_path,
             zerossl_config,
             docker_config,
             event_sender,
@@ -83,7 +83,7 @@ impl DefaultVmService {
             disk_service,
             workers: Default::default(),
             state_path,
-            base_cvm_config_path,
+            cvm_artifacts_path,
             zerossl_config,
             docker_config,
             event_sender,
@@ -235,7 +235,7 @@ impl VmService for DefaultVmService {
 
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError> {
         let vm_type = if workload.gpus.is_empty() { VmType::Cpu } else { VmType::Gpu };
-        let config_path = self.base_cvm_config_path.join(&workload.artifacts_version);
+        let config_path = self.cvm_artifacts_path.join(&workload.artifacts_version);
         let mut cvm_config = CvmConfig::from_path(&config_path, vm_type).await.map_err(|e| {
             StartVmError(format!("failed to load artifacts version {}: {e}", workload.artifacts_version))
         })?;
@@ -345,7 +345,7 @@ mod tests {
         vm_client: MockVmClient,
         cvm_agent_client: MockCvmAgentClient,
         disk_service: MockDiskService,
-        base_cvm_config_path: PathBuf,
+        cvm_artifacts_path: PathBuf,
         zerossl_config: ZeroSslConfig,
         docker_config: DockerConfig,
     }
@@ -357,7 +357,7 @@ mod tests {
                 vm_client,
                 cvm_agent_client,
                 disk_service,
-                base_cvm_config_path,
+                cvm_artifacts_path,
                 zerossl_config,
                 docker_config,
             } = self;
@@ -366,7 +366,7 @@ mod tests {
                 vm_client: Arc::new(vm_client),
                 cvm_agent_client: Arc::new(cvm_agent_client),
                 disk_service: Box::new(disk_service),
-                base_cvm_config_path,
+                cvm_artifacts_path,
                 zerossl_config,
                 docker_config,
                 event_sender: EventSender(channel(1).0),
@@ -376,7 +376,7 @@ mod tests {
         }
 
         async fn write_cvm_file(&self, path: &str, contents: &[u8]) {
-            let path = self.base_cvm_config_path.join(path);
+            let path = self.cvm_artifacts_path.join(path);
             let parent = path.parent().expect("no parent");
             fs::create_dir_all(parent).await.expect("failed to create parents");
             fs::write(path, contents).await.expect("failed to write contents");
@@ -392,7 +392,7 @@ mod tests {
                 vm_client: Default::default(),
                 cvm_agent_client: Default::default(),
                 disk_service: Default::default(),
-                base_cvm_config_path: base_path.join("artifacts"),
+                cvm_artifacts_path: base_path.join("artifacts"),
                 zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
                 docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
             }
@@ -441,7 +441,7 @@ mod tests {
             .expect_create_disk_snapshot()
             .with(
                 eq(base_disk_path.clone()),
-                eq(builder.base_cvm_config_path.join("default/vm_images/cvm-cpu.qcow2")),
+                eq(builder.cvm_artifacts_path.join("default/vm_images/cvm-cpu.qcow2")),
                 eq(HardDiskFormat::Qcow2),
             )
             .return_once(move |_, _, _| Ok(()));
