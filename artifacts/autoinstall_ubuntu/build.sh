@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
+
 # This scripts creates am ubuntu server autoinstall iso with AMDSEV support.
 # It has two phases one in the host and the other in docker see docker_build.sh for docker phase.
-# usage: ./build.sh guest|host [cpu|gpu] [--clean]
+# usage: ./build.sh cpu|gpu [--clean]
 set -e
 
 SCRIPT_PATH=$(dirname $(realpath $0))
 
-[[ "$1" != "guest" && "$1" != "host" ]] && echo "Invalid argument, use 'guest' or 'host'" && exit 1
-[[ "$1" == "guest" && "$2" != "cpu" && "$2" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
+[[ "$1" != "cpu" && "$1" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
 
 CVM_AGENT_PATH="${SCRIPT_PATH}/../../target/release/cvm-agent"
 [[ ! -f "$CVM_AGENT_PATH" ]] && echo "cvm-agent binary not found, run 'cargo build --release -p cvm-agent'" && exit 1
 
-TYPE=$1
+TYPE="guest"
+SUBTYPE=$1
 shift
-[[ "$TYPE" == "guest" ]] && SUBTYPE=$1 && shift
 
 CLEAN=$1
 
