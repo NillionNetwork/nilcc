@@ -284,13 +284,13 @@ impl WorkloadService for DefaultWorkloadService {
         if resources.ports.len() < TOTAL_PORTS {
             return Err(CreateWorkloadError::InsufficientResources("open ports"));
         }
-        let workload = self.build_workload(request, &resources, artifacts_version);
+        let workload = self.build_workload(request, &resources, artifacts_version.clone());
         let id = workload.id;
         info!("Storing workload {id} in database");
         let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         repo.create(workload.clone()).await?;
 
-        info!("Scheduling VM {id}");
+        info!("Scheduling VM {id} using artifacts version {artifacts_version}");
         let proxied_vm = ProxiedVm::from(&workload);
         self.vm_service.create_vm(workload).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
