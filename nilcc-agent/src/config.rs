@@ -14,7 +14,7 @@ pub struct AgentConfig {
     /// Qemu configuration.
     pub qemu: QemuConfig,
 
-    /// Unique agent ID, used to identify this agent in nilCC server
+    /// Unique agent ID, used to identify this agent in nilcc server
     pub agent_id: Uuid,
 
     /// nilcc API configuration.
