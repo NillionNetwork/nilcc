@@ -6,10 +6,10 @@ import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { payloadValidator, responseValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
-import { SubmitEventRequest } from "#/metal-instance/metal-instance.dto";
 import {
   ListWorkloadEventsRequest,
   ListWorkloadEventsResponse,
+  SubmitEventRequest,
 } from "./workload-event.dto";
 
 export function submitEvent(options: ControllerOptions) {

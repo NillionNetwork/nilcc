@@ -3,6 +3,7 @@ use crate::{config::ApiConfig, resources::SystemResources};
 use anyhow::Context;
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
+use chrono::{DateTime, Utc};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use std::net::Ipv4Addr;
@@ -22,7 +23,12 @@ pub trait NilccApiClient: Send + Sync {
     ) -> Result<(), NilccApiError>;
 
     /// Report an event that occurred for a VM.
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError>;
+    async fn report_vm_event(
+        &self,
+        workload_id: Uuid,
+        event: VmEvent,
+        timestamp: DateTime<Utc>,
+    ) -> Result<(), NilccApiError>;
 
     /// Send a heartbeat to the API.
     async fn heartbeat(&self) -> Result<(), NilccApiError>;
@@ -122,9 +128,14 @@ impl NilccApiClient for HttpNilccApiClient {
         self.send_request(Method::POST, url, &payload).await
     }
 
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError> {
+    async fn report_vm_event(
+        &self,
+        workload_id: Uuid,
+        event: VmEvent,
+        timestamp: DateTime<Utc>,
+    ) -> Result<(), NilccApiError> {
         let url = self.make_url("/api/v1/workload-events/submit");
-        let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event };
+        let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event, timestamp };
         self.send_request(Method::POST, url, &payload).await
     }
 
@@ -149,8 +160,13 @@ impl NilccApiClient for DummyNilccApiClient {
         Ok(())
     }
 
-    async fn report_vm_event(&self, workload_id: Uuid, event: VmEvent) -> Result<(), NilccApiError> {
-        info!("Reporting VM event for {workload_id}: {event:?}");
+    async fn report_vm_event(
+        &self,
+        workload_id: Uuid,
+        event: VmEvent,
+        timestamp: DateTime<Utc>,
+    ) -> Result<(), NilccApiError> {
+        info!("Reporting VM event for {workload_id}: {event:?} @ {timestamp}");
         Ok(())
     }
 
@@ -192,6 +208,7 @@ struct VmEventRequest {
     agent_id: Uuid,
     workload_id: Uuid,
     event: VmEvent,
+    timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]

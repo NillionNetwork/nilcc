@@ -7,6 +7,7 @@ use crate::{
     config::ZeroSslConfig,
     workers::events::EventSender,
 };
+use chrono::Utc;
 use cvm_agent_models::bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials};
 use metrics::{counter, gauge};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -232,7 +233,8 @@ impl VmWorker {
     }
 
     async fn submit_event(&self, event: VmEvent) {
-        self.event_sender.send_event(self.workload_id, event).await;
+        let timestamp = Utc::now();
+        self.event_sender.send_event(self.workload_id, event, timestamp).await;
     }
 }
 
