@@ -416,6 +416,7 @@ mod tests {
             disk_space_gb: 1.try_into().unwrap(),
             ports: [1000, 1001, 1002],
             domain: "example.com".into(),
+            last_reported_event: None,
             enabled: true,
         };
         let mut builder = Builder::default();
