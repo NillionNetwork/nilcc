@@ -6,6 +6,7 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use std::net::Ipv4Addr;
+use strum::EnumDiscriminants;
 use tracing::info;
 use uuid::Uuid;
 
@@ -27,7 +28,7 @@ pub trait NilccApiClient: Send + Sync {
     async fn heartbeat(&self) -> Result<(), NilccApiError>;
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, EnumDiscriminants)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum VmEvent {
     Starting,

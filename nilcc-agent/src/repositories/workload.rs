@@ -32,6 +32,7 @@ pub struct Workload {
     #[sqlx(json)]
     pub ports: [u16; 3],
     pub domain: String,
+    pub last_reported_event: Option<String>,
 }
 
 impl Workload {
@@ -66,6 +67,7 @@ impl fmt::Debug for Workload {
             domain,
             enabled: running,
             docker_credentials,
+            last_reported_event,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -85,6 +87,7 @@ impl fmt::Debug for Workload {
             .field("domain", domain)
             .field("running", running)
             .field("docker_credentials", docker_credentials)
+            .field("last_reported_event", last_reported_event)
             .finish()
     }
 }
@@ -117,6 +120,9 @@ pub trait WorkloadRepository: Send + Sync {
 
     /// Set the `gpus` column for a workload.
     async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError>;
+
+    /// Set the `last_reported_event` column for a workload.
+    async fn set_last_reported_event(&mut self, id: Uuid, event: String) -> Result<(), WorkloadRepositoryError>;
 
     /// Commit any changes that were performed on this repository.
     async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError>;
@@ -184,10 +190,11 @@ INSERT INTO workloads (
     disk_space_gb,
     ports,
     domain,
+    last_reported_event,
     enabled,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ";
         let Workload {
             id,
@@ -204,6 +211,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             gpus,
             ports,
             domain,
+            last_reported_event,
             enabled,
         } = workload;
 
@@ -222,6 +230,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             .bind(disk_space_gb)
             .bind(sqlx::types::Json(ports))
             .bind(domain)
+            .bind(last_reported_event)
             .bind(enabled)
             .bind(Utc::now())
             .execute(&mut *self.ctx)
@@ -263,6 +272,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         Ok(())
     }
 
+    async fn set_last_reported_event(&mut self, id: Uuid, event: String) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET last_reported_event = ? WHERE id = ?";
+        sqlx::query(query).bind(event).bind(id).execute(&mut *self.ctx).await?;
+        Ok(())
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), WorkloadRepositoryError> {
         Ok(self.ctx.commit().await?)
     }
@@ -298,6 +313,7 @@ mod tests {
             gpus: vec!["aa:bb".into()],
             ports: [1080, 1443, 2000],
             domain: "example.com".into(),
+            last_reported_event: None,
             enabled: true,
         };
         repo.create(&workload).await.expect("failed to insert");
@@ -317,6 +333,9 @@ mod tests {
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);
+
+        repo.set_last_reported_event(workload.id, "SOMETHING".into()).await.expect("failed to update");
+        assert_eq!(repo.find(workload.id).await.expect("failed to find").last_reported_event, Some("SOMETHING".into()));
 
         let workload_same_domain = Workload { id: Uuid::new_v4(), ..workload };
         let err = repo.create(&workload_same_domain).await.expect_err("insertion succeeded");

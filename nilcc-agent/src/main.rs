@@ -23,7 +23,10 @@ use nilcc_agent::{
         workload::{DefaultWorkloadService, WorkloadService, WorkloadServiceArgs},
     },
     version,
-    workers::{events::EventWorker, heartbeat::HeartbeatWorker},
+    workers::{
+        events::{EventWorker, EventWorkerArgs},
+        heartbeat::HeartbeatWorker,
+    },
 };
 use nilcc_artifacts::{ArtifactsDownloader, VmType};
 use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
@@ -214,14 +217,17 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
     let nilcc_api_client: Arc<dyn NilccApiClient> = Arc::new(DummyNilccApiClient);
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
-    let repository_provider = SqliteRepositoryProvider::new(db.clone());
+    let repository_provider = Arc::new(SqliteRepositoryProvider::new(db.clone()));
     let workload = repository_provider.workloads(Default::default()).await?.find(workload_id).await?;
     let state_path = tempfile::tempdir().context("Failed to create tempdir")?;
     info!("Storing state in {}", state_path.path().display());
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin.clone()));
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
-    let event_sender = EventWorker::spawn(nilcc_api_client);
+    let event_sender = EventWorker::spawn(EventWorkerArgs {
+        api_client: nilcc_api_client,
+        repository_provider: repository_provider.clone(),
+    });
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client: vm_client.clone(),
         cvm_agent_client: cvm_agent_client.clone(),
@@ -337,7 +343,10 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
 
     let repository_provider = Arc::new(repository_provider);
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
-    let event_sender = EventWorker::spawn(nilcc_api_client);
+    let event_sender = EventWorker::spawn(EventWorkerArgs {
+        api_client: nilcc_api_client,
+        repository_provider: repository_provider.clone(),
+    });
     let vm_service = DefaultVmService::new(VmServiceArgs {
         vm_client,
         cvm_agent_client: cvm_agent_client.clone(),

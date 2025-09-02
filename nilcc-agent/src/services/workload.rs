@@ -233,6 +233,7 @@ impl DefaultWorkloadService {
             disk_space_gb,
             ports,
             domain,
+            last_reported_event: None,
             enabled: true,
         }
     }
@@ -482,6 +483,7 @@ mod tests {
             gpus: Default::default(),
             ports: [150, 151, 152],
             domain: "example.com".into(),
+            last_reported_event: None,
             enabled: true,
         }
     }
@@ -598,6 +600,7 @@ mod tests {
             disk_space_gb: request.disk_space_gb,
             ports: [100, 101, 102],
             domain: request.domain.clone(),
+            last_reported_event: None,
             enabled: true,
         };
         let mut builder = Builder::default();

@@ -316,6 +316,7 @@ mod tests {
             gpus: gpus.iter().cloned().collect(),
             ports: [150, 151, 152],
             domain: domain.into(),
+            last_reported_event: None,
             enabled: true,
         }
     }
