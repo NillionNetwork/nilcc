@@ -3,6 +3,7 @@ use crate::{
     repositories::{sqlite::RepositoryProvider, workload::WorkloadRepositoryError},
 };
 use anyhow::Context;
+use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::{
@@ -17,6 +18,7 @@ const RETRY_INTERVAL: Duration = Duration::from_secs(1);
 pub(crate) struct WorkloadEvent {
     workload_id: Uuid,
     event: VmEvent,
+    timestamp: DateTime<Utc>,
 }
 
 pub struct EventWorkerArgs {
@@ -53,7 +55,7 @@ impl EventWorker {
     }
 
     async fn send_event(&mut self, event: &WorkloadEvent) -> anyhow::Result<()> {
-        let WorkloadEvent { workload_id, event } = event;
+        let WorkloadEvent { workload_id, event, timestamp } = event;
         let event_type = format!("{:?}", VmEventDiscriminants::from(event));
         let mut repo =
             self.repository_provider.workloads(Default::default()).await.context("Failed to get repository")?;
@@ -76,7 +78,7 @@ impl EventWorker {
         }
 
         info!("Sending event {event_type} for workload {workload_id}");
-        match self.client.report_vm_event(*workload_id, event.clone()).await {
+        match self.client.report_vm_event(*workload_id, event.clone(), *timestamp).await {
             Ok(_) => (),
             Err(NilccApiError::Api { status, .. }) if status == StatusCode::NOT_FOUND => {
                 warn!("API returned 404 for workload {workload_id} event, ignoring");
@@ -106,8 +108,8 @@ impl EventWorker {
 pub struct EventSender(pub(crate) Sender<WorkloadEvent>);
 
 impl EventSender {
-    pub(crate) async fn send_event(&self, workload_id: Uuid, event: VmEvent) {
-        if self.0.send(WorkloadEvent { workload_id, event }).await.is_err() {
+    pub(crate) async fn send_event(&self, workload_id: Uuid, event: VmEvent, timestamp: DateTime<Utc>) {
+        if self.0.send(WorkloadEvent { workload_id, event, timestamp }).await.is_err() {
             error!("Sender dropped");
         }
     }

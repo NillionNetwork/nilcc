@@ -10,7 +10,6 @@ import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
   type RegisterMetalInstanceRequest,
-  type SubmitEventRequest,
 } from "#/metal-instance/metal-instance.dto";
 import {
   type CreateWorkloadRequest,
@@ -29,6 +28,7 @@ import {
 import {
   type ListWorkloadEventsRequest,
   ListWorkloadEventsResponse,
+  type SubmitEventRequest,
 } from "#/workload-event/workload-event.dto";
 import {
   type CreateWorkloadTierRequest,

@@ -28,3 +28,13 @@ export const ListWorkloadEventsResponse = z
 export type ListWorkloadEventsResponse = z.infer<
   typeof ListWorkloadEventsResponse
 >;
+
+export const SubmitEventRequest = z
+  .object({
+    metalInstanceId: Uuid,
+    workloadId: Uuid,
+    event: WorkloadEventKind,
+    timestamp: z.string().datetime(),
+  })
+  .openapi({ ref: "SubmitEventRequest" });
+export type SubmitEventRequest = z.infer<typeof SubmitEventRequest>;

@@ -13,16 +13,14 @@ import {
   NotEnoughCredits,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type {
-  SubmitEventRequest,
-  WorkloadEventKind,
-} from "#/metal-instance/metal-instance.dto";
+import type { WorkloadEventKind } from "#/metal-instance/metal-instance.dto";
 import type {
   ListContainersRequest,
   WorkloadContainerLogsRequest,
 } from "#/workload-container/workload-container.dto";
 import type {
   ListWorkloadEventsRequest,
+  SubmitEventRequest,
   WorkloadEvent,
 } from "#/workload-event/workload-event.dto";
 import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
@@ -294,7 +292,7 @@ export class WorkloadService {
       workload,
       event: request.event.kind,
       details,
-      timestamp: bindings.services.time.getTime(),
+      timestamp: new Date(request.timestamp),
     };
     await workloadRepository.save(workload);
     await eventRepository.save(event);

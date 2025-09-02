@@ -81,12 +81,3 @@ export const WorkloadEventKind = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("failedToStart"), error: z.string() }),
 ]);
 export type WorkloadEventKind = z.infer<typeof WorkloadEventKind>;
-
-export const SubmitEventRequest = z
-  .object({
-    metalInstanceId: Uuid,
-    workloadId: Uuid,
-    event: WorkloadEventKind,
-  })
-  .openapi({ ref: "SubmitEventRequest" });
-export type SubmitEventRequest = z.infer<typeof SubmitEventRequest>;

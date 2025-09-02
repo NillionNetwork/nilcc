@@ -160,11 +160,13 @@ services:
       .createWorkload(createWorkloadRequest)
       .submit();
 
+    const timestamp = "2025-09-02T20:46:44.666Z";
     await clients.metalInstance
       .submitEvent({
         metalInstanceId: myMetalInstance.metalInstanceId,
         workloadId: workload.workloadId,
         event: { kind: "starting" },
+        timestamp,
       })
       .submit();
 
@@ -176,9 +178,18 @@ services:
     const eventsBody = await clients.user
       .listEvents(workload!.workloadId)
       .submit();
-    expect(eventsBody.events).toHaveLength(2);
-    const eventKinds = eventsBody.events.map((e) => e.details.kind);
+    const events = eventsBody.events;
+    events.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+
+    expect(events).toHaveLength(2);
+    const eventKinds = events.map((e) => e.details.kind);
     expect(eventKinds).toEqual(["created", "starting"]);
+
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.timestamp).toEqual(timestamp);
   });
 
   it("should allow creating a workload using a custom domain", async ({
