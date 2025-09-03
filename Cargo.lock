@@ -1596,13 +1596,14 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.6.0"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
+checksum = "eb3aa54a13a0dfe7fbe3a59e0c76093041720fdc77b110cc0fc260fafb4dc51e"
 dependencies = [
+ "atomic-waker",
  "bytes",
  "futures-channel",
- "futures-util",
+ "futures-core",
  "h2",
  "http",
  "http-body",
@@ -1610,6 +1611,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
+ "pin-utils",
  "smallvec",
  "tokio",
  "want",
@@ -2289,14 +2291,17 @@ dependencies = [
  "hex",
  "num_cpus",
  "rand 0.9.1",
+ "reqwest",
  "serde",
  "serde_with",
  "sev",
+ "sha2",
  "thiserror 2.0.12",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "x509-parser 0.18.0",
 ]
 
 [[package]]
@@ -5262,6 +5267,23 @@ dependencies = [
  "nom",
  "oid-registry 0.8.1",
  "ring",
+ "rusticata-macros",
+ "thiserror 2.0.12",
+ "time",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb3e137310115a65136898d2079f003ce33331a6c4b0d51f1531d1be082b6425"
+dependencies = [
+ "asn1-rs 0.7.1",
+ "data-encoding",
+ "der-parser 10.0.0",
+ "lazy_static",
+ "nom",
+ "oid-registry 0.8.1",
  "rusticata-macros",
  "thiserror 2.0.12",
  "time",

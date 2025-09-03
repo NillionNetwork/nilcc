@@ -102,6 +102,7 @@ https://foo.com {
       APP__SERVER__BIND_ENDPOINT: "0.0.0.0:80"
       APP__NILCC_VERSION: ${NILCC_VERSION}
       APP__VM_TYPE: ${NILCC_VM_TYPE}
+      APP__ATTESTATION_DOMAIN: ${NILCC_DOMAIN}
       NO_COLOR: 1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
@@ -144,6 +145,7 @@ https://foo.com {
       APP__SERVER__BIND_ENDPOINT: "0.0.0.0:80"
       APP__NILCC_VERSION: ${NILCC_VERSION}
       APP__VM_TYPE: ${NILCC_VM_TYPE}
+      APP__ATTESTATION_DOMAIN: ${NILCC_DOMAIN}
       NO_COLOR: 1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
