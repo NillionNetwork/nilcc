@@ -13,6 +13,9 @@ pub struct Config {
     pub vm_type: VmType,
     #[serde(default = "default_gpu_attester_path")]
     pub gpu_attester_path: PathBuf,
+    #[serde(default = "default_proxy_endpoint")]
+    pub proxy_endpoint: String,
+    pub attestation_domain: String,
 }
 
 impl Config {
@@ -52,4 +55,8 @@ fn default_bind_endpoint() -> SocketAddr {
 
 fn default_gpu_attester_path() -> PathBuf {
     "/opt/nillion/gpu-attester/main.py".into()
+}
+
+fn default_proxy_endpoint() -> String {
+    "cvm-nilcc-proxy-1:443".to_string()
 }

@@ -24,6 +24,9 @@ pub mod bootstrap {
 
         /// The docker credentials to use.
         pub docker: Vec<DockerCredentials>,
+
+        /// The public domain the CVM is accessible at.
+        pub domain: String,
     }
 
     /// The ACME credentials.

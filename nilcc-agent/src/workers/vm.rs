@@ -33,6 +33,7 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) zerossl_config: ZeroSslConfig,
     pub(crate) docker_credentials: Vec<DockerCredentials>,
     pub(crate) event_sender: EventSender,
+    pub(crate) domain: String,
 }
 
 pub(crate) struct VmWorker {
@@ -46,6 +47,7 @@ pub(crate) struct VmWorker {
     vm_state: VmState,
     zerossl_config: ZeroSslConfig,
     docker_credentials: Vec<DockerCredentials>,
+    domain: String,
     event_sender: EventSender,
 }
 
@@ -61,6 +63,7 @@ impl VmWorker {
             zerossl_config,
             docker_credentials,
             event_sender,
+            domain,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -76,6 +79,7 @@ impl VmWorker {
                 zerossl_config,
                 docker_credentials,
                 event_sender,
+                domain,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -202,6 +206,7 @@ impl VmWorker {
                                 eab_mac_key: self.zerossl_config.eab_mac_key.clone(),
                             },
                             docker: self.docker_credentials.clone(),
+                            domain: self.domain.clone(),
                         };
                         if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
                             warn!("Failed to bootstrap agent: {e:#}");

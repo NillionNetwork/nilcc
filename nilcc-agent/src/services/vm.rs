@@ -225,6 +225,7 @@ impl VmService for DefaultVmService {
                     zerossl_config: self.zerossl_config.clone(),
                     docker_credentials,
                     event_sender: self.event_sender.clone(),
+                    domain: workload.domain,
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);

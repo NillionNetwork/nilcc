@@ -17,11 +17,12 @@ pub(crate) struct ComposeMonitor {
     ctx: BootstrapContext,
     acme: AcmeCredentials,
     docker: Vec<DockerCredentials>,
+    domain: String,
 }
 
 impl ComposeMonitor {
-    pub(crate) fn spawn(ctx: BootstrapContext, acme: AcmeCredentials, docker: Vec<DockerCredentials>) {
-        let monitor = ComposeMonitor { ctx, acme, docker };
+    pub(crate) fn spawn(ctx: BootstrapContext, acme: AcmeCredentials, docker: Vec<DockerCredentials>, domain: String) {
+        let monitor = ComposeMonitor { ctx, acme, docker, domain };
         info!("Spawning docker compose monitor");
         tokio::spawn(async move {
             monitor.run().await;
@@ -132,6 +133,7 @@ impl ComposeMonitor {
             .env("CADDY_INPUT_FILE", self.ctx.caddy_config.as_os_str())
             .env("NILCC_VERSION", &self.ctx.version)
             .env("NILCC_VM_TYPE", self.ctx.vm_type.to_string())
+            .env("NILCC_DOMAIN", &self.domain)
             .env(CADDY_ACME_EAB_KEY_ID, &self.acme.eab_key_id)
             .env(CADDY_ACME_EAB_MAC_KEY, &self.acme.eab_mac_key)
             .stderr(Stdio::piped())

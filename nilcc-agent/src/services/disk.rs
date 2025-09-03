@@ -1,6 +1,7 @@
 use crate::clients::qemu::HardDiskFormat;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
+use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use serde::Serialize;
 use std::{
     fmt::Write,
@@ -15,7 +16,15 @@ use tokio::{
 use tracing::info;
 
 /// The list of reserved environment variable names.
-static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &["NILCC_VERSION", "NILCC_VM_TYPE"];
+static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &[
+    "NILCC_VERSION",
+    "NILCC_VM_TYPE",
+    "NILCC_DOMAIN",
+    "FILES",
+    "CADDY_INPUT_FILE",
+    CADDY_ACME_EAB_KEY_ID,
+    CADDY_ACME_EAB_MAC_KEY,
+];
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
