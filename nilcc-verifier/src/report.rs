@@ -1,22 +1,18 @@
 use anyhow::{bail, Context};
 use clap::ValueEnum;
 use nilcc_artifacts::{Artifacts, ArtifactsDownloader, VmTypeArtifacts};
-use reqwest::blocking::Client;
-use serde::{Deserialize, Serialize};
+use reqwest::{blocking::ClientBuilder, tls::TlsInfo};
+use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
+use sha2::{Digest, Sha256};
 use std::{path::PathBuf, time::Duration};
 use tracing::info;
+use x509_parser::parse_x509_certificate;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Serialize)]
-struct Request {
-    #[serde(with = "hex::serde")]
-    nonce: [u8; 64],
-}
-
 #[derive(Deserialize)]
-struct Response {
+struct ReportResponse {
     report: AttestationReport,
     environment: EnvironmentSpec,
 }
@@ -55,27 +51,29 @@ impl ReportFetcher {
     }
 
     pub fn fetch_report(&self, base_url: &str) -> anyhow::Result<ReportBundle> {
-        let request = Request { nonce: rand::random() };
-        let http_client = Client::new();
-        let url = format!("{base_url}/nilcc/api/v1/report/generate");
+        let http_client = ClientBuilder::default().tls_info(true).build().context("Failed to build HTTP client")?;
+        let url = format!("{base_url}/nilcc/api/v1/report");
         info!("Fetching report from {url}");
-        let response: Response = http_client
-            .post(url)
-            .json(&request)
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .context("fetching attestation")?
-            .json()
-            .context("decoding payload body")?;
+        let response = http_client.get(url).timeout(REQUEST_TIMEOUT).send().context("fetching attestation")?;
 
-        let Response { report, environment } = response;
-        if report.report_data.as_slice() != request.nonce {
+        let info = response.extensions().get::<TlsInfo>().context("No TLS information")?;
+        let cert = info.peer_certificate().context("No certificate in TLS info")?;
+        let (_, cert) = parse_x509_certificate(cert).context("Invalid TLS certificate")?;
+        let pubkey = cert.tbs_certificate.subject_pki;
+        let cert_fingerprint = Sha256::digest(pubkey.raw);
+        let mut expected_report_data: [u8; 64] = [0; 64];
+        expected_report_data[1..33].copy_from_slice(&cert_fingerprint);
+
+        let ReportResponse { report, environment } = response.json().context("decoding payload body")?;
+        if report.report_data.as_slice() != expected_report_data {
             bail!(
-                "report data is different: sent {}, got {}",
-                hex::encode(request.nonce),
+                "unexpected report data: expected `{}`, got `{}`",
+                hex::encode(expected_report_data),
                 hex::encode(report.report_data)
             );
         }
+        info!("Report contains expected TLS fingerprint: {}", hex::encode(cert_fingerprint));
+
         let EnvironmentSpec { nilcc_version, vm_type, cpu_count } = &environment;
         info!("CVM is running nilcc-version {nilcc_version}, using VM type '{vm_type:?}' and has {cpu_count} CPUs");
 

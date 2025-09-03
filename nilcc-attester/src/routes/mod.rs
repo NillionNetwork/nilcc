@@ -10,7 +10,7 @@ pub(crate) mod report;
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::handler))
-        .nest("/api/v1", Router::new().route("/report/generate", get(report::generate::handler).with_state(state)))
+        .nest("/api/v1", Router::new().route("/report", get(report::handler).with_state(state)))
 }
 
 #[derive(Clone)]
