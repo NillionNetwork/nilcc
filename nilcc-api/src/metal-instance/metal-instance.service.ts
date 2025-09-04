@@ -86,6 +86,7 @@ export class MetalInstanceService {
     }
     const instance = instances[0];
     const now = bindings.services.time.getTime();
+    bindings.metrics.metalInstanceHeartbeats.labels({ id: instance.id }).inc();
     if (now.getMinutes() !== instance.lastSeenAt.getMinutes()) {
       bindings.log.info(
         `Need to deduct credits for ${instance.workloads.length} workloads running on agent ${instance.id}`,
@@ -107,6 +108,7 @@ export class MetalInstanceService {
               workload.account,
               tx,
             );
+            bindings.metrics.deactivatedWorkloads.inc();
           }
         } catch (error: unknown) {
           bindings.log.error(

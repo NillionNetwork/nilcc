@@ -29,7 +29,9 @@ export async function buildApp(
   const app = new Hono<AppEnv>();
   const metricsApp = new Hono();
 
-  const { printMetrics, registerMetrics } = prometheus();
+  const { printMetrics, registerMetrics } = prometheus({
+    registry: bindings.metricsRegistry,
+  });
   app.use("*", bodyLimit({ maxSize: 16 * 1024 * 1024 }));
   app.use("*", registerMetrics);
 

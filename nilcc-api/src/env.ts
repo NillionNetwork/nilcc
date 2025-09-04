@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import { Counter, Registry } from "prom-client";
 import type { DataSource, QueryRunner } from "typeorm";
 import { z } from "zod";
 import { createLogger } from "#/common/logger";
@@ -71,6 +72,13 @@ export type AppBindings = {
   dataSource: DataSource;
   services: AppServices;
   log: Logger;
+  metricsRegistry: Registry;
+  metrics: Metrics;
+};
+
+export type Metrics = {
+  deactivatedWorkloads: Counter;
+  metalInstanceHeartbeats: Counter;
 };
 
 export const EnvVarsSchema = z.object({
@@ -124,6 +132,8 @@ export async function loadBindings(
     config.logLevel,
     hasFeatureFlag(config.enabledFeatures, FeatureFlag.PRETTY_LOGS),
   );
+  const metricsRegistry = new Registry();
+  const metrics = createMetrics(metricsRegistry);
 
   const dataSource = await buildDataSource(config);
   log.debug("Initializing database");
@@ -136,6 +146,8 @@ export async function loadBindings(
     dataSource,
     services,
     log,
+    metricsRegistry,
+    metrics,
   };
 }
 
@@ -230,4 +242,22 @@ async function createDnsService(
   return localstackEnabled
     ? await LocalStackDnsService.create(zone, subdomain, log)
     : await Route53DnsService.create(zone, subdomain, log);
+}
+
+function createMetrics(registry: Registry): Metrics {
+  const registers = [registry];
+  const metrics: Metrics = {
+    deactivatedWorkloads: new Counter({
+      name: "deactivated_workloads_total",
+      help: "The total number of workloads deactivated because an account ran out of credits",
+      registers,
+    }),
+    metalInstanceHeartbeats: new Counter({
+      name: "metal_instance_heartbeats_total",
+      help: "The total number of heartbeats per metal instance",
+      labelNames: ["id"],
+      registers,
+    }),
+  };
+  return metrics;
 }
