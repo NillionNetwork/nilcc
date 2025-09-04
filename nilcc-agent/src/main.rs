@@ -30,7 +30,13 @@ use nilcc_agent::{
 };
 use nilcc_artifacts::{ArtifactsDownloader, VmType};
 use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
-use std::{fmt, fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    fmt, fs, io,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::signal;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, level_filters::LevelFilter, warn};
@@ -71,6 +77,12 @@ enum Command {
 
     /// Display system resources.
     Resources,
+
+    /// Validate the config file.
+    ValidateConfig {
+        /// The path to the config file to validate.
+        config: PathBuf,
+    },
 
     /// Download resources.
     #[clap(subcommand)]
@@ -284,6 +296,12 @@ async fn download_initial_artifacts(
     Ok(())
 }
 
+fn validate_config(config_path: &Path) -> Result<()> {
+    let config = fs::read(config_path).context("Failed to read config")?;
+    serde_yaml::from_slice::<AgentConfig>(&config).context("Failed to deserialize config file")?;
+    Ok(())
+}
+
 async fn run_daemon(config: AgentConfig) -> Result<()> {
     info!("Setting up dependencies");
     let nilcc_api_client: Arc<dyn NilccApiClient> = match config.controller {
@@ -449,6 +467,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             let resources = SystemResources::gather(Default::default()).await?;
             let resources = serde_json::to_string_pretty(&resources).expect("failed to serialize");
             println!("{resources}");
+            Ok(())
+        }
+        Command::ValidateConfig { config } => {
+            validate_config(&config).context("Invalid config file")?;
+            println!("Config file is valid");
             Ok(())
         }
         Command::Download(DownloadCommand::Artifacts(args)) => download_artifacts(args).await,
