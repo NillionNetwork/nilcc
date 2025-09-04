@@ -14,10 +14,10 @@ use cvm_agent_models::{
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
-use nilcc_agent_models::system::ArtifactUpgrade;
-use nilcc_agent_models::system::ArtifactsVersionResponse;
-use nilcc_agent_models::system::UpgradeArtifactsRequest;
+use nilcc_agent_models::system::LastUpgrade;
+use nilcc_agent_models::system::UpgradeRequest;
 use nilcc_agent_models::system::UpgradeState;
+use nilcc_agent_models::system::VersionResponse;
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
@@ -105,11 +105,21 @@ enum SystemCommand {
 enum AdminCommand {
     #[clap(subcommand)]
     Artifacts(AdminArtifactsCommand),
+
+    #[clap(subcommand)]
+    Agent(AdminAgentCommand),
 }
 
 #[derive(Subcommand)]
 enum AdminArtifactsCommand {
     Upgrade(UpgradeArtifactsArgs),
+
+    Version,
+}
+
+#[derive(Subcommand)]
+enum AdminAgentCommand {
+    Upgrade(UpgradeAgentArgs),
 
     Version,
 }
@@ -247,6 +257,13 @@ struct HealthArgs {
 
 #[derive(Args)]
 struct UpgradeArtifactsArgs {
+    /// The artifact version to update to.
+    version: String,
+}
+
+#[derive(Args)]
+struct UpgradeAgentArgs {
+    /// The agent version to update to.
     version: String,
 }
 
@@ -484,19 +501,36 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
 
 fn upgrade_artifacts(client: ApiClient, args: UpgradeArtifactsArgs) -> anyhow::Result<()> {
     let UpgradeArtifactsArgs { version } = args;
-    let request = UpgradeArtifactsRequest { version };
+    let request = UpgradeRequest { version: version.clone() };
     let _: () = client.post("/api/v1/system/artifacts/upgrade", &request)?;
-    println!("Upgrade scheduled");
+    println!("Upgrade to version {version} scheduled");
     Ok(())
 }
 
 fn artifacts_version(client: ApiClient) -> anyhow::Result<()> {
-    let response: ArtifactsVersionResponse = client.get("/api/v1/system/artifacts/version")?;
-    let ArtifactsVersionResponse { version, last_upgrade } = response;
+    let response: VersionResponse = client.get("/api/v1/system/artifacts/version")?;
+    display_version(response)
+}
+
+fn upgrade_agent(client: ApiClient, args: UpgradeAgentArgs) -> anyhow::Result<()> {
+    let UpgradeAgentArgs { version } = args;
+    let request = UpgradeRequest { version: version.clone() };
+    let _: () = client.post("/api/v1/system/agent/upgrade", &request)?;
+    println!("Upgrade to version {version} scheduled");
+    Ok(())
+}
+
+fn agent_version(client: ApiClient) -> anyhow::Result<()> {
+    let response: VersionResponse = client.get("/api/v1/system/agent/version")?;
+    display_version(response)
+}
+
+fn display_version(response: VersionResponse) -> anyhow::Result<()> {
+    let VersionResponse { version, last_upgrade } = response;
     println!("Version: {version}");
     match last_upgrade {
         Some(upgrade) => {
-            let ArtifactUpgrade { version, started_at, state } = upgrade;
+            let LastUpgrade { version, started_at, state } = upgrade;
             print!("Upgrade to version {version} was started at {started_at} ");
             match state {
                 UpgradeState::InProgress => println!("and is {}", Color::Yellow.paint("still in progress")),
@@ -563,6 +597,8 @@ fn main() {
             upgrade_artifacts(client, args)
         }
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Version)) => artifacts_version(client),
+        Command::Admin(AdminCommand::Agent(AdminAgentCommand::Upgrade(args))) => upgrade_agent(client, args),
+        Command::Admin(AdminCommand::Agent(AdminAgentCommand::Version)) => agent_version(client),
     };
     if let Err(e) = result {
         eprintln!("Failed to run command: {e:#}");

@@ -52,6 +52,8 @@ pub fn build_router(state: AppState, token: String) -> Router {
         Router::new()
             .route("/system/artifacts/upgrade", post(system::artifacts::upgrade::handler))
             .route("/system/artifacts/version", get(system::artifacts::version::handler))
+            .route("/system/agent/upgrade", post(system::agent::upgrade::handler))
+            .route("/system/agent/version", get(system::agent::version::handler))
             .nest(
                 "/workloads",
                 Router::new()

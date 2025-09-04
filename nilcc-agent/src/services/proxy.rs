@@ -9,7 +9,7 @@ use tokio::{io::AsyncWriteExt, net::UnixSocket, process::Command, sync::Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
 
-const HAPROXY_TEMPLATE: &str = include_str!("../templates/haproxy.cfg.j2");
+const HAPROXY_TEMPLATE: &str = include_str!("../../resources/haproxy.cfg.j2");
 
 #[derive(Debug, PartialEq)]
 pub struct ProxiedVm {

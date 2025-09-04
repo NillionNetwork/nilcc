@@ -2,21 +2,13 @@ use crate::{
     routes::AppState,
     services::upgrade::{UpgradeMetadata, UpgradeState},
 };
-use axum::{extract::State, response::IntoResponse, Json};
-use axum::{http::StatusCode, response::Response};
-use nilcc_agent_models::{
-    errors::RequestHandlerError,
-    system::{LastUpgrade, VersionResponse},
-};
-use tracing::error;
+use axum::response::Response;
+use axum::{extract::State, Json};
+use nilcc_agent_models::system::{LastUpgrade, VersionResponse};
 
 pub(crate) async fn handler(state: State<AppState>) -> Result<Json<VersionResponse>, Response> {
-    let version = state.services.upgrade.artifacts_version().await.map_err(|e| {
-        error!("Failed to get current artifacts version: {e:#}");
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(RequestHandlerError::new("internal server error", "INTERNAL")))
-            .into_response()
-    })?;
-    let last_upgrade = match state.services.upgrade.artifacts_upgrade_state().await {
+    let version = state.services.upgrade.agent_version();
+    let last_upgrade = match state.services.upgrade.agent_upgrade_state().await {
         UpgradeState::None => None,
         UpgradeState::Upgrading { metadata } => {
             let UpgradeMetadata { version, started_at, .. } = metadata;

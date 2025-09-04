@@ -202,11 +202,11 @@ async fn run_iso_command(command: IsoCommand) -> Result<()> {
     }
 }
 
-fn load_config(config_path: PathBuf) -> Result<AgentConfig> {
+fn load_config(config_path: &Path) -> Result<AgentConfig> {
     debug!("Loading configuration from: {config_path:?}");
 
     let config_file =
-        fs::File::open(&config_path).map_err(|e| anyhow::anyhow!("Failed to open config file {config_path:?}: {e}"))?;
+        fs::File::open(config_path).map_err(|e| anyhow::anyhow!("Failed to open config file {config_path:?}: {e}"))?;
 
     let config: AgentConfig = serde_yaml::from_reader(config_file)
         .map_err(|e| anyhow::anyhow!("Failed to parse YAML from config file {config_path:?}: {e}"))?;
@@ -302,7 +302,8 @@ fn validate_config(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn run_daemon(config: AgentConfig) -> Result<()> {
+async fn run_daemon(config_path: PathBuf) -> Result<()> {
+    let config = load_config(&config_path).context("Loading agent configuration")?;
     info!("Setting up dependencies");
     let nilcc_api_client: Arc<dyn NilccApiClient> = match config.controller {
         AgentMode::Standalone => Arc::new(DummyNilccApiClient),
@@ -391,6 +392,7 @@ async fn run_daemon(config: AgentConfig) -> Result<()> {
     let workload_service = Arc::new(workload_service);
     let upgrade_service = Arc::new(DefaultUpgradeService::new(DefaultUpgradeServiceArgs {
         repository_provider: repository_provider.clone(),
+        config_file_path: config_path,
     }));
     let state = AppState {
         services: Services { workload: workload_service.clone(), upgrade: upgrade_service },
@@ -454,12 +456,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     match command {
         Command::Iso(command) => run_iso_command(command).await,
         Command::Daemon { config } => {
-            let agent_config = load_config(config).context("Loading agent configuration")?;
-            run_daemon(agent_config).await?;
+            run_daemon(config).await?;
             Ok(())
         }
         Command::Debug { config, workload_id } => {
-            let agent_config = load_config(config).context("Loading agent configuration")?;
+            let agent_config = load_config(&config).context("Loading agent configuration")?;
             debug_workload(agent_config, workload_id).await?;
             Ok(())
         }

@@ -12,37 +12,37 @@ pub mod system {
     use super::*;
     use chrono::{DateTime, Utc};
 
-    fn validate_artifacts_version(version: &str) -> Result<(), ValidationError> {
+    fn validate_version(version: &str) -> Result<(), ValidationError> {
         if version.contains("/") {
-            Err(ValidationError::new("artifacts version can't contain '/'"))
+            Err(ValidationError::new("version can't contain '/'"))
         } else {
             Ok(())
         }
     }
 
-    /// A request to upgrade the artifacts version.
+    /// A request to upgrade the version.
     #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
     #[serde(rename_all = "camelCase")]
-    pub struct UpgradeArtifactsRequest {
-        // The artifacts version to upgrade to.
-        #[validate(custom(function = "validate_artifacts_version"))]
+    pub struct UpgradeRequest {
+        // The version to upgrade to.
+        #[validate(custom(function = "validate_version"))]
         pub version: String,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
     #[serde(rename_all = "camelCase")]
-    pub struct ArtifactsVersionResponse {
-        // The artifacts version we are running.
+    pub struct VersionResponse {
+        // The version we are running.
         pub version: String,
 
         // Information about the last upgrade, if any.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub last_upgrade: Option<ArtifactUpgrade>,
+        pub last_upgrade: Option<LastUpgrade>,
     }
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct ArtifactUpgrade {
+    pub struct LastUpgrade {
         /// The last upgrade's target version.
         pub version: String,
 
