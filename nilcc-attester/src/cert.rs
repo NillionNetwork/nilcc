@@ -10,13 +10,13 @@ pub struct CertFetcher {
 }
 
 impl CertFetcher {
-    pub async fn fetch_fingerprint(self) -> anyhow::Result<[u8; 32]> {
+    pub async fn fetch_fingerprint(&self) -> anyhow::Result<[u8; 32]> {
         let Self { proxy_endpoint, server_name } = self;
         let addresses: Vec<_> = proxy_endpoint.to_socket_addrs().context("Failed to resolve proxy hostname")?.collect();
         let client = ClientBuilder::default()
             .tls_info(true)
             .danger_accept_invalid_certs(true)
-            .resolve_to_addrs(&server_name, &addresses)
+            .resolve_to_addrs(server_name, &addresses)
             .build()
             .context("Failed to build HTTP client")?;
         let response = client.get(format!("https://{server_name}")).send().await.context("Failed to send request")?;
