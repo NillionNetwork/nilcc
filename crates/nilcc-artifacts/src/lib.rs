@@ -12,7 +12,7 @@ use tokio::io::BufWriter;
 use tracing::debug;
 use tracing::info;
 
-const ARTIFACTS_URL: &str = "https://nilcc.s3.eu-west-1.amazonaws.com";
+pub const S3_BUCKET_URL: &str = "https://nilcc.s3-accelerate.amazonaws.com";
 
 #[derive(Clone, Debug)]
 pub struct ArtifactsDownloader {
@@ -25,7 +25,7 @@ pub struct ArtifactsDownloader {
 
 impl ArtifactsDownloader {
     pub fn new(version: String, vm_types: Vec<VmType>) -> Self {
-        Self { version, vm_types, artifacts_url: ARTIFACTS_URL.into(), disk_images: true, always_download: true }
+        Self { version, vm_types, artifacts_url: S3_BUCKET_URL.into(), disk_images: true, always_download: true }
     }
 
     pub fn with_artifacts_url(mut self, artifacts_url: String) -> Self {
@@ -94,7 +94,7 @@ impl ArtifactsDownloader {
                 return Ok(local_path);
             }
         }
-        info!("Downloading {artifact_name}");
+        info!("Downloading {artifact_name} into {}", local_path.display());
         let parent = local_path.parent().ok_or_else(|| anyhow!("path has no parent"))?;
         fs::create_dir_all(parent).await.context("creating cache directory")?;
 
@@ -107,6 +107,28 @@ impl ArtifactsDownloader {
     }
 
     async fn download_object(&self, url_path: &str, target_path: &Path) -> anyhow::Result<()> {
+        FileDownloader { artifacts_url: &self.artifacts_url }.download(url_path, target_path).await
+    }
+}
+
+pub struct FileDownloader<'a> {
+    artifacts_url: &'a str,
+}
+
+impl Default for FileDownloader<'static> {
+    fn default() -> Self {
+        Self { artifacts_url: S3_BUCKET_URL }
+    }
+}
+
+impl FileDownloader<'_> {
+    pub async fn exists(&self, url_path: &str) -> anyhow::Result<()> {
+        let url = format!("{}{url_path}", self.artifacts_url);
+        reqwest::Client::new().head(url).send().await?.error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn download(&self, url_path: &str, target_path: &Path) -> anyhow::Result<()> {
         let url = format!("{}{url_path}", self.artifacts_url);
         let result = reqwest::get(url).await?.error_for_status()?;
         let mut stream = result.bytes_stream();
