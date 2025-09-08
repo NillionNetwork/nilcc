@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::net::ToSocketAddrs;
 use x509_parser::parse_x509_certificate;
 
+#[derive(Clone)]
 pub struct CertFetcher {
     pub proxy_endpoint: String,
     pub server_name: String,
