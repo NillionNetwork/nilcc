@@ -1,6 +1,6 @@
 services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:latest
+    image: ghcr.io/nillionnetwork/nilcc-attester:0.1.0
     restart: unless-stopped
     privileged: true
     volumes:
