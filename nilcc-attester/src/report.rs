@@ -68,6 +68,7 @@ impl HardwareReporter {
     }
 }
 
+#[derive(Clone)]
 pub enum GpuReportConfig {
     Enabled { attester_path: PathBuf },
     Disabled,

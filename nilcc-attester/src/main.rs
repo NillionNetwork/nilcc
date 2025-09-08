@@ -1,3 +1,4 @@
+use anyhow::bail;
 use axum::http;
 use clap::Parser;
 use nilcc_attester::{
@@ -6,10 +7,13 @@ use nilcc_attester::{
     report::{GpuReportConfig, HardwareReporter},
     routes::{build_router, AppState},
 };
-use std::{process::exit, sync::Arc};
-use tokio::{net::TcpListener, signal};
+use std::{process::exit, sync::Arc, time::Duration};
+use tokio::{net::TcpListener, signal, time::sleep};
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
+use tracing::{error, info, warn};
+
+const MAX_REPORTER_RETRIES: usize = 20;
+const REPORTER_RETRY_DELAY: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
 struct Cli {
@@ -37,6 +41,19 @@ async fn shutdown_signal() {
     info!("Received shutdown signal");
 }
 
+async fn build_reporter(gpu_config: GpuReportConfig, fetcher: CertFetcher) -> anyhow::Result<HardwareReporter> {
+    for _ in 0..MAX_REPORTER_RETRIES {
+        match HardwareReporter::new(gpu_config.clone(), fetcher.clone()).await {
+            Ok(reporter) => return Ok(reporter),
+            Err(e) => {
+                warn!("Failed to build hardware reporter: {e:#}");
+                sleep(REPORTER_RETRY_DELAY).await
+            }
+        }
+    }
+    bail!("Exhausted {MAX_REPORTER_RETRIES} attempts to build hardware reporter")
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().init();
@@ -57,7 +74,7 @@ async fn main() {
         VmType::Gpu => GpuReportConfig::Enabled { attester_path: config.gpu_attester_path },
     };
     let fetcher = CertFetcher { proxy_endpoint: config.proxy_endpoint, server_name: config.attestation_domain };
-    let reporter = HardwareReporter::new(gpu_config, fetcher).await.expect("Failed to initialize hardware reporter");
+    let reporter = build_reporter(gpu_config, fetcher).await.expect("Failed to initialize hardware reporter");
     let reporter = Arc::new(reporter);
     let state =
         AppState { nilcc_version: config.nilcc_version, vm_type: config.vm_type, cpu_count: num_cpus::get(), reporter };
