@@ -1,6 +1,5 @@
-use crate::config::VmType;
+use crate::{config::VmType, report::HardwareReporter};
 use axum::{routing::get, Router};
-use sev::firmware::guest::AttestationReport;
 use std::sync::Arc;
 
 pub(crate) mod health;
@@ -18,6 +17,5 @@ pub struct AppState {
     pub nilcc_version: String,
     pub vm_type: VmType,
     pub cpu_count: usize,
-    pub hardware_report: Arc<AttestationReport>,
-    pub gpu_token: Option<String>,
+    pub reporter: Arc<HardwareReporter>,
 }
