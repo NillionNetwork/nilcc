@@ -17,7 +17,6 @@ use nilcc_agent_models::errors::RequestHandlerError;
 use nilcc_artifacts::VmType;
 use serde::Serialize;
 use std::ops::Deref;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use validator::Validate;
@@ -43,17 +42,21 @@ pub struct AppState {
     pub resource_limits: ResourceLimitsConfig,
     pub agent_domain: String,
     pub vm_types: Vec<VmType>,
-    pub cvm_artifacts_path: PathBuf,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {
     Router::new().route("/health", get(health)).nest(
         "/api/v1",
         Router::new()
-            .route("/system/artifacts/upgrade", post(system::artifacts::upgrade::handler))
-            .route("/system/artifacts/version", get(system::artifacts::version::handler))
-            .route("/system/agent/upgrade", post(system::agent::upgrade::handler))
-            .route("/system/agent/version", get(system::agent::version::handler))
+            .nest(
+                "/system",
+                Router::new()
+                    .route("/artifacts/upgrade", post(system::artifacts::upgrade::handler))
+                    .route("/artifacts/version", get(system::artifacts::version::handler))
+                    .route("/artifacts/cleanup", post(system::artifacts::cleanup::handler))
+                    .route("/agent/upgrade", post(system::agent::upgrade::handler))
+                    .route("/agent/version", get(system::agent::version::handler)),
+            )
             .nest(
                 "/workloads",
                 Router::new()

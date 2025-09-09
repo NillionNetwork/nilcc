@@ -1,3 +1,4 @@
+use crate::repositories::artifacts::ArtifactVersion;
 use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use crate::routes::Json;
@@ -12,6 +13,7 @@ use nilcc_agent_models::errors::RequestHandlerError;
 use nilcc_artifacts::FileDownloader;
 use nilcc_artifacts::{ArtifactsDownloader, VmType};
 use reqwest::StatusCode;
+use std::collections::HashSet;
 use std::env;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
@@ -30,13 +32,9 @@ const UPDATER_SCRIPT: &[u8] = include_bytes!("../../resources/update.sh");
 
 #[async_trait]
 pub trait UpgradeService: Send + Sync {
-    async fn upgrade_artifacts(
-        &self,
-        version: String,
-        vm_types: Vec<VmType>,
-        target_path: PathBuf,
-    ) -> Result<(), UpgradeError>;
+    async fn upgrade_artifacts(&self, version: String, vm_types: Vec<VmType>) -> Result<(), UpgradeError>;
     async fn upgrade_agent(&self, version: String) -> Result<(), UpgradeError>;
+    async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError>;
     async fn artifacts_upgrade_state(&self) -> UpgradeState;
     async fn artifacts_version(&self) -> anyhow::Result<String>;
     async fn agent_upgrade_state(&self) -> UpgradeState;
@@ -71,33 +69,53 @@ impl IntoResponse for UpgradeError {
     }
 }
 
+#[derive(Debug, EnumDiscriminants, thiserror::Error)]
+pub enum CleanupError {
+    #[error("internal error")]
+    Internal,
+}
+
+impl IntoResponse for CleanupError {
+    fn into_response(self) -> Response {
+        let discriminant = CleanupErrorDiscriminants::from(&self);
+        let (code, message) = match self {
+            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        let response = RequestHandlerError::new(message, format!("{discriminant:?}"));
+        (code, Json(response)).into_response()
+    }
+}
+
 pub struct DefaultUpgradeServiceArgs {
     pub repository_provider: Arc<dyn RepositoryProvider>,
     pub config_file_path: PathBuf,
+    pub cvm_artifacts_path: PathBuf,
 }
 
 pub struct DefaultUpgradeService {
     artifacts: Arc<Mutex<UpgradeState>>,
     agent: Arc<Mutex<UpgradeState>>,
     config_file_path: PathBuf,
+    cvm_artifacts_path: PathBuf,
     repository_provider: Arc<dyn RepositoryProvider>,
 }
 
 impl DefaultUpgradeService {
     pub fn new(args: DefaultUpgradeServiceArgs) -> Self {
-        let DefaultUpgradeServiceArgs { repository_provider, config_file_path } = args;
-        Self { artifacts: Default::default(), agent: Default::default(), repository_provider, config_file_path }
+        let DefaultUpgradeServiceArgs { repository_provider, config_file_path, cvm_artifacts_path } = args;
+        Self {
+            artifacts: Default::default(),
+            agent: Default::default(),
+            repository_provider,
+            config_file_path,
+            cvm_artifacts_path,
+        }
     }
 }
 
 #[async_trait]
 impl UpgradeService for DefaultUpgradeService {
-    async fn upgrade_artifacts(
-        &self,
-        version: String,
-        vm_types: Vec<VmType>,
-        target_path: PathBuf,
-    ) -> Result<(), UpgradeError> {
+    async fn upgrade_artifacts(&self, version: String, vm_types: Vec<VmType>) -> Result<(), UpgradeError> {
         let mut current = self.artifacts.lock().await;
         match &*current {
             UpgradeState::Upgrading { metadata, .. } => {
@@ -125,6 +143,7 @@ impl UpgradeService for DefaultUpgradeService {
         let state = self.artifacts.clone();
         *current = UpgradeState::Upgrading { metadata };
 
+        let target_path = self.cvm_artifacts_path.join(&version);
         let worker = ArtifactUpgradeWorker {
             downloader,
             target_path,
@@ -134,6 +153,58 @@ impl UpgradeService for DefaultUpgradeService {
         };
         tokio::spawn(async move { worker.run().await });
         Ok(())
+    }
+
+    async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError> {
+        let used_versions: HashSet<_> = {
+            let mut repo = self.repository_provider.workloads(Default::default()).await.map_err(|e| {
+                error!("Failed to get repository: {e}");
+                CleanupError::Internal
+            })?;
+            let workloads = repo.list().await.map_err(|e| {
+                error!("Failed to list workloads: {e}");
+                CleanupError::Internal
+            })?;
+            workloads.into_iter().map(|w| w.artifacts_version).collect()
+        };
+
+        let mut repo = self.repository_provider.artifacts_version(Default::default()).await.map_err(|e| {
+            error!("Failed to get repository: {e}");
+            CleanupError::Internal
+        })?;
+        let versions = repo.list().await.map_err(|e| {
+            error!("Failed to list versions: {e}");
+            CleanupError::Internal
+        })?;
+        info!("Initiating cleanup for {} versions", versions.len());
+
+        let mut deleted_versions = Vec::new();
+        for version in versions {
+            let ArtifactVersion { version, current } = version;
+            if current {
+                info!("Not deleting version {version} because it's the current one");
+                continue;
+            }
+            if used_versions.contains(&version) {
+                info!("Not deleting version {version} because there's workloads using it");
+                continue;
+            }
+
+            info!("Deleting version {version} in database");
+            repo.delete(&version).await.map_err(|e| {
+                error!("Failed to delete version {version} from database: {e}");
+                CleanupError::Internal
+            })?;
+
+            let path = self.cvm_artifacts_path.join(&version);
+            fs::remove_dir_all(&path).await.map_err(|e| {
+                error!("Failed to delete artifacts for version {version}: {e}");
+                CleanupError::Internal
+            })?;
+            info!("Deleted artifacts for version {version}");
+            deleted_versions.push(version);
+        }
+        Ok(deleted_versions)
     }
 
     async fn upgrade_agent(&self, version: String) -> Result<(), UpgradeError> {
