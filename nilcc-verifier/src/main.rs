@@ -173,8 +173,16 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint)?;
-    let ReportBundle { cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash, tls_fingerprint, .. } =
-        bundle;
+    let ReportBundle {
+        cpu_count,
+        ovmf_path,
+        initrd_path,
+        kernel_path,
+        filesystem_root_hash,
+        tls_fingerprint,
+        nilcc_version,
+        ..
+    } = bundle;
 
     let measurement = MeasurementGenerator {
         vcpus: cpu_count,
@@ -190,7 +198,11 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let verifier = ReportVerifier::new(Box::new(fetcher));
     verifier.verify_report(bundle.report, &measurement)?;
 
-    let meta = ReportMetadata { measurement_hash: hex::encode(measurement), tls_fingerprint };
+    let meta = ReportMetadata {
+        measurement_hash: hex::encode(measurement),
+        tls_fingerprint,
+        artifacts_version: nilcc_version,
+    };
     Ok(meta)
 }
 
@@ -285,6 +297,7 @@ impl From<ValidateError> for ErrorCode {
 struct ReportMetadata {
     measurement_hash: String,
     tls_fingerprint: String,
+    artifacts_version: String,
 }
 
 #[derive(Serialize)]
