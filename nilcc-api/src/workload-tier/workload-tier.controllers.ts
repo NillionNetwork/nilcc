@@ -68,6 +68,7 @@ export function list(options: ControllerOptions) {
     userAuthentication(bindings),
     async (c) => {
       const tiers = await bindings.services.workloadTier.list(bindings);
+      tiers.sort((a, b) => a.cost - b.cost);
       return c.json(tiers.map(workloadTierMapper.entityToResponse));
     },
   );
