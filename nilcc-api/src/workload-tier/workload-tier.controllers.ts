@@ -5,7 +5,11 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { payloadValidator } from "#/common/zod-utils";
-import { CreateWorkloadTierRequest, WorkloadTier } from "./workload-tier.dto";
+import {
+  CreateWorkloadTierRequest,
+  DeleteWorkloadTierRequest,
+  WorkloadTier,
+} from "./workload-tier.dto";
 import { workloadTierMapper } from "./workload-tier.mapper";
 
 export function create(options: ControllerOptions) {
@@ -65,6 +69,31 @@ export function list(options: ControllerOptions) {
     async (c) => {
       const tiers = await bindings.services.workloadTier.list(bindings);
       return c.json(tiers.map(workloadTierMapper.entityToResponse));
+    },
+  );
+}
+
+export function remove(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.workloadTiers.delete,
+    describeRoute({
+      tags: ["workload-tier"],
+      summary: "Delete a workload tier.",
+      description: "This endpoint deletes a tier.",
+      responses: {
+        200: {
+          description: "The tier was deleted.",
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    adminAuthentication(bindings),
+    payloadValidator(DeleteWorkloadTierRequest),
+    async (c) => {
+      const payload = c.req.valid("json");
+      await bindings.services.workloadTier.remove(bindings, payload.tierId);
+      return c.json({});
     },
   );
 }

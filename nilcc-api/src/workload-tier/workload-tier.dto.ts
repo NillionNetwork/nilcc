@@ -3,7 +3,7 @@ import { Uuid } from "#/common/types";
 
 export const WorkloadTier = z
   .object({
-    id: Uuid.openapi({ description: "The identifier for this tier." }),
+    tierId: Uuid.openapi({ description: "The identifier for this tier." }),
     name: z.string().openapi({ description: "The name of this tier." }),
     cpus: z
       .number()
@@ -47,4 +47,13 @@ export const CreateWorkloadTierRequest = z
   .openapi({ description: "A request to create a tier." });
 export type CreateWorkloadTierRequest = z.infer<
   typeof CreateWorkloadTierRequest
+>;
+
+export const DeleteWorkloadTierRequest = z
+  .object({
+    tierId: z.string().openapi({ description: "The tier identifier." }),
+  })
+  .openapi({ description: "A request to delete a tier." });
+export type DeleteWorkloadTierRequest = z.infer<
+  typeof DeleteWorkloadTierRequest
 >;
