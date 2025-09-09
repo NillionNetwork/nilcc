@@ -4,7 +4,7 @@ import type { WorkloadTierEntity } from "./workload-tier.entity";
 export const workloadTierMapper = {
   entityToResponse(tier: WorkloadTierEntity): WorkloadTier {
     return {
-      id: tier.id,
+      tierId: tier.id,
       name: tier.name,
       cpus: tier.cpus,
       gpus: tier.gpus,

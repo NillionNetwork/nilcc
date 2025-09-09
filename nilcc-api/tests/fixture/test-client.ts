@@ -158,6 +158,14 @@ export class AdminClient extends TestClient {
     });
     return new RequestPromise(promise, WorkloadTier);
   }
+
+  deleteTier(tierId: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.workloadTiers.delete, {
+      method: "POST",
+      body: { tierId },
+    });
+    return new RequestPromise(promise, z.unknown());
+  }
 }
 
 export class UserClient extends TestClient {

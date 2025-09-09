@@ -39,6 +39,11 @@ export class WorkloadTierService {
     }
   }
 
+  async remove(bindings: AppBindings, id: string): Promise<void> {
+    const repository = this.getRepository(bindings);
+    await repository.delete({ id });
+  }
+
   async list(bindings: AppBindings): Promise<WorkloadTierEntity[]> {
     const repository = this.getRepository(bindings);
     return await repository.find();
