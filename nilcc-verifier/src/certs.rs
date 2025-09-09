@@ -1,6 +1,5 @@
 use crate::verify::Processor;
-use anyhow::{bail, Context};
-use reqwest::{blocking::get, StatusCode};
+use reqwest::blocking::get;
 use sev::{
     certs::snp::{ca::Chain, Certificate},
     firmware::guest::AttestationReport,
@@ -26,7 +25,7 @@ pub struct Certs {
 /// An interface to fetch certificates.
 pub trait CertificateFetcher: Send + Sync + 'static {
     /// Fetch certificates.
-    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certs>;
+    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError>;
 }
 
 /// A default implementation of the certificate fetcher.
@@ -35,12 +34,12 @@ pub struct DefaultCertificateFetcher {
 }
 
 impl DefaultCertificateFetcher {
-    pub fn new(cache_path: PathBuf) -> anyhow::Result<Self> {
-        fs::create_dir_all(&cache_path).context("creating cache directory")?;
+    pub fn new(cache_path: PathBuf) -> io::Result<Self> {
+        fs::create_dir_all(&cache_path)?;
         Ok(Self { cache_path })
     }
 
-    fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certificate> {
+    fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> Result<Certificate, FetcherError> {
         let identifier = ProcessorVcekIdentifier::new(processor.clone(), report)?;
         let cache_file_name = self.cache_path.join(identifier.cache_file_name());
         match self.load_cache_file(&cache_file_name)? {
@@ -61,19 +60,14 @@ impl DefaultCertificateFetcher {
         let url = identifier.kds_url();
         info!("Fetching VCEK from {url}");
 
-        let response = get(url).context("unable to send request for VCEK")?;
-        match response.status() {
-            StatusCode::OK => {
-                let bytes = response.bytes().context("unable to parse VCEK")?.to_vec();
-                let cert = Certificate::from_bytes(&bytes).context("parsing VCEK")?;
-                self.cache_file(&cache_file_name, &bytes)?;
-                Ok(cert)
-            }
-            status => bail!("unable to fetch VCEK from URL: {status:?}"),
-        }
+        let response = get(url).and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingVcek)?;
+        let bytes = response.bytes().map_err(FetcherError::FetchingVcek)?.to_vec();
+        let cert = Certificate::from_bytes(&bytes).map_err(FetcherError::ParsingVcek)?;
+        self.cache_file(&cache_file_name, &bytes)?;
+        Ok(cert)
     }
 
-    fn fetch_cert_chain(&self, processor: &Processor) -> anyhow::Result<Chain> {
+    fn fetch_cert_chain(&self, processor: &Processor) -> Result<Chain, FetcherError> {
         let cache_file_name = self.cache_path.join(format!("{processor:?}.cert"));
         match self.load_cache_file(&cache_file_name)? {
             Some(chain) => {
@@ -95,41 +89,35 @@ impl DefaultCertificateFetcher {
         let url = format!("{KDS_CERT_SITE}/vcek/v1/{}/cert_chain", processor.to_kds_url());
         info!("Fetching CA chain from {url}");
 
-        let rsp = get(url).context("unable to send request for certs to URL")?;
-        match rsp.status() {
-            StatusCode::OK => {
-                // Parse the request
-                let body = rsp.bytes().context("unable to parse AMD certificate chain")?.to_vec();
-                let certificates = Chain::from_pem_bytes(&body)?;
-                self.cache_file(&cache_file_name, &body)?;
-                Ok(certificates)
-            }
-            status => bail!("unable to fetch certificate: {status:?}"),
-        }
+        let response = get(url).and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingCertChain)?;
+        let bytes = response.bytes().map_err(FetcherError::FetchingCertChain)?.to_vec();
+        let certificates = Chain::from_pem_bytes(&bytes).map_err(FetcherError::ParsingCertChain)?;
+        self.cache_file(&cache_file_name, &bytes)?;
+        Ok(certificates)
     }
 
-    fn load_cache_file(&self, path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+    fn load_cache_file(&self, path: &Path) -> Result<Option<Vec<u8>>, FetcherError> {
         match File::open(path) {
             Ok(mut file) => {
                 let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).context("reading cache file")?;
+                file.read_to_end(&mut buffer).map_err(FetcherError::ReadCachedCert)?;
                 Ok(Some(buffer))
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e).context("opening cache file"),
+            Err(e) => Err(FetcherError::ReadCachedCert(e)),
         }
     }
 
-    fn cache_file(&self, path: &Path, contents: &[u8]) -> anyhow::Result<()> {
-        fs::write(path, contents).context("writing to cache file")?;
+    fn cache_file(&self, path: &Path, contents: &[u8]) -> Result<(), FetcherError> {
+        fs::write(path, contents).map_err(FetcherError::WriteCachedCert)?;
         Ok(())
     }
 }
 
 impl CertificateFetcher for DefaultCertificateFetcher {
-    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> anyhow::Result<Certs> {
-        let chain = self.fetch_cert_chain(processor).context("fetching cert chain")?;
-        let vcek = self.fetch_vcek(processor, report).context("fetching VCEK")?;
+    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError> {
+        let chain = self.fetch_cert_chain(processor)?;
+        let vcek = self.fetch_vcek(processor, report)?;
         Ok(Certs { chain, vcek })
     }
 }
@@ -145,15 +133,15 @@ struct ProcessorVcekIdentifier {
 }
 
 impl ProcessorVcekIdentifier {
-    fn new(processor: Processor, report: &AttestationReport) -> anyhow::Result<Self> {
+    fn new(processor: Processor, report: &AttestationReport) -> Result<Self, FetcherError> {
         let tcb = report.reported_tcb;
         if let Processor::Turin = processor
             && tcb.fmc.is_none()
         {
-            bail!("Turin processors must have a fmc value");
+            return Err(FetcherError::TurinFmc);
         }
         if report.chip_id.as_slice() == [0; 64] {
-            bail!("hardware ID is 0s on attestation report");
+            return Err(FetcherError::ZeroHardwareId);
         }
         let hw_id = match processor {
             Processor::Turin => {
@@ -189,4 +177,31 @@ impl ProcessorVcekIdentifier {
         let Self { processor, fmc, bootloader, tee, snp, microcode, hw_id } = self;
         format!("{processor:?}-{fmc:02?}-{bootloader:02}-{tee:02}-{snp:02}-{microcode:02}-{hw_id}")
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FetcherError {
+    #[error("turin processors must have a fmc value")]
+    TurinFmc,
+
+    #[error("hardware ID is 0s on attestation report")]
+    ZeroHardwareId,
+
+    #[error("reading cached cert: {0}")]
+    ReadCachedCert(io::Error),
+
+    #[error("writing cached cert: {0}")]
+    WriteCachedCert(io::Error),
+
+    #[error("fetching AMD VCEK certificate: {0}")]
+    FetchingVcek(reqwest::Error),
+
+    #[error("fetching ACM cert chain: {0}")]
+    FetchingCertChain(reqwest::Error),
+
+    #[error("parsing AMD VCEK certificate: {0}")]
+    ParsingVcek(io::Error),
+
+    #[error("parsing AMD cert chain: {0}")]
+    ParsingCertChain(io::Error),
 }

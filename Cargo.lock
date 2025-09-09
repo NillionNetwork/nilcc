@@ -2271,10 +2271,10 @@ dependencies = [
 name = "nilcc-artifacts"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "futures-util",
  "hex",
  "reqwest",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -2313,6 +2313,7 @@ dependencies = [
  "clap",
  "hex",
  "nilcc-artifacts",
+ "nom",
  "openssl",
  "reqwest",
  "rstest",
