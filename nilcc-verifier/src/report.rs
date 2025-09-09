@@ -73,14 +73,14 @@ impl ReportFetcher {
         }
         info!("Report contains expected TLS fingerprint: {}", hex::encode(cert_fingerprint));
 
-        let EnvironmentSpec { nilcc_version, vm_type, cpu_count } = &environment;
+        let EnvironmentSpec { nilcc_version, vm_type, cpu_count } = environment;
         info!("CVM is running nilcc-version {nilcc_version}, using VM type '{vm_type:?}' and has {cpu_count} CPUs");
 
         // Create the cache directory if it doesn't exist already.
-        let download_path = self.cache_path.join(nilcc_version);
+        let download_path = self.cache_path.join(&nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let vm_type = (*vm_type).into();
+        let vm_type = vm_type.into();
         let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type])
             .without_disk_images()
             .without_artifact_overwrite()
@@ -93,12 +93,13 @@ impl ReportFetcher {
             type_artifacts.remove(&vm_type).expect("missing vm type artifacts");
         Ok(ReportBundle {
             report,
-            cpu_count: *cpu_count,
+            cpu_count,
             ovmf_path,
             initrd_path,
             kernel_path,
             filesystem_root_hash,
             tls_fingerprint: hex::encode(cert_fingerprint),
+            nilcc_version,
         })
     }
 }
@@ -139,4 +140,5 @@ pub struct ReportBundle {
     pub kernel_path: PathBuf,
     pub filesystem_root_hash: [u8; 32],
     pub tls_fingerprint: String,
+    pub nilcc_version: String,
 }
