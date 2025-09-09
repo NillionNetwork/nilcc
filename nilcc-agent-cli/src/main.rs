@@ -14,6 +14,7 @@ use cvm_agent_models::{
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
+use nilcc_agent_models::system::ArtifactsCleanupResponse;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeRequest;
 use nilcc_agent_models::system::UpgradeState;
@@ -103,24 +104,33 @@ enum SystemCommand {
 
 #[derive(Subcommand)]
 enum AdminCommand {
+    /// Manage artifact versions.
     #[clap(subcommand)]
     Artifacts(AdminArtifactsCommand),
 
+    /// Manage nilcc-agent versions.
     #[clap(subcommand)]
     Agent(AdminAgentCommand),
 }
 
 #[derive(Subcommand)]
 enum AdminArtifactsCommand {
+    /// Upgrade the artifacts version.
     Upgrade(UpgradeArtifactsArgs),
 
+    /// Get the current artifacts version.
     Version,
+
+    /// Cleanup unused artifact versions.
+    Cleanup,
 }
 
 #[derive(Subcommand)]
 enum AdminAgentCommand {
+    /// Upgrade the nilcc-agent binary.
     Upgrade(UpgradeAgentArgs),
 
+    /// Get the current nilcc-agent binary version.
     Version,
 }
 
@@ -512,6 +522,19 @@ fn artifacts_version(client: ApiClient) -> anyhow::Result<()> {
     display_version(response)
 }
 
+fn cleanup_artifacts(client: ApiClient) -> anyhow::Result<()> {
+    let ArtifactsCleanupResponse { versions_deleted } = client.post("/api/v1/system/artifacts/cleanup", &())?;
+    if versions_deleted.is_empty() {
+        println!("No versions deleted");
+    } else {
+        println!("{} versions deleted: ", versions_deleted.len());
+        for version in versions_deleted {
+            println!("- {version}");
+        }
+    }
+    Ok(())
+}
+
 fn upgrade_agent(client: ApiClient, args: UpgradeAgentArgs) -> anyhow::Result<()> {
     let UpgradeAgentArgs { version } = args;
     let request = UpgradeRequest { version: version.clone() };
@@ -597,6 +620,7 @@ fn main() {
             upgrade_artifacts(client, args)
         }
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Version)) => artifacts_version(client),
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Cleanup)) => cleanup_artifacts(client),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Upgrade(args))) => upgrade_agent(client, args),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Version)) => agent_version(client),
     };

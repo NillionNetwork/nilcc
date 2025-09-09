@@ -60,6 +60,13 @@ pub mod system {
         Success { finished_at: DateTime<Utc> },
         Error { finished_at: DateTime<Utc>, error: String },
     }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactsCleanupResponse {
+        /// The versions that were deleted.
+        pub versions_deleted: Vec<String>,
+    }
 }
 
 pub mod workloads {

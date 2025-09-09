@@ -7,7 +7,6 @@ use nilcc_agent_models::system::UpgradeRequest;
 
 pub(crate) async fn handler(state: State<AppState>, request: Json<UpgradeRequest>) -> Result<Json<()>, UpgradeError> {
     let UpgradeRequest { version } = request.0;
-    let path = state.cvm_artifacts_path.join(&version);
-    state.services.upgrade.upgrade_artifacts(version, state.vm_types.clone(), path).await?;
+    state.services.upgrade.upgrade_artifacts(version, state.vm_types.clone()).await?;
     Ok(Json(()))
 }

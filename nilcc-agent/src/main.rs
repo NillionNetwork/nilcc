@@ -393,6 +393,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
     let upgrade_service = Arc::new(DefaultUpgradeService::new(DefaultUpgradeServiceArgs {
         repository_provider: repository_provider.clone(),
         config_file_path: config_path,
+        cvm_artifacts_path: config.cvm.artifacts_path.clone(),
     }));
     let state = AppState {
         services: Services { workload: workload_service.clone(), upgrade: upgrade_service },
@@ -400,7 +401,6 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         resource_limits: config.resources.limits,
         agent_domain: config.api.domain.clone(),
         vm_types,
-        cvm_artifacts_path: config.cvm.artifacts_path,
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();

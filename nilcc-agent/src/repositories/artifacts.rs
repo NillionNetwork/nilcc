@@ -1,5 +1,6 @@
 use crate::repositories::sqlite::SqliteTransactionContext;
 use async_trait::async_trait;
+use sqlx::FromRow;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -10,11 +11,23 @@ pub trait ArtifactsVersionRepository: Send + Sync {
     /// Get the current artifacts version, if any
     async fn get(&mut self) -> Result<Option<String>, ArtifactsVersionRepositoryError>;
 
+    /// List the available versions.
+    async fn list(&mut self) -> Result<Vec<ArtifactVersion>, ArtifactsVersionRepositoryError>;
+
     /// Check if a version already exists.
     async fn exists(&mut self, version: &str) -> Result<bool, ArtifactsVersionRepositoryError>;
 
+    /// Delete a version.
+    async fn delete(&mut self, version: &str) -> Result<(), ArtifactsVersionRepositoryError>;
+
     /// Commit all changes.
     async fn commit(self: Box<Self>) -> Result<(), ArtifactsVersionRepositoryError>;
+}
+
+#[derive(FromRow)]
+pub struct ArtifactVersion {
+    pub(crate) version: String,
+    pub(crate) current: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -50,10 +63,22 @@ impl<'a> ArtifactsVersionRepository for SqliteArtifactsVersionRepository<'a> {
         Ok(version.map(|v| v.0))
     }
 
+    async fn list(&mut self) -> Result<Vec<ArtifactVersion>, ArtifactsVersionRepositoryError> {
+        let query = "SELECT version, current FROM artifacts_version";
+        let rows = sqlx::query_as(query).fetch_all(&mut *self.ctx).await?;
+        Ok(rows)
+    }
+
     async fn exists(&mut self, version: &str) -> Result<bool, ArtifactsVersionRepositoryError> {
         let query = "SELECT 1 FROM artifacts_version WHERE version = ?";
         let row = sqlx::query(query).bind(version).fetch_optional(&mut *self.ctx).await?;
         Ok(row.is_some())
+    }
+
+    async fn delete(&mut self, version: &str) -> Result<(), ArtifactsVersionRepositoryError> {
+        let query = "DELETE FROM artifacts_version WHERE version = ?";
+        sqlx::query(query).bind(version).execute(&mut *self.ctx).await?;
+        Ok(())
     }
 
     async fn commit(mut self: Box<Self>) -> Result<(), ArtifactsVersionRepositoryError> {
@@ -85,5 +110,11 @@ mod tests {
         assert!(repo.exists("aaa").await.expect("lookup failed"));
         assert!(repo.exists("bbb").await.expect("lookup failed"));
         assert!(!repo.exists("cc").await.expect("lookup failed"));
+
+        let versions = repo.list().await.expect("list failed");
+        assert_eq!(versions.len(), 2);
+
+        repo.delete("aaa").await.expect("delete failed");
+        assert!(!repo.exists("aaa").await.expect("lookup failed"));
     }
 }
