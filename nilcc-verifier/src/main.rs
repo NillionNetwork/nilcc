@@ -1,11 +1,17 @@
-use crate::report::{ReportBundle, VmType};
-use anyhow::{anyhow, Context};
+use crate::{
+    certs::FetcherError,
+    report::{ReportBundle, ReportBundleError, VmType},
+    verify::VerificationError,
+};
+use anyhow::Context;
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader, VmTypeArtifacts};
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader, DownloadError, VmTypeArtifacts};
 use report::ReportFetcher;
-use std::{fs::File, io::stdin, path::PathBuf};
+use serde::Serialize;
+use sev::error::MeasurementError;
+use std::{io, path::PathBuf, process::exit};
 use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
 
@@ -25,11 +31,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run an offline verification using already downloaded input files and hashes.
-    Offline(OfflineArgs),
-
-    /// Run an online verification, pulling an attestation report from a CVM running in nilcc.
-    Online(OnlineArgs),
+    /// Validate the integrity of a workloadA.
+    Validate(ValidateArgs),
 
     /// Generate the measurement hash for the given compose hash and artifacts version.
     MeasurementHash(MeasurementHashArgs),
@@ -74,7 +77,7 @@ struct OfflineArgs {
 }
 
 #[derive(Args)]
-struct OnlineArgs {
+struct ValidateArgs {
     /// The public endpoint for the CVM, e.g. `https://example.com`
     endpoint: String,
 
@@ -140,55 +143,38 @@ fn default_artifacts_url() -> String {
     "https://nilcc.s3.eu-west-1.amazonaws.com".into()
 }
 
-fn decode_hash(name: &str, input: &str) -> anyhow::Result<[u8; 32]> {
+#[derive(Debug, thiserror::Error)]
+enum ValidateError {
+    #[error("invalid hex docker compose hash")]
+    DockerComposeHash,
+
+    #[error("creating cert cache directories: {0}")]
+    CertCacheDirectories(io::Error),
+
+    #[error("fetching report bundle: {0}")]
+    ReportBundle(#[from] ReportBundleError),
+
+    #[error("generating measurement hash: {0}")]
+    MeasurementHash(#[from] MeasurementError),
+
+    #[error("verifying report: {0}")]
+    VerifyReports(#[from] VerificationError),
+}
+
+fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
     let mut hash: [u8; 32] = [0; 32];
-    hex::decode_to_slice(input, &mut hash).map_err(|e| anyhow!("invalid {name} hash: {e}"))?;
+    hex::decode_to_slice(input, &mut hash).map_err(|_| ValidateError::DockerComposeHash)?;
     Ok(hash)
 }
 
-fn run_offline(args: OfflineArgs) -> anyhow::Result<()> {
-    let OfflineArgs {
-        report_path,
-        cert_cache,
-        ovmf,
-        kernel,
-        initrd,
-        docker_compose_hash,
-        filesystem_root_hash,
-        vcpus,
-        kernel_debug_options,
-    } = args;
-    let report = match report_path.as_str() {
-        "-" => serde_json::from_reader(stdin()),
-        path => serde_json::from_reader(File::open(path).context("opening input file")?),
-    }
-    .context("parsing report")?;
-    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
-    let filesystem_root_hash = decode_hash("filesystem root hash", &filesystem_root_hash)?;
-
-    let measurement = MeasurementGenerator {
-        vcpus,
-        ovmf,
-        kernel,
-        initrd,
-        docker_compose_hash,
-        filesystem_root_hash,
-        kernel_debug_options,
-    }
-    .generate()?;
-    let fetcher = DefaultCertificateFetcher::new(cert_cache).context("creating certificate fetcher")?;
-    let verifier = ReportVerifier::new(Box::new(fetcher));
-    verifier.verify_report(report, measurement).context("verification failed")?;
-    Ok(())
-}
-
-fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
-    let OnlineArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, kernel_debug_options, artifacts_url } =
+fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
+    let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, kernel_debug_options, artifacts_url } =
         args;
-    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
+    let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
-    let bundle = fetcher.fetch_report(&endpoint).context("fetching report")?;
-    let ReportBundle { cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash, .. } = bundle;
+    let bundle = fetcher.fetch_report(&endpoint)?;
+    let ReportBundle { cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash, tls_fingerprint, .. } =
+        bundle;
 
     let measurement = MeasurementGenerator {
         vcpus: cpu_count,
@@ -200,16 +186,18 @@ fn run_online(args: OnlineArgs) -> anyhow::Result<()> {
         kernel_debug_options,
     }
     .generate()?;
-    let fetcher = DefaultCertificateFetcher::new(cert_cache).context("creating certificate fetcher")?;
+    let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
     let verifier = ReportVerifier::new(Box::new(fetcher));
-    verifier.verify_report(bundle.report, measurement).context("verification failed")?;
-    Ok(())
+    verifier.verify_report(bundle.report, &measurement)?;
+
+    let meta = ReportMetadata { measurement_hash: hex::encode(measurement), tls_fingerprint };
+    Ok(meta)
 }
 
 fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let MeasurementHashArgs { artifact_cache, artifacts_url, vm_type, cpus, docker_compose_hash, nilcc_version } = args;
     let download_path = artifact_cache.join(&nilcc_version);
-    let docker_compose_hash = decode_hash("docker compose", &docker_compose_hash)?;
+    let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
     let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type.into()])
         .without_disk_images()
         .without_artifact_overwrite()
@@ -236,12 +224,74 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run(cli: Cli) -> anyhow::Result<()> {
-    match cli.command {
-        Command::Offline(args) => run_offline(args),
-        Command::Online(args) => run_online(args),
-        Command::MeasurementHash(args) => compute_measurement_hash(args),
+#[derive(Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum ErrorCode {
+    InvalidDockerComposeHash,
+    InvalidTlsFingerprint,
+    InvalidArtifacts,
+    InvalidReport,
+    InvalidAmdCerts,
+    Filesystem,
+    Request,
+    Internal,
+}
+
+impl From<ValidateError> for ErrorCode {
+    fn from(e: ValidateError) -> Self {
+        use ErrorCode::*;
+        match e {
+            ValidateError::DockerComposeHash => InvalidDockerComposeHash,
+            ValidateError::CertCacheDirectories(_) => Filesystem,
+            ValidateError::ReportBundle(e) => match e {
+                ReportBundleError::TlsFingerprint { .. } => InvalidTlsFingerprint,
+                ReportBundleError::HttpClient(_) | ReportBundleError::Tokio(_) => Internal,
+                ReportBundleError::FetchAttestation(_)
+                | ReportBundleError::NoTlsInfo
+                | ReportBundleError::TlsCertificate(_)
+                | ReportBundleError::MalformedPayload(_) => Request,
+                ReportBundleError::DownloadArtifacts(e) => match e {
+                    DownloadError::NoParent => Internal,
+                    DownloadError::TargetDirectory(_)
+                    | DownloadError::TargetFile(_)
+                    | DownloadError::ReadRootHash(_) => Filesystem,
+                    DownloadError::DecodeRootHash(_) => InvalidArtifacts,
+                    DownloadError::Download(_) => Request,
+                },
+            },
+            ValidateError::MeasurementHash(_) => Internal,
+            ValidateError::VerifyReports(e) => match e {
+                VerificationError::FetchCerts(e) => match e {
+                    FetcherError::TurinFmc | FetcherError::ZeroHardwareId => InvalidReport,
+                    FetcherError::ReadCachedCert(_) | FetcherError::WriteCachedCert(_) => Filesystem,
+                    FetcherError::FetchingVcek(_) | FetcherError::FetchingCertChain(_) => Request,
+                    FetcherError::ParsingVcek(_) | FetcherError::ParsingCertChain(_) => InvalidAmdCerts,
+                },
+                VerificationError::CertVerification(_)
+                | VerificationError::MalformedCertificate(_)
+                | VerificationError::InvalidCertificate(_) => InvalidAmdCerts,
+                VerificationError::DetectProcessor(_)
+                | VerificationError::InvalidMeasurement { .. }
+                | VerificationError::InvalidVcekPubKey
+                | VerificationError::MalformedReportSignature
+                | VerificationError::InvalidSignature => InvalidReport,
+                VerificationError::SerializeReport(_) => Internal,
+            },
+        }
     }
+}
+
+#[derive(Serialize)]
+struct ReportMetadata {
+    measurement_hash: String,
+    tls_fingerprint: String,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+enum ValidateResult {
+    Success { metadata: ReportMetadata },
+    Failure { error_code: ErrorCode, message: String },
 }
 
 fn main() {
@@ -259,11 +309,23 @@ fn main() {
         )
         .init();
 
-    match run(cli) {
-        Ok(()) => {}
-        Err(e) => {
-            error!("Failed to run: {e:#}");
-            std::process::exit(1);
+    match cli.command {
+        Command::Validate(args) => {
+            let (exit_code, result) = match validate(args) {
+                Ok(metadata) => (0, ValidateResult::Success { metadata }),
+                Err(e) => {
+                    let message = e.to_string();
+                    (1, ValidateResult::Failure { error_code: e.into(), message })
+                }
+            };
+            println!("{}", serde_json::to_string(&result).expect("failed to serialize"));
+            exit(exit_code);
+        }
+        Command::MeasurementHash(args) => {
+            if let Err(e) = compute_measurement_hash(args) {
+                error!("Failed to compute measurement hash: {e:#}");
+                exit(1);
+            }
         }
     }
 }

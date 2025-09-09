@@ -1,11 +1,10 @@
-use anyhow::{bail, Context};
 use clap::ValueEnum;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader, VmTypeArtifacts};
+use nilcc_artifacts::{Artifacts, ArtifactsDownloader, DownloadError, VmTypeArtifacts};
 use reqwest::{blocking::ClientBuilder, tls::TlsInfo};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, time::Duration};
+use std::{io, path::PathBuf, time::Duration};
 use tracing::info;
 use x509_parser::parse_x509_certificate;
 
@@ -50,27 +49,27 @@ impl ReportFetcher {
         Self { cache_path, artifacts_url }
     }
 
-    pub fn fetch_report(&self, base_url: &str) -> anyhow::Result<ReportBundle> {
-        let http_client = ClientBuilder::default().tls_info(true).build().context("Failed to build HTTP client")?;
+    pub fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
+        let http_client = ClientBuilder::default().tls_info(true).build().map_err(ReportBundleError::HttpClient)?;
         let url = format!("{base_url}/nilcc/api/v1/report");
         info!("Fetching report from {url}");
-        let response = http_client.get(url).timeout(REQUEST_TIMEOUT).send().context("fetching attestation")?;
+        let response =
+            http_client.get(url).timeout(REQUEST_TIMEOUT).send().map_err(ReportBundleError::FetchAttestation)?;
 
-        let info = response.extensions().get::<TlsInfo>().context("No TLS information")?;
-        let cert = info.peer_certificate().context("No certificate in TLS info")?;
-        let (_, cert) = parse_x509_certificate(cert).context("Invalid TLS certificate")?;
+        let info = response.extensions().get::<TlsInfo>().ok_or(ReportBundleError::NoTlsInfo)?;
+        let cert = info.peer_certificate().ok_or(ReportBundleError::NoTlsInfo)?;
+        let (_, cert) = parse_x509_certificate(cert).map_err(ReportBundleError::TlsCertificate)?;
         let pubkey = cert.tbs_certificate.subject_pki;
         let cert_fingerprint = Sha256::digest(pubkey.raw);
         let mut expected_report_data: [u8; 64] = [0; 64];
         expected_report_data[1..33].copy_from_slice(&cert_fingerprint);
 
-        let ReportResponse { report, environment } = response.json().context("decoding payload body")?;
+        let ReportResponse { report, environment } = response.json().map_err(ReportBundleError::MalformedPayload)?;
         if report.report_data.as_slice() != expected_report_data {
-            bail!(
-                "unexpected report data: expected `{}`, got `{}`",
-                hex::encode(expected_report_data),
-                hex::encode(report.report_data)
-            );
+            return Err(ReportBundleError::TlsFingerprint {
+                expected: hex::encode(expected_report_data),
+                actual: hex::encode(report.report_data),
+            });
         }
         info!("Report contains expected TLS fingerprint: {}", hex::encode(cert_fingerprint));
 
@@ -87,13 +86,48 @@ impl ReportFetcher {
             .without_artifact_overwrite()
             .with_artifacts_url(self.artifacts_url.clone());
         let runtime =
-            tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
+            tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(ReportBundleError::Tokio)?;
         let artifacts = runtime.block_on(downloader.download(&download_path))?;
         let Artifacts { ovmf_path, initrd_path, mut type_artifacts } = artifacts;
         let VmTypeArtifacts { kernel_path, filesystem_root_hash, .. } =
             type_artifacts.remove(&vm_type).expect("missing vm type artifacts");
-        Ok(ReportBundle { report, cpu_count: *cpu_count, ovmf_path, initrd_path, kernel_path, filesystem_root_hash })
+        Ok(ReportBundle {
+            report,
+            cpu_count: *cpu_count,
+            ovmf_path,
+            initrd_path,
+            kernel_path,
+            filesystem_root_hash,
+            tls_fingerprint: hex::encode(cert_fingerprint),
+        })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReportBundleError {
+    #[error("failed to create http client: {0}")]
+    HttpClient(reqwest::Error),
+
+    #[error("failed to fetch attestation: {0}")]
+    FetchAttestation(reqwest::Error),
+
+    #[error("TLS information missing")]
+    NoTlsInfo,
+
+    #[error("invalid TLS certificate: {0}")]
+    TlsCertificate(nom::Err<x509_parser::error::X509Error>),
+
+    #[error("invalid TLS fingerprint, expected {expected}, got {actual}")]
+    TlsFingerprint { expected: String, actual: String },
+
+    #[error("malformed JSON payload: {0}")]
+    MalformedPayload(reqwest::Error),
+
+    #[error("failed to create tokio runtime: {0}")]
+    Tokio(io::Error),
+
+    #[error("failed to download artifacts: {0}")]
+    DownloadArtifacts(#[from] DownloadError),
 }
 
 #[derive(Clone, Debug)]
@@ -104,4 +138,5 @@ pub struct ReportBundle {
     pub initrd_path: PathBuf,
     pub kernel_path: PathBuf,
     pub filesystem_root_hash: [u8; 32],
+    pub tls_fingerprint: String,
 }

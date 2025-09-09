@@ -1,8 +1,10 @@
-use anyhow::Context;
-use sev::measurement::{
-    snp::{snp_calc_launch_digest, SnpMeasurementArgs},
-    vcpu_types::CpuType,
-    vmsa::{GuestFeatures, VMMType},
+use sev::{
+    error::MeasurementError,
+    measurement::{
+        snp::{snp_calc_launch_digest, SnpMeasurementArgs},
+        vcpu_types::CpuType,
+        vmsa::{GuestFeatures, VMMType},
+    },
 };
 use std::path::PathBuf;
 use tracing::info;
@@ -19,7 +21,7 @@ pub struct MeasurementGenerator {
 }
 
 impl MeasurementGenerator {
-    pub fn generate(self) -> anyhow::Result<Vec<u8>> {
+    pub fn generate(self) -> Result<Vec<u8>, MeasurementError> {
         let Self {
             ovmf,
             kernel,
@@ -49,8 +51,8 @@ impl MeasurementGenerator {
             ovmf_hash_str: None,
             vmm_type: Some(VMMType::QEMU),
         };
-        let digest = snp_calc_launch_digest(args).context("generating SNP measurement")?;
-        let digest = bincode::serialize(&digest).context("bindecoding SNP measurement")?;
+        let digest = snp_calc_launch_digest(args)?;
+        let digest = bincode::serialize(&digest).expect("bindecoding SNP measurement");
         Ok(digest)
     }
 }

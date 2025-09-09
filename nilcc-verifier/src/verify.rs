@@ -1,5 +1,4 @@
-use crate::certs::{CertificateFetcher, Certs};
-use anyhow::{bail, Context};
+use crate::certs::{CertificateFetcher, Certs, FetcherError};
 use clap::ValueEnum;
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
 use serde::Deserialize;
@@ -25,29 +24,28 @@ impl ReportVerifier {
         Self { fetcher }
     }
 
-    pub fn verify_report(&self, report: AttestationReport, measurement: Vec<u8>) -> anyhow::Result<()> {
-        let processor = Self::detect_processor(&report).context("detecting processor")?;
+    pub fn verify_report(&self, report: AttestationReport, measurement: &[u8]) -> Result<(), VerificationError> {
+        let processor = Self::detect_processor(&report)?;
         info!("Using processor model {processor:?} for verification");
 
-        let certs = self.fetcher.fetch_certs(&processor, &report).context("fetching certs")?;
-        Self::verify_certs(&certs).context("verifying certs")?;
+        let certs = self.fetcher.fetch_certs(&processor, &report)?;
+        Self::verify_certs(&certs)?;
 
         if report.measurement.as_slice() != measurement {
-            bail!(
-                "Measurement is incorrect, expected {} got {}",
-                hex::encode(measurement),
-                hex::encode(report.measurement)
-            );
+            return Err(VerificationError::InvalidMeasurement {
+                expected: hex::encode(measurement),
+                actual: hex::encode(report.measurement),
+            });
         }
         info!("Measurement matches expected: {}", hex::encode(measurement));
 
-        Self::verify_report_signature(&certs.vcek, &report).context("verifying report signature")?;
-        Self::verify_attestation_tcb(&certs.vcek, &report, &processor).context("verifying attestation TCB")?;
+        Self::verify_report_signature(&certs.vcek, &report)?;
+        Self::verify_attestation_tcb(&certs.vcek, &report, &processor)?;
         info!("Verification successful");
         Ok(())
     }
 
-    fn detect_processor(report: &AttestationReport) -> anyhow::Result<Processor> {
+    fn detect_processor(report: &AttestationReport) -> Result<Processor, VerificationError> {
         info!("Detecting processor type based on attestation report");
         match Processor::try_from(report) {
             Ok(processor) => Ok(processor),
@@ -55,7 +53,7 @@ impl ReportVerifier {
                 warn!("Processor could be Milan or Genoa, assuming Genoa");
                 Ok(Processor::Genoa)
             }
-            Err(e) => Err(e.into()),
+            Err(e) => Err(VerificationError::DetectProcessor(e)),
         }
     }
 
@@ -92,18 +90,13 @@ impl ReportVerifier {
         Ok(())
     }
 
-    fn verify_report_signature(vcek: &Certificate, report: &AttestationReport) -> anyhow::Result<()> {
-        let vek_pubkey = vcek
-            .public_key()
-            .context("getting VEK public key")?
-            .ec_key()
-            .context("converting VEK public key into ECkey")?;
+    fn verify_report_signature(vcek: &Certificate, report: &AttestationReport) -> Result<(), VerificationError> {
+        use VerificationError::*;
+        let vek_pubkey = vcek.public_key().map_err(|_| InvalidVcekPubKey)?.ec_key().map_err(|_| InvalidVcekPubKey)?;
 
-        // Get the attestation report signature
-        let ar_signature =
-            EcdsaSig::try_from(&report.signature).context("Failed to get ECDSA signature from attestation report.")?;
+        let signature = EcdsaSig::try_from(&report.signature).map_err(|_| MalformedReportSignature)?;
         let mut report_bytes = Vec::new();
-        report.write_bytes(&mut report_bytes)?;
+        report.write_bytes(&mut report_bytes).map_err(SerializeReport)?;
         let signed_bytes = &report_bytes[0x0..0x2A0];
 
         let mut hasher = Sha384::new();
@@ -111,22 +104,20 @@ impl ReportVerifier {
         let digest = hasher.finish();
 
         // Verify signature
-        if ar_signature
-            .verify(digest.as_ref(), vek_pubkey.as_ref())
-            .context("verifying attestation report signature")?
-        {
+        if signature.verify(digest.as_ref(), vek_pubkey.as_ref()).map_err(|_| InvalidSignature)? {
             Ok(())
         } else {
-            bail!("VEK did not sign the attestation report!")
+            Err(InvalidSignature)
         }
     }
 
-    fn check_cert_bytes(ext: &X509Extension, val: &[u8]) -> anyhow::Result<bool> {
+    fn check_cert_bytes(ext: &X509Extension, val: &[u8]) -> Result<bool, VerificationError> {
+        use VerificationError::InvalidCertificate;
         let output = match ext.value[0] {
             // Integer
             0x2 => {
                 if ext.value[1] != 0x1 && ext.value[1] != 0x2 {
-                    bail!("invalid octet length encountered");
+                    return Err(InvalidCertificate("invalid octet length encountered"));
                 } else if let Some(byte_value) = ext.value.last() {
                     byte_value == &val[0]
                 } else {
@@ -136,11 +127,11 @@ impl ReportVerifier {
             // Octet String
             0x4 => {
                 if ext.value[1] != 0x40 {
-                    bail!("invalid octet length encountered!");
+                    return Err(InvalidCertificate("invalid octet length encountered!"));
                 } else if ext.value[2..].len() != 0x40 {
-                    bail!("invalid size of bytes encountered!");
+                    return Err(InvalidCertificate("invalid size of bytes encountered!"));
                 } else if val.len() != 0x40 {
-                    bail!("invalid certificate harward id length encountered!")
+                    return Err(InvalidCertificate("invalid certificate harward id length encountered!"));
                 }
 
                 &ext.value[2..] == val
@@ -151,14 +142,14 @@ impl ReportVerifier {
                 if ext.value.len() == 0x40 && val.len() == 0x40 {
                     ext.value == val
                 } else {
-                    bail!("invalid type encountered!");
+                    return Err(InvalidCertificate("invalid type encountered!"));
                 }
             }
         };
         Ok(output)
     }
 
-    fn parse_common_name(field: &X509Name) -> anyhow::Result<CertType> {
+    fn parse_common_name(field: &X509Name) -> Result<CertType, VerificationError> {
         if let Some(val) = field.iter_common_name().next().and_then(|cn| cn.as_str().ok()) {
             match val.to_lowercase() {
                 x if x.contains("ark") => Ok(CertType::ARK),
@@ -166,10 +157,10 @@ impl ReportVerifier {
                 x if x.contains("vcek") => Ok(CertType::VCEK),
                 x if x.contains("vlek") => Ok(CertType::VLEK),
                 x if x.contains("crl") => Ok(CertType::CRL),
-                _ => Err(anyhow::anyhow!("Unknown certificate type encountered!")),
+                _ => Err(VerificationError::InvalidCertificate("unknown certificate type encountered")),
             }
         } else {
-            bail!("certificate subject Common Name is unknown!")
+            Err(VerificationError::InvalidCertificate("certificate subject Common Name is unknown"))
         }
     }
 
@@ -177,12 +168,13 @@ impl ReportVerifier {
         vcek: &Certificate,
         report: &AttestationReport,
         processor: &Processor,
-    ) -> anyhow::Result<()> {
-        let vek_der = vcek.to_der().context("converting VEK to DER")?;
-        let (_, vek_x509) = X509Certificate::from_der(&vek_der).context("creating x509 cert from DER")?;
+    ) -> Result<(), VerificationError> {
+        use VerificationError::*;
+        let vek_der = vcek.to_der().map_err(|e| MalformedCertificate(e.to_string()))?;
+        let (_, vek_x509) = X509Certificate::from_der(&vek_der).map_err(|e| MalformedCertificate(e.to_string()))?;
 
         // Collect extensions from VEK
-        let extensions = vek_x509.extensions_map().context("getting VEK Oids")?;
+        let extensions = vek_x509.extensions_map().map_err(|_| InvalidCertificate("no extensions map"))?;
 
         let common_name: CertType = Self::parse_common_name(vek_x509.subject())?;
 
@@ -190,28 +182,28 @@ impl ReportVerifier {
         if let Some(cert_bl) = extensions.get(&SnpOid::BootLoader.oid())
             && !Self::check_cert_bytes(cert_bl, &report.reported_tcb.bootloader.to_le_bytes())?
         {
-            bail!("report TCB boot loader and certificate boot loader mismatch encountered");
+            return Err(InvalidCertificate("report TCB boot loader and certificate boot loader mismatch encountered"));
         }
 
         // Compare TEE information
         if let Some(cert_tee) = extensions.get(&SnpOid::Tee.oid())
             && !Self::check_cert_bytes(cert_tee, &report.reported_tcb.tee.to_le_bytes())?
         {
-            bail!("report TCB TEE and certificate TEE mismatch encountered");
+            return Err(InvalidCertificate("report TCB TEE and certificate TEE mismatch encountered"));
         }
 
         // Compare SNP information
         if let Some(cert_snp) = extensions.get(&SnpOid::Snp.oid())
             && !Self::check_cert_bytes(cert_snp, &report.reported_tcb.snp.to_le_bytes())?
         {
-            bail!("report TCB SNP and Certificate SNP mismatch encountered");
+            return Err(InvalidCertificate("report TCB SNP and Certificate SNP mismatch encountered"));
         }
 
         // Compare Microcode information
         if let Some(cert_ucode) = extensions.get(&SnpOid::Ucode.oid())
             && !Self::check_cert_bytes(cert_ucode, &report.reported_tcb.microcode.to_le_bytes())?
         {
-            bail!("report TCB microcode and certificate microcode mismatch encountered");
+            return Err(InvalidCertificate("report TCB microcode and certificate microcode mismatch encountered"));
         }
 
         // Compare HWID information only on VCEK
@@ -219,20 +211,20 @@ impl ReportVerifier {
             && let Some(cert_hwid) = extensions.get(&SnpOid::HwId.oid())
             && !Self::check_cert_bytes(cert_hwid, &*report.chip_id)?
         {
-            bail!("report TCB ID and certificate ID mismatch encountered");
+            return Err(InvalidCertificate("report TCB ID and certificate ID mismatch encountered"));
         }
 
         if processor == &Processor::Turin {
             if report.version < 3 {
-                bail!("Turin attestation is not supported in version 2 of the report");
+                return Err(InvalidCertificate("Turin attestation is not supported in version 2 of the report"));
             }
             if let Some(cert_fmc) = extensions.get(&SnpOid::Fmc.oid()) {
                 if let Some(fmc) = report.reported_tcb.fmc {
                     if !Self::check_cert_bytes(cert_fmc, fmc.to_le_bytes().as_slice())? {
-                        bail!("report TCB FMC and certificate FMC mismatch encountered");
+                        return Err(InvalidCertificate("report TCB FMC and certificate FMC mismatch encountered"));
                     }
                 } else {
-                    bail!("attestation report TCB FMC is not present in the report, but is expected for {processor:?} model");
+                    return Err(InvalidCertificate("attestation report TCB FMC is not present in the report, but is expected for {processor:?} model"));
                 };
             }
         }
@@ -305,6 +297,39 @@ impl TryFrom<&AttestationReport> for Processor {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum VerificationError {
+    #[error("failed to fetch certificates: {0}")]
+    FetchCerts(#[from] FetcherError),
+
+    #[error("failed to verity certificates: {0}")]
+    CertVerification(#[from] CertificateValidationError),
+
+    #[error("failed to detect processor: {0}")]
+    DetectProcessor(FromReportError),
+
+    #[error("invalid measurement hash, expected = {expected}, got = {actual}")]
+    InvalidMeasurement { expected: String, actual: String },
+
+    #[error("invalid VCEK public key")]
+    InvalidVcekPubKey,
+
+    #[error("malformed report signature")]
+    MalformedReportSignature,
+
+    #[error("invalid report signature")]
+    InvalidSignature,
+
+    #[error("failed to serialize report: {0}")]
+    SerializeReport(io::Error),
+
+    #[error("malformed AMD certificate: {0}")]
+    MalformedCertificate(String),
+
+    #[error("invalid AMD certificate: {0}")]
+    InvalidCertificate(&'static str),
+}
+
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum FromReportError {
     #[error("attestation report version is lower than 3 and Chip ID is all 0s")]
     ZeroChipIp,
@@ -348,7 +373,7 @@ impl SnpOid {
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
-enum CertificateValidationError {
+pub enum CertificateValidationError {
     #[error("ARK is not self signed")]
     ArkNotSelfSigned,
 

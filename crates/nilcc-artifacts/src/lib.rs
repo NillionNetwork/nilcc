@@ -1,8 +1,7 @@
-use anyhow::anyhow;
-use anyhow::Context;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::fmt;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use tokio::fs;
@@ -43,14 +42,14 @@ impl ArtifactsDownloader {
         self
     }
 
-    pub async fn validate_exists(&self) -> anyhow::Result<()> {
+    pub async fn validate_exists(&self) -> Result<(), DownloadError> {
         let Self { version, artifacts_url, .. } = self;
         let url = format!("{artifacts_url}/{version}/metadata.json");
         reqwest::get(url).await?.error_for_status()?;
         Ok(())
     }
 
-    pub async fn download(&self, target_dir: &Path) -> anyhow::Result<Artifacts> {
+    pub async fn download(&self, target_dir: &Path) -> Result<Artifacts, DownloadError> {
         info!("Downloading artifacts to {}", target_dir.display());
 
         let ovmf_path = self.download_artifact("vm_images/ovmf/OVMF.fd", target_dir).await?;
@@ -61,12 +60,11 @@ impl ArtifactsDownloader {
                 self.download_artifact(&format!("vm_images/kernel/{vm_type}-vmlinuz"), target_dir).await?;
             let filesystem_root_hash_path =
                 self.download_artifact(&format!("vm_images/cvm-{vm_type}-verity/root-hash"), target_dir).await?;
-            let hex_filesystem_root_hash = fs::read_to_string(filesystem_root_hash_path)
-                .await
-                .context("reading local copy of filesystem root hash")?;
+            let hex_filesystem_root_hash =
+                fs::read_to_string(filesystem_root_hash_path).await.map_err(DownloadError::ReadRootHash)?;
             let mut filesystem_root_hash: [u8; 32] = [0; 32];
             hex::decode_to_slice(hex_filesystem_root_hash.trim(), &mut filesystem_root_hash)
-                .context("decoding filesystem root hash")?;
+                .map_err(DownloadError::DecodeRootHash)?;
             let (base_disk, verity_disk) = match &self.disk_images {
                 true => {
                     let base_disk =
@@ -84,7 +82,7 @@ impl ArtifactsDownloader {
         Ok(Artifacts { ovmf_path, initrd_path, type_artifacts })
     }
 
-    async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> anyhow::Result<PathBuf> {
+    async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> Result<PathBuf, DownloadError> {
         let local_path = target_dir.join(artifact_name);
         if local_path.exists() {
             if self.always_download {
@@ -95,20 +93,39 @@ impl ArtifactsDownloader {
             }
         }
         info!("Downloading {artifact_name} into {}", local_path.display());
-        let parent = local_path.parent().ok_or_else(|| anyhow!("path has no parent"))?;
-        fs::create_dir_all(parent).await.context("creating cache directory")?;
+        let parent = local_path.parent().ok_or_else(|| DownloadError::NoParent)?;
+        fs::create_dir_all(parent).await.map_err(DownloadError::TargetDirectory)?;
 
         let version = &self.version;
         let remote_path = format!("/{version}/{artifact_name}");
-        self.download_object(&remote_path, &local_path)
-            .await
-            .map_err(|e| anyhow!("failed to download {remote_path}: {e}"))?;
+        self.download_object(&remote_path, &local_path).await?;
         Ok(local_path)
     }
 
-    async fn download_object(&self, url_path: &str, target_path: &Path) -> anyhow::Result<()> {
+    async fn download_object(&self, url_path: &str, target_path: &Path) -> Result<(), DownloadError> {
         FileDownloader { artifacts_url: &self.artifacts_url }.download(url_path, target_path).await
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DownloadError {
+    #[error("no parent in target path")]
+    NoParent,
+
+    #[error("could not create target directory: {0}")]
+    TargetDirectory(io::Error),
+
+    #[error("could not write target file: {0}")]
+    TargetFile(io::Error),
+
+    #[error("could not read root hash: {0}")]
+    ReadRootHash(io::Error),
+
+    #[error("malformed root hash: {0}")]
+    DecodeRootHash(hex::FromHexError),
+
+    #[error("could not download file: {0}")]
+    Download(#[from] reqwest::Error),
 }
 
 pub struct FileDownloader<'a> {
@@ -122,24 +139,24 @@ impl Default for FileDownloader<'static> {
 }
 
 impl FileDownloader<'_> {
-    pub async fn exists(&self, url_path: &str) -> anyhow::Result<()> {
+    pub async fn exists(&self, url_path: &str) -> Result<(), DownloadError> {
         let url = format!("{}{url_path}", self.artifacts_url);
         reqwest::Client::new().head(url).send().await?.error_for_status()?;
         Ok(())
     }
 
-    pub async fn download(&self, url_path: &str, target_path: &Path) -> anyhow::Result<()> {
+    pub async fn download(&self, url_path: &str, target_path: &Path) -> Result<(), DownloadError> {
         let url = format!("{}{url_path}", self.artifacts_url);
         let result = reqwest::get(url).await?.error_for_status()?;
         let mut stream = result.bytes_stream();
-        let file = File::create(target_path).await.context("Failed to create target file")?;
+        let file = File::create(target_path).await.map_err(DownloadError::TargetFile)?;
         let mut file = BufWriter::new(file);
         while let Some(bytes) = stream.next().await {
             let bytes = bytes?;
             debug!("Writing {} bytes chunk", bytes.len());
-            file.write_all(&bytes).await?;
+            file.write_all(&bytes).await.map_err(DownloadError::TargetFile)?;
         }
-        file.flush().await?;
+        file.flush().await.map_err(DownloadError::TargetFile)?;
         Ok(())
     }
 }
