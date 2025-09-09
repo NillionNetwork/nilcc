@@ -64,6 +64,7 @@ export class WorkloadService {
     const totalAccountSpendRow = await repository
       .createQueryBuilder("workload")
       .where("workload.account_id = :accountId", { accountId: account.id })
+      .where("workload.status != 'stopped'")
       .select("SUM(workload.creditRate) as sum")
       .getRawOne();
     const totalAccountSpend = Number(totalAccountSpendRow.sum || 0);
