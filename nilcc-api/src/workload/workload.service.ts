@@ -59,21 +59,17 @@ export class WorkloadService {
     if (tier === null) {
       throw new InvalidWorkloadTier();
     }
-    const repository = this.getRepository(bindings, tx);
+
     // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
-    const totalAccountSpendRow = await repository
-      .createQueryBuilder("workload")
-      .where("workload.account_id = :accountId", { accountId: account.id })
-      .where("workload.status != 'stopped'")
-      .select("SUM(workload.creditRate) as sum")
-      .getRawOne();
-    const totalAccountSpend = Number(totalAccountSpendRow.sum || 0);
+    const totalAccountSpend =
+      await bindings.services.account.getAccountSpending(bindings, account.id);
     if (
       (totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION >
       account.credits
     ) {
       throw new NotEnoughCredits();
     }
+    const repository = this.getRepository(bindings, tx);
 
     const metalInstances =
       await bindings.services.metalInstance.findWithFreeResources(

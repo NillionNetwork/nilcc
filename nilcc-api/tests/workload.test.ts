@@ -263,9 +263,10 @@ services:
     const totalUsage = workloads
       .map((w) => w.creditRate)
       .reduce((a, b) => a + b, 0);
-    const account = await clients.admin
-      .getAccount(workloads[0].accountId)
-      .submit();
+
+    const account = await clients.user.myAccount().submit();
+    expect(account.creditRate).toBe(totalUsage);
+
     // Compute how much is the maximum credits we can spend per minute
     const maxCredits = Math.floor((account.credits - totalUsage * 5) / 5);
     // Create 2 tiers: one with that value + 1 (too expensive), and another one with that value

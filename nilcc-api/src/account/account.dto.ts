@@ -20,10 +20,16 @@ export const Account = z
   });
 export type Account = z.infer<typeof Account>;
 
-export const TrimmedAccount = Account.omit({ apiToken: true }).openapi({
-  ref: "TrimmedAccount",
-});
-export type TrimmedAccount = z.infer<typeof TrimmedAccount>;
+export const MyAccount = Account.omit({ apiToken: true })
+  .extend({
+    creditRate: z.number().openapi({
+      description: "The amount of credits currently being burnt per minute.",
+    }),
+  })
+  .openapi({
+    ref: "MyAccount",
+  });
+export type MyAccount = z.infer<typeof MyAccount>;
 
 export const CreateAccountRequest = z
   .object({
