@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -86,6 +87,22 @@ pub mod health {
 
         /// Whether the CVM is bootstrapped
         pub bootstrapped: bool,
+
+        /// The last error encountered.
+        pub last_error: Option<LastError>,
+    }
+
+    #[derive(Clone, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct LastError {
+        /// An incremental id for every error found.
+        pub error_id: u64,
+
+        /// An error message.
+        pub message: String,
+
+        /// The timestamp when this error was generated.
+        pub failed_at: DateTime<Utc>,
     }
 }
 
