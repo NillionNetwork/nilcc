@@ -8,7 +8,10 @@ use crate::{
     workers::events::EventSender,
 };
 use chrono::Utc;
-use cvm_agent_models::bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials};
+use cvm_agent_models::{
+    bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials},
+    health::LastError,
+};
 use metrics::{counter, gauge};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use strum::EnumDiscriminants;
@@ -49,6 +52,7 @@ pub(crate) struct VmWorker {
     docker_credentials: Vec<DockerCredentials>,
     domain: String,
     event_sender: EventSender,
+    last_error_id: Option<u64>,
 }
 
 impl VmWorker {
@@ -80,6 +84,7 @@ impl VmWorker {
                 docker_credentials,
                 event_sender,
                 domain,
+                last_error_id: None,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -219,6 +224,16 @@ impl VmWorker {
                         info!("CVM's https endpoint is functional");
                         self.vm_state = VmState::Running;
                         self.submit_event(VmEvent::Running).await;
+                    }
+                    if let Some(last_error) = response.last_error {
+                        let LastError { error_id, message, failed_at } = last_error;
+                        if self.last_error_id != Some(error_id) {
+                            info!("CVM failed to start: {message}");
+                            self.last_error_id = Some(error_id);
+                            self.event_sender
+                                .send_event(self.workload_id, VmEvent::FailedToStart { error: message }, failed_at)
+                                .await;
+                        }
                     }
                 }
                 Err(e) => {

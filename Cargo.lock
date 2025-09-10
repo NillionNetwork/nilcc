@@ -873,6 +873,7 @@ dependencies = [
  "axum",
  "axum-valid",
  "bollard",
+ "chrono",
  "clap",
  "cvm-agent-models",
  "futures",
@@ -891,6 +892,7 @@ dependencies = [
 name = "cvm-agent-models"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "serde",
  "validator",
 ]

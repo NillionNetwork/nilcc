@@ -11,7 +11,8 @@ use tokio::{
 use tracing::{error, info, warn};
 
 const COMPOSE_PROJECT_NAME: &str = "cvm";
-const RETRY_INTERVAL: Duration = Duration::from_secs(10);
+const PULL_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+const LAUNCH_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 pub(crate) struct ComposeMonitor {
     ctx: BootstrapContext,
@@ -39,8 +40,9 @@ impl ComposeMonitor {
                 }
                 Err(e) => {
                     error!("Failed to pull images: {e:#}");
-                    info!("Sleeping for {RETRY_INTERVAL:?}");
-                    sleep(RETRY_INTERVAL).await;
+                    self.report_error(e.to_string());
+                    info!("Sleeping for {LAUNCH_RETRY_INTERVAL:?}");
+                    sleep(PULL_RETRY_INTERVAL).await;
                 }
             }
         }
@@ -49,17 +51,18 @@ impl ComposeMonitor {
             match self.launch_compose().await {
                 Ok(child) => {
                     info!("docker compose is running, waiting for process to exit");
-                    if Self::check_process_output(child).await {
+                    if self.check_process_output(child).await {
                         info!("Exiting loop since docker compose is running");
                         break;
                     }
                 }
                 Err(e) => {
+                    self.report_error(e.to_string());
                     error!("Failed to run docker compose: {e}");
                 }
             };
-            info!("Sleeping for {RETRY_INTERVAL:?}");
-            sleep(RETRY_INTERVAL).await;
+            info!("Sleeping for {LAUNCH_RETRY_INTERVAL:?}");
+            sleep(LAUNCH_RETRY_INTERVAL).await;
         }
     }
 
@@ -93,7 +96,8 @@ impl ComposeMonitor {
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("docker login failed: {stderr}")
+            let message = Self::extract_stderr_message(&stderr);
+            bail!("docker login failed: {message}")
         }
     }
 
@@ -102,8 +106,13 @@ impl ComposeMonitor {
             self.docker_login(credential).await.context("Failed to docker login")?;
         }
         info!("Running docker compose pull");
-        let output =
-            self.base_docker_command().arg("pull").output().await.context("Failed to run docker compose pull")?;
+        let output = self
+            .base_docker_command()
+            .arg("pull")
+            .arg("-q")
+            .output()
+            .await
+            .context("Failed to run docker compose pull")?;
         if output.status.success() {
             if !self.docker.is_empty() {
                 info!("Removing docker config.json file");
@@ -115,8 +124,19 @@ impl ComposeMonitor {
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("docker compose pull failed: {stderr}")
+            let message = Self::extract_stderr_message(&stderr);
+            bail!("docker compose pull failed: {message}")
         }
+    }
+
+    fn extract_stderr_message(stderr: &str) -> &str {
+        for line in stderr.lines() {
+            // Try to grab the nicer error if we can
+            if let Some(error) = line.strip_prefix("Error response from daemon: ") {
+                return error;
+            }
+        }
+        stderr
     }
 
     async fn launch_compose(&self) -> io::Result<Child> {
@@ -152,7 +172,7 @@ impl ComposeMonitor {
         command
     }
 
-    async fn check_process_output(child: Child) -> bool {
+    async fn check_process_output(&self, child: Child) -> bool {
         let output = match child.wait_with_output().await {
             Ok(output) => output,
             Err(e) => {
@@ -166,8 +186,38 @@ impl ComposeMonitor {
             true
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("docker compose execution failed: {stderr}");
+            let message = Self::extract_stderr_message(&stderr);
+            let error = format!("docker compose execution failed: {message}");
+            self.report_error(error);
             false
         }
+    }
+
+    fn report_error(&self, message: String) {
+        error!("{message}");
+        self.ctx.error_holder.set(message);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daemon_error_response() {
+        let stderr = r"[+] Pulling 2/2
+ ✘ other Error context canceled                                                                  1.2s
+ ✘ web Error   manifest for foo:bar not found: manifest unknown: manifest unknown                1.2s
+Error response from daemon: manifest for foo:bar not found: manifest unknown: manifest unknown";
+        let error = ComposeMonitor::extract_stderr_message(&stderr);
+        assert_eq!(error, "manifest for foo:bar not found: manifest unknown: manifest unknown");
+    }
+
+    #[test]
+    fn default_error_message() {
+        let stderr = r"foo
+bar";
+        let error = ComposeMonitor::extract_stderr_message(&stderr);
+        assert_eq!(error, stderr);
     }
 }

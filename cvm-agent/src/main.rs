@@ -97,6 +97,7 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
         version,
         vm_type,
         iso_mount: cli.iso_mount_path.clone(),
+        error_holder: Default::default(),
     };
     (state_dir, context)
 }
