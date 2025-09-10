@@ -11,7 +11,7 @@ import {
   Account,
   AddCreditsRequest,
   CreateAccountRequest,
-  TrimmedAccount,
+  MyAccount,
 } from "./account.dto";
 import { accountMapper } from "./account.mapper";
 
@@ -118,7 +118,7 @@ export function me(options: ControllerOptions) {
           description: "The account information was retrieved successfully",
           content: {
             "application/json": {
-              schema: resolver(TrimmedAccount),
+              schema: resolver(MyAccount),
             },
           },
         },
@@ -129,7 +129,11 @@ export function me(options: ControllerOptions) {
     async (c) => {
       const account = c.get("account");
       const outputAccount = accountMapper.entityToResponse(account);
-      return c.json(TrimmedAccount.parse(outputAccount));
+      const creditRate = await bindings.services.account.getAccountSpending(
+        bindings,
+        account.id,
+      );
+      return c.json(MyAccount.parse({ creditRate, ...outputAccount }));
     },
   );
 }

@@ -46,6 +46,7 @@ describe("Account", () => {
 
     const expected: Record<string, unknown> = { ...account };
     delete expected.apiToken;
+    expected.creditRate = 0;
     expect(me).toEqual(expected);
   });
 });

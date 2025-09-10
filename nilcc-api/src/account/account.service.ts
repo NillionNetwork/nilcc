@@ -7,7 +7,7 @@ import {
   isUniqueConstraint,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type { WorkloadEntity } from "#/workload/workload.entity";
+import { WorkloadEntity } from "#/workload/workload.entity";
 import type { AddCreditsRequest, CreateAccountRequest } from "./account.dto";
 import { AccountEntity } from "./account.entity";
 
@@ -127,5 +127,19 @@ export class AccountService {
     }
     await repository.save(accounts);
     return offenders;
+  }
+
+  async getAccountSpending(
+    bindings: AppBindings,
+    accountId: string,
+  ): Promise<number> {
+    const repository = bindings.dataSource.getRepository(WorkloadEntity);
+    const row = await repository
+      .createQueryBuilder("workload")
+      .where("workload.account_id = :accountId", { accountId })
+      .where("workload.status != 'stopped'")
+      .select("SUM(workload.creditRate) as sum")
+      .getRawOne();
+    return Number(row.sum || 0);
   }
 }
