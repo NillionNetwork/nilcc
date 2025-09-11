@@ -1,6 +1,9 @@
 use crate::cert::CertFetcher;
 use anyhow::{bail, Context};
-use sev::firmware::guest::{AttestationReport, Firmware};
+use sev::{
+    firmware::guest::{AttestationReport, Firmware},
+    parser::ByteParser,
+};
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 use tokio::{process::Command, sync::Mutex, time::sleep};
 use tracing::{debug, error, info};

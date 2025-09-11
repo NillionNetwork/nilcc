@@ -113,6 +113,8 @@ pub struct AttestationReport {
     pub current: Version,
     pub committed: Version,
     pub launch_tcb: TcbVersion,
+    pub launch_mit_vector: Option<u64>,
+    pub current_mit_vector: Option<u64>,
     pub signature: Signature,
 }
 
@@ -146,6 +148,8 @@ impl From<sev::firmware::guest::AttestationReport> for AttestationReport {
             current,
             committed,
             launch_tcb,
+            launch_mit_vector,
+            current_mit_vector,
             signature,
         } = report;
         Self {
@@ -175,6 +179,8 @@ impl From<sev::firmware::guest::AttestationReport> for AttestationReport {
             current: current.into(),
             committed: committed.into(),
             launch_tcb: launch_tcb.into(),
+            launch_mit_vector,
+            current_mit_vector,
             signature: signature.into(),
         }
     }
@@ -210,6 +216,8 @@ impl From<AttestationReport> for sev::firmware::guest::AttestationReport {
             current,
             committed,
             launch_tcb,
+            launch_mit_vector,
+            current_mit_vector,
             signature,
         } = report;
         Self {
@@ -239,6 +247,8 @@ impl From<AttestationReport> for sev::firmware::guest::AttestationReport {
             current: current.into(),
             committed: committed.into(),
             launch_tcb: launch_tcb.into(),
+            launch_mit_vector,
+            current_mit_vector,
             signature: signature.into(),
         }
     }
