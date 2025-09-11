@@ -91,7 +91,7 @@ https://foo.com {
         let compose = Resources::render(&metadata, &VmType::Cpu).docker_compose;
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:0.1.0
+    image: ghcr.io/nillionnetwork/nilcc-attester:0.1.1
     restart: unless-stopped
     privileged: true
     volumes:
@@ -134,7 +134,7 @@ https://foo.com {
         let compose = Resources::render(&metadata, &VmType::Gpu).docker_compose;
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:0.1.0
+    image: ghcr.io/nillionnetwork/nilcc-attester:0.1.1
     restart: unless-stopped
     privileged: true
     volumes:
