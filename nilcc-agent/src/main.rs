@@ -252,7 +252,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
     })
     .await?;
     let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
-    spec.kernel_args.as_mut().expect("no kernel args").push_str(" console=ttyS0");
+    spec.kernel_args.as_mut().expect("no kernel args").push_str(" console=ttyS0 debug_mode=1");
     spec.display = VmDisplayMode::Console;
     spec.port_forwarding.clear();
 
