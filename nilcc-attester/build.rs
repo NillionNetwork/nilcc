@@ -5,6 +5,10 @@ use std::{
 
 fn run_command<const N: usize>(command: &str, args: [&str; N]) -> String {
     let output = Command::new(command).args(args).output().expect("failed to get run command");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Execution failed: {stderr}");
+    }
     String::from_utf8(output.stdout).expect("invalid command output")
 }
 
