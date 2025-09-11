@@ -52,9 +52,9 @@ impl From<TcbVersion> for sev::firmware::host::TcbVersion {
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signature {
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 72]")]
     pub r: [u8; 72],
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 72]")]
     pub s: [u8; 72],
 }
 
@@ -83,23 +83,23 @@ pub struct AttestationReport {
     pub version: u32,
     pub guest_svn: u32,
     pub policy: u64,
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 16]")]
     pub family_id: [u8; 16],
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 16]")]
     pub image_id: [u8; 16],
     pub vmpl: u32,
     pub sig_algo: u32,
     pub current_tcb: TcbVersion,
     pub plat_info: u64,
     pub key_info: u32,
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 64]")]
     pub report_data: [u8; 64],
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 48]")]
     pub measurement: [u8; 48],
     pub host_data: [u8; 32],
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 48]")]
     pub id_key_digest: [u8; 48],
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 48]")]
     pub author_key_digest: [u8; 48],
     pub report_id: [u8; 32],
     pub report_id_ma: [u8; 32],
@@ -107,7 +107,7 @@ pub struct AttestationReport {
     pub cpuid_fam_id: Option<u8>,
     pub cpuid_mod_id: Option<u8>,
     pub cpuid_step: Option<u8>,
-    #[serde_as(as = "[_; _]")]
+    #[serde_as(as = "[_; 64]")]
     pub chip_id: [u8; 64],
     pub committed_tcb: TcbVersion,
     pub current: Version,
