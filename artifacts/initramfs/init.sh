@@ -46,6 +46,9 @@ for x in $(cat /proc/cmdline); do
   docker_compose_hash=*)
     DOCKER_COMPOSE_HASH=${x#docker_compose_hash=}
     ;;
+  debug_mode=1)
+    DEBUG_MODE=1
+    ;;
   esac
 done
 
@@ -103,6 +106,15 @@ if [ "$ACTUAL_HASH" != "$DOCKER_COMPOSE_HASH" ]; then
 fi
 
 log "Docker compose hash matches expected one: ${ACTUAL_HASH}"
+
+if [ "${DEBUG_MODE}" = "1" ]; then
+  # Create a user nillion:nillion
+  useradd --root "$MNT_DIR" \
+    -g sudo \
+    -p '$6$.Uf8tj/pGoGkjrCh$eF6BIaqwEFdsA44YSc0hb1mKzrjJr0HfUb/2zEa/rIetxiDoW1Olya/MUA19Px2GrDK12ocTCme140Er1rUAb/' \
+    -s /bin/bash \
+    nillion
+fi
 
 mount --move /proc $MNT_DIR/proc
 mount --move /sys $MNT_DIR/sys
