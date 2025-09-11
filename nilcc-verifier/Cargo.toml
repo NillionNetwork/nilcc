@@ -22,6 +22,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 x509-parser = { version = "0.17.0", features = ["verify"] } 
 
 nilcc-artifacts = { path = "../crates/nilcc-artifacts" }
+attestation-report = { path = "../crates/attestation-report" }
 
 [dev-dependencies]
 rstest = { version = "0.25", default-features = false }
