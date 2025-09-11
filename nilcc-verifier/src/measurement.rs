@@ -51,8 +51,7 @@ impl MeasurementGenerator {
             ovmf_hash_str: None,
             vmm_type: Some(VMMType::QEMU),
         };
-        let digest = snp_calc_launch_digest(args)?;
-        let digest = bincode::serialize(&digest).expect("bindecoding SNP measurement");
+        let digest: Vec<u8> = snp_calc_launch_digest(args)?.try_into()?;
         Ok(digest)
     }
 }
