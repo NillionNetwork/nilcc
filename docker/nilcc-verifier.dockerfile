@@ -1,7 +1,7 @@
 FROM rust:1.88-alpine AS build
 
 WORKDIR /opt/nillion
-RUN apk add --no-cache musl-dev perl make
+RUN apk add --no-cache musl-dev perl make git
 
 COPY . .
 RUN cargo build --release --locked -p nilcc-verifier
