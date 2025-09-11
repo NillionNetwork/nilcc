@@ -24,12 +24,12 @@ impl HardwareReporter {
         Ok(Self { inner })
     }
 
-    pub async fn reports(&self) -> (Arc<AttestationReport>, Option<String>) {
+    pub async fn reports(&self) -> (Arc<attestation_report::v1::AttestationReport>, Option<String>) {
         let inner = self.inner.lock().await;
         (inner.hardware.clone(), inner.gpu_token.clone())
     }
 
-    fn fetch_hardware_report(fingerprint: &[u8; 32]) -> anyhow::Result<Arc<AttestationReport>> {
+    fn fetch_hardware_report(fingerprint: &[u8; 32]) -> anyhow::Result<Arc<attestation_report::v1::AttestationReport>> {
         let mut data: [u8; 64] = [0; 64];
         // Version, bump if changed
         data[0] = 0;
@@ -39,7 +39,7 @@ impl HardwareReporter {
         info!("Generating hardware report using nonce {}", hex::encode(data));
         let mut fw = Firmware::open().context("unable to open /dev/sev-guest")?;
         let raw_report = fw.get_report(None, Some(data), Some(VMPL)).context("unable to fetch attestation report")?;
-        let report = AttestationReport::from_bytes(&raw_report)?;
+        let report = AttestationReport::from_bytes(&raw_report)?.into();
         Ok(Arc::new(report))
     }
 
@@ -75,7 +75,7 @@ pub enum GpuReportConfig {
 }
 
 struct Inner {
-    hardware: Arc<AttestationReport>,
+    hardware: Arc<attestation_report::v1::AttestationReport>,
     gpu_token: Option<String>,
 }
 

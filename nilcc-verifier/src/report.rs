@@ -12,7 +12,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Deserialize)]
 struct ReportResponse {
-    report: AttestationReport,
+    report: attestation_report::v1::AttestationReport,
     environment: EnvironmentSpec,
 }
 
@@ -65,6 +65,7 @@ impl ReportFetcher {
         expected_report_data[1..33].copy_from_slice(&cert_fingerprint);
 
         let ReportResponse { report, environment } = response.json().map_err(ReportBundleError::MalformedPayload)?;
+        let report = AttestationReport::from(report);
         if report.report_data.as_slice() != expected_report_data {
             return Err(ReportBundleError::TlsFingerprint {
                 expected: hex::encode(expected_report_data),

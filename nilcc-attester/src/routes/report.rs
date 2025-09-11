@@ -1,12 +1,11 @@
 use crate::{config::VmType, routes::AppState};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Serialize;
-use sev::firmware::guest::AttestationReport;
 use std::sync::Arc;
 
 #[derive(Serialize)]
 pub(crate) struct Response {
-    report: Arc<AttestationReport>,
+    report: Arc<attestation_report::v1::AttestationReport>,
     gpu_token: Option<String>,
     environment: EnvironmentSpec,
 }
