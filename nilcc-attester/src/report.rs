@@ -11,28 +11,37 @@ use tracing::{debug, error, info};
 const VMPL: u32 = 1;
 const CERT_FINGERPRINT_INTERVAL: Duration = Duration::from_secs(30);
 
+#[derive(Clone)]
+pub struct Reports {
+    pub attestation_v1: Arc<attestation_report::v1::AttestationReport>,
+    pub attestation_v2: Arc<attestation_report::v2::AttestationReport>,
+    pub gpu_token: Option<String>,
+}
+
 pub struct HardwareReporter {
-    inner: Arc<Mutex<Inner>>,
+    reports: Arc<Mutex<Reports>>,
 }
 
 impl HardwareReporter {
     pub async fn new(gpu: GpuReportConfig, cert_fetcher: CertFetcher) -> anyhow::Result<Self> {
         let fingerprint = cert_fetcher.fetch_fingerprint().await.context("Failed to fetch cert fingerpring")?;
-        let inner = Inner {
-            hardware: Self::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?,
+        let hardware = Self::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?;
+        let reports = Reports {
+            attestation_v1: Arc::new(hardware.into()),
+            attestation_v2: Arc::new(hardware.into()),
             gpu_token: Self::fetch_gpu_report(&fingerprint, &gpu).await.context("Failed to fetch GPU report")?,
         };
-        let inner = Arc::new(Mutex::new(inner));
-        Worker::spawn(gpu, cert_fetcher, fingerprint, inner.clone());
-        Ok(Self { inner })
+        let reports = Arc::new(Mutex::new(reports));
+        Worker::spawn(gpu, cert_fetcher, fingerprint, reports.clone());
+        Ok(Self { reports })
     }
 
-    pub async fn reports(&self) -> (Arc<attestation_report::v1::AttestationReport>, Option<String>) {
-        let inner = self.inner.lock().await;
-        (inner.hardware.clone(), inner.gpu_token.clone())
+    pub async fn reports(&self) -> Reports {
+        let reports = self.reports.lock().await;
+        (*reports).clone()
     }
 
-    fn fetch_hardware_report(fingerprint: &[u8; 32]) -> anyhow::Result<Arc<attestation_report::v1::AttestationReport>> {
+    fn fetch_hardware_report(fingerprint: &[u8; 32]) -> anyhow::Result<AttestationReport> {
         let mut data: [u8; 64] = [0; 64];
         // Version, bump if changed
         data[0] = 0;
@@ -42,8 +51,8 @@ impl HardwareReporter {
         info!("Generating hardware report using nonce {}", hex::encode(data));
         let mut fw = Firmware::open().context("unable to open /dev/sev-guest")?;
         let raw_report = fw.get_report(None, Some(data), Some(VMPL)).context("unable to fetch attestation report")?;
-        let report = AttestationReport::from_bytes(&raw_report)?.into();
-        Ok(Arc::new(report))
+        let report = AttestationReport::from_bytes(&raw_report)?;
+        Ok(report)
     }
 
     async fn fetch_gpu_report(fingerprint: &[u8; 32], gpu: &GpuReportConfig) -> anyhow::Result<Option<String>> {
@@ -77,21 +86,16 @@ pub enum GpuReportConfig {
     Disabled,
 }
 
-struct Inner {
-    hardware: Arc<attestation_report::v1::AttestationReport>,
-    gpu_token: Option<String>,
-}
-
 struct Worker {
     gpu: GpuReportConfig,
     cert_fetcher: CertFetcher,
     fingerprint: [u8; 32],
-    inner: Arc<Mutex<Inner>>,
+    reports: Arc<Mutex<Reports>>,
 }
 
 impl Worker {
-    fn spawn(gpu: GpuReportConfig, cert_fetcher: CertFetcher, fingerprint: [u8; 32], inner: Arc<Mutex<Inner>>) {
-        let worker = Self { gpu, cert_fetcher, fingerprint, inner };
+    fn spawn(gpu: GpuReportConfig, cert_fetcher: CertFetcher, fingerprint: [u8; 32], reports: Arc<Mutex<Reports>>) {
+        let worker = Self { gpu, cert_fetcher, fingerprint, reports };
         tokio::spawn(async move {
             worker.run().await;
         });
@@ -126,7 +130,8 @@ impl Worker {
         let gpu_token =
             HardwareReporter::fetch_gpu_report(&fingerprint, &self.gpu).await.context("Failed to fetch GPU report")?;
         self.fingerprint = fingerprint;
-        *self.inner.lock().await = Inner { hardware, gpu_token };
+        *self.reports.lock().await =
+            Reports { attestation_v1: Arc::new(hardware.into()), attestation_v2: Arc::new(hardware.into()), gpu_token };
         Ok(())
     }
 }
