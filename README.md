@@ -91,6 +91,8 @@ without doing any setup to bridge the networks between them.
 
 nilcc is made up of a few different components:
 
+![nilCC Components (2)](https://github.com/user-attachments/assets/fa207f58-6180-456a-a716-5c20e65abb1b)
+
 ## nilcc-agent
 
 A single instance of `nilcc-agent` runs in every baremetal machine and is in charge of managing CVMs. The agent exposes 
