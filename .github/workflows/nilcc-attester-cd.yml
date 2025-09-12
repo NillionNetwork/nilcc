@@ -18,7 +18,7 @@ jobs:
 
       - name: Generate docker tag
         run: |
-          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-attester.* ]]; then
+          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-attester-.* ]]; then
             # Remove the 'refs/tags/nilcc-attester-' prefix for tags
             tag=${GITHUB_REF:25}
           else

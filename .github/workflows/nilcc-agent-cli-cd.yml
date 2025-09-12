@@ -2,20 +2,30 @@ name: nilcc-agent-cli docker
 
 on:
   push:
+    tags:
+      - 'nilcc-agent-cli-*'
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   docker-build-nilcc-agent-cli:
     runs-on: ubuntu-latest
-    env:
-      DOCKER_TAG: ghcr.io/nillionnetwork/nilcc-agent-cli:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Generate docker tag
+        run: |
+          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-agent-cli-.* ]]; then
+            # Remove the 'refs/tags/nilcc-agent-cli-' prefix for tags
+            tag=${GITHUB_REF:26}
+          else
+            # Or use `latest` tag otherwise
+            tag=latest
+          fi
+          echo "DOCKER_TAG=ghcr.io/nillionnetwork/nilcc-agent-cli:${tag}" >> $GITHUB_ENV
 
       - name: Build Docker image
         uses: docker/build-push-action@v2
