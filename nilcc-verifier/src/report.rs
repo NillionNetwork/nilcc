@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 use nilcc_artifacts::{Artifacts, ArtifactsDownloader, DownloadError, VmTypeArtifacts};
-use reqwest::{blocking::ClientBuilder, tls::TlsInfo};
+use reqwest::{blocking::ClientBuilder, tls::TlsInfo, Url};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
 use sha2::{Digest, Sha256};
@@ -51,7 +51,13 @@ impl ReportFetcher {
 
     pub fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
         let http_client = ClientBuilder::default().tls_info(true).build().map_err(ReportBundleError::HttpClient)?;
-        let url = format!("{base_url}/nilcc/api/v1/report");
+        let mut url: Url = base_url.parse()?;
+        if url.scheme() != "https" {
+            return Err(ReportBundleError::NotHttpsScheme);
+        }
+        url.set_path("/nilcc/api/v1/report");
+        url.set_query(None);
+
         info!("Fetching report from {url}");
         let response =
             http_client.get(url).timeout(REQUEST_TIMEOUT).send().map_err(ReportBundleError::FetchAttestation)?;
@@ -110,8 +116,14 @@ pub enum ReportBundleError {
     #[error("failed to create http client: {0}")]
     HttpClient(reqwest::Error),
 
+    #[error("failed to parse URL: {0}")]
+    InvalidUrl(#[from] url::ParseError),
+
     #[error("failed to fetch attestation: {0}")]
     FetchAttestation(reqwest::Error),
+
+    #[error("workload URL does not use https scheme")]
+    NotHttpsScheme,
 
     #[error("TLS information missing")]
     NoTlsInfo,

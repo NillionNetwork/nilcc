@@ -261,6 +261,8 @@ impl From<ValidateError> for ErrorCode {
                 ReportBundleError::FetchAttestation(_)
                 | ReportBundleError::NoTlsInfo
                 | ReportBundleError::TlsCertificate(_)
+                | ReportBundleError::NotHttpsScheme
+                | ReportBundleError::InvalidUrl(_)
                 | ReportBundleError::MalformedPayload(_) => Request,
                 ReportBundleError::DownloadArtifacts(e) => match e {
                     DownloadError::NoParent => Internal,

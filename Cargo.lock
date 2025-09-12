@@ -2323,6 +2323,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "x509-parser 0.17.0",
 ]
 
