@@ -87,6 +87,96 @@ These two files are passed in simultaneously so that all containers are started 
 to have connectivity between them. This means, for example, that Caddy can direct traffic directly to container `foo` 
 without doing any setup to bridge the networks between them.
 
+# Architecture
+
+nilcc is made up of a few different components:
+
+## nilcc-agent
+
+A single instance of `nilcc-agent` runs in every baremetal machine and is in charge of managing CVMs. The agent exposes 
+an HTTP API which allows:
+
+* Launching CVMs by passing in the desired docker compose file, VM resources, etc.
+* Starting, stopping, and deleting CVMs.
+* Pulling out logs and system stats out of running CVMs.
+* Monitoring the VMs to make sure they're working as expected, reporting events when they encounter an error as well as 
+when they boot correctly.
+* Keeping track of the running VMs and allocated resources (CPUs, memory, GPUs, etc) so it doesn't over commit resources 
+and agree to run a workload when there's not enough room for it.
+
+`nilcc-agent` pulls out logs, system stats, and errors by talking to each VM's [`cvm-agent`](README.md#cvm-agent) 
+instance via an HTTP API that is only available locally in the baremetal machine.
+
+Every `nilcc-agent` instance will register with [`nilcc-api`](README.md#nilcc-api) on start and will allow it to talk to 
+it via an API token that's part of its configuration. This API token is unique to each `nilcc-agent` and will be 
+communicated to `nilcc-api` on registration. Any request that `nilcc-api` sends to an agent will contain this key in an 
+HTTP header.
+
+## nilcc-attester
+
+`nilcc-attester` is an application that runs as a container inside the docker compose setup, and allows generating TEE 
+attestations for all CVMs without the user having to do this by themselves.
+
+When it starts, `nilcc-attester` will generate an AMD SEV-SNP attestation as well as an NVIDIA Confidential Compute 
+attestation (only for GPU machines) and will expose it under an endpoint. This endpoint is exposed internally to other 
+containers as well as publicly on the `/nilcc/api/v2/report` path.
+
+The attestation report uses the fingerprint (a sha256 of the public key) of the TLS certificate Caddy got from zerossl 
+as the attestation report data. This allows users to:
+
+1. Make a request to get the attestation report.
+2. Validate the report, including all checks one should normally do (check the signature, ensure cert chain is valid, 
+   etc).
+3. Ensure the TLS fingerprint the client got from the HTTPS request itself matches what the attestation includes. This 
+   ensures the client is talking to the same machine that generated the attestation report, since otherwise those 
+fingerprints would not match.
+
+## cvm-agent
+
+Each CVM runs an application called [`cvm-agent`](cvm-agent). This agent runs as a systemd daemon when the VM first 
+starts, and serves different purposes:
+
+* Launch the `docker compose` setup that includes the user's containers.
+* Allow pulling logs out of the CVM. This includes logs for the `cvm-agent` itself and logs for any containers that are 
+part of the `docker compose` setup.
+* Allow pulling out CPU, memory, disk, and other system stats.
+* Monitor the running containers and report any problems so the user can be notified and act accordingly.
+
+The `cvm-agent` exposes an HTTP API which is not exposed publicly to the outside world but is only exposed locally in 
+the baremetal machine where the VM is running on. `nilcc-agent` will communicate with this endpoint to pull out logs and 
+perform the [bootstrap process](README.md#bootstrap-process).
+
+### Bootstrap process
+
+Once the `cvm-agent` starts, it will not start `docker compose` immediately but will instead wait for `nilcc-agent` to 
+send a bootstrap request via `cvm-agent`'s HTTP API. Only after successfully handling this bootstrap request will the 
+compose setup be ran. This request contains the following information:
+
+* A set of [docker hub](https://hub.docker.com/) credentials, which require only read only access to public 
+repositories, which are used to log in to docker hub before pulling containers to avoid rate limits.
+* A set of [zerossl](https://zerossl.com/) credentials which are handed off to Caddy so it generates a certificate for 
+the workload.
+
+Once this request is handled successfully, the docker compose setup will be ran by following these steps:
+
+1. The agent will perform a `docker login` using the provided credentials, along with an extra login for any set of user 
+   provided credentials for private docker registries.
+2. The `docker compose pull` command is ran to pull all used docker images. This is done separately so we can have 
+   better control of what is happening in case an error is found.
+3. The `docker compose up` command is ran using both the user provided docker compose file along with a custom docker 
+   compose file that contains a properly configured Caddy and the `nilcc-attester` containers.
+4. The Caddy container is monitored to make sure a valid TLS certificate is generated via zerossl.
+5. Once Caddy has generated its certificate, the agent concludes that it has nothing else to do and will stop monitoring 
+   it and essentially only handle requests for container logs and system stats.
+
+## nilcc-api
+
+`nilcc-api` is the final piece in the system and allows:
+
+* End users to launch and manage workloads to be ran in CVMs, by talking to the `nilcc-agent` instance in charge of 
+every baremetal host.
+* `nilcc-agent` to report events and errors in CVMs.
+
 # Build process
 
 See more about the build process in [here](artifacts/README.md).
