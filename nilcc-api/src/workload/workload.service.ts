@@ -87,8 +87,10 @@ export class WorkloadService {
       throw new NoInstancesAvailable();
     }
 
-    const metalInstance =
-      metalInstances[Math.floor(Math.random() * metalInstances.length)];
+    // Get the first instance after sorting by id
+    const metalInstance = metalInstances.sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )[0];
 
     // Assign the first available metal instance to the workload
     const eventRepository = tx.manager.getRepository(WorkloadEventEntity);
