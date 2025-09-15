@@ -18,7 +18,7 @@ services:
     {DOCKER_COMPOSE_DEPLOY}
 
   nilcc-proxy:
-    image: caddy:2.10.0
+    image: caddy:2.10.2
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
