@@ -44,6 +44,7 @@ pub enum VmEvent {
     ForcedRestart,
     VmRestarted,
     FailedToStart { error: String },
+    Warning { message: String },
 }
 
 pub struct NilccApiClientArgs {

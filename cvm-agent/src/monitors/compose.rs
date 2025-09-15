@@ -1,6 +1,9 @@
 use crate::routes::BootstrapContext;
 use anyhow::{bail, Context};
-use cvm_agent_models::bootstrap::{AcmeCredentials, DockerCredentials, CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
+use cvm_agent_models::{
+    bootstrap::{AcmeCredentials, DockerCredentials, CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY},
+    health::EventKind,
+};
 use std::{io, process::Stdio, time::Duration};
 use tokio::{
     fs,
@@ -195,7 +198,7 @@ impl ComposeMonitor {
 
     fn report_error(&self, message: String) {
         error!("{message}");
-        self.ctx.error_holder.set(message);
+        self.ctx.event_holder.set(message, EventKind::Error);
     }
 }
 

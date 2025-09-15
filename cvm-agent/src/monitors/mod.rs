@@ -1,21 +1,21 @@
 use chrono::Utc;
-use cvm_agent_models::health::LastError;
+use cvm_agent_models::health::{EventKind, LastEvent};
 use std::sync::{Arc, Mutex};
 
 pub(crate) mod caddy;
 pub(crate) mod compose;
 
 #[derive(Clone, Default)]
-pub struct ErrorHolder(Arc<Mutex<Option<LastError>>>);
+pub struct EventHolder(Arc<Mutex<Option<LastEvent>>>);
 
-impl ErrorHolder {
-    pub(crate) fn set<S: Into<String>>(&self, message: S) {
+impl EventHolder {
+    pub(crate) fn set<S: Into<String>>(&self, message: S, kind: EventKind) {
         let mut inner = self.0.lock().expect("lock poisoned");
-        let error_id = inner.as_ref().map(|e| e.error_id.wrapping_add(1)).unwrap_or_default();
-        *inner = Some(LastError { message: message.into(), failed_at: Utc::now(), error_id });
+        let id = inner.as_ref().map(|e| e.id.wrapping_add(1)).unwrap_or_default();
+        *inner = Some(LastEvent { id, message: message.into(), kind, timestamp: Utc::now() });
     }
 
-    pub(crate) fn get(&self) -> Option<LastError> {
+    pub(crate) fn get(&self) -> Option<LastEvent> {
         self.0.lock().expect("lock poisoned").clone()
     }
 }
@@ -26,15 +26,16 @@ mod tests {
 
     #[test]
     fn set() {
-        let holder = ErrorHolder::default();
+        let holder = EventHolder::default();
         assert!(holder.get().is_none());
 
-        holder.set("beep");
-        assert_eq!(holder.get().unwrap().error_id, 0);
+        holder.set("beep", EventKind::Error);
+        assert_eq!(holder.get().unwrap().id, 0);
 
-        holder.set("boop");
-        let err = holder.get().unwrap();
-        assert_eq!(err.error_id, 1);
-        assert_eq!(err.message, "boop");
+        holder.set("boop", EventKind::Warning);
+        let event = holder.get().unwrap();
+        assert_eq!(event.id, 1);
+        assert_eq!(event.message, "boop");
+        assert_eq!(event.kind, EventKind::Warning);
     }
 }

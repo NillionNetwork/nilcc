@@ -10,7 +10,7 @@ use crate::{
 use chrono::Utc;
 use cvm_agent_models::{
     bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials},
-    health::LastError,
+    health::{EventKind, LastEvent},
 };
 use metrics::{counter, gauge};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -52,7 +52,7 @@ pub(crate) struct VmWorker {
     docker_credentials: Vec<DockerCredentials>,
     domain: String,
     event_sender: EventSender,
-    last_error_id: Option<u64>,
+    last_event_id: Option<u64>,
 }
 
 impl VmWorker {
@@ -84,7 +84,7 @@ impl VmWorker {
                 docker_credentials,
                 event_sender,
                 domain,
-                last_error_id: None,
+                last_event_id: None,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -225,14 +225,17 @@ impl VmWorker {
                         self.vm_state = VmState::Running;
                         self.submit_event(VmEvent::Running).await;
                     }
-                    if let Some(last_error) = response.last_error {
-                        let LastError { error_id, message, failed_at } = last_error;
-                        if self.last_error_id != Some(error_id) {
-                            info!("CVM failed to start: {message}");
-                            self.last_error_id = Some(error_id);
-                            self.event_sender
-                                .send_event(self.workload_id, VmEvent::FailedToStart { error: message }, failed_at)
-                                .await;
+                    if let Some(last_event) = response.last_event {
+                        let LastEvent { id, kind, message, timestamp } = last_event;
+                        if self.last_event_id != Some(id) {
+                            info!("CVM reported {kind:?} event: {message}");
+                            self.last_event_id = Some(id);
+
+                            let event = match &kind {
+                                EventKind::Error => VmEvent::FailedToStart { error: message },
+                                EventKind::Warning => VmEvent::Warning { message },
+                            };
+                            self.event_sender.send_event(self.workload_id, event, timestamp).await;
                         }
                     }
                 }

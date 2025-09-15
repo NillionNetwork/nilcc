@@ -90,6 +90,9 @@ pub mod health {
 
         /// The last error encountered.
         pub last_error: Option<LastError>,
+
+        /// The last event encountered.
+        pub last_event: Option<LastEvent>,
     }
 
     #[derive(Clone, Deserialize, Serialize)]
@@ -103,6 +106,28 @@ pub mod health {
 
         /// The timestamp when this error was generated.
         pub failed_at: DateTime<Utc>,
+    }
+
+    #[derive(Clone, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct LastEvent {
+        /// An incremental id for every event found.
+        pub id: u64,
+
+        /// The event kind.
+        pub kind: EventKind,
+
+        /// A message for this event.
+        pub message: String,
+
+        /// The timestamp when this event was generated.
+        pub timestamp: DateTime<Utc>,
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+    pub enum EventKind {
+        Error,
+        Warning,
     }
 }
 
