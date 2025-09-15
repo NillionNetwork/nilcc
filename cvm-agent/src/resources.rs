@@ -71,16 +71,15 @@ mod tests {
     }
 }
 
-(ssl_config) {
+https://foo.com {
     tls {
         protocols tls1.2 tls1.3
-        ca https://acme.zerossl.com/v2/DV90
-        eab {$CADDY_ACME_EAB_KEY_ID} {$CADDY_ACME_EAB_MAC_KEY}
+        issuer acme {
+            dir https://acme.zerossl.com/v2/DV90
+            eab {$CADDY_ACME_EAB_KEY_ID} {$CADDY_ACME_EAB_MAC_KEY}
+            timeout 5m
+        }
     }
-}
-
-https://foo.com {
-    import ssl_config
 
     handle_path /nilcc/* {
       reverse_proxy http://nilcc-attester
@@ -120,7 +119,7 @@ https://foo.com {
     
 
   nilcc-proxy:
-    image: caddy:2.10.0
+    image: caddy:2.10.2
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
@@ -170,7 +169,7 @@ https://foo.com {
               capabilities: [gpu]
 
   nilcc-proxy:
-    image: caddy:2.10.0
+    image: caddy:2.10.2
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
