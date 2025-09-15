@@ -1,6 +1,18 @@
 import { z } from "zod";
 import { Uuid } from "#/common/types";
-import { WorkloadEventKind } from "#/metal-instance/metal-instance.dto";
+
+export const WorkloadEventKind = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("created") }),
+  z.object({ kind: z.literal("starting") }),
+  z.object({ kind: z.literal("stopped") }),
+  z.object({ kind: z.literal("vmRestarted") }),
+  z.object({ kind: z.literal("forcedRestart") }),
+  z.object({ kind: z.literal("awaitingCert") }),
+  z.object({ kind: z.literal("running") }),
+  z.object({ kind: z.literal("failedToStart"), error: z.string() }),
+  z.object({ kind: z.literal("warning"), message: z.string() }),
+]);
+export type WorkloadEventKind = z.infer<typeof WorkloadEventKind>;
 
 export const WorkloadEvent = z
   .object({

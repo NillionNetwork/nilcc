@@ -192,6 +192,37 @@ services:
     expect(lastEvent.timestamp).toEqual(timestamp);
   });
 
+  it("submit a warning event", async ({ expect, clients }) => {
+    const workload = await clients.user
+      .createWorkload(createWorkloadRequest)
+      .submit();
+
+    const timestamp = "2025-09-02T20:46:44.666Z";
+    await clients.metalInstance
+      .submitEvent({
+        metalInstanceId: myMetalInstance.metalInstanceId,
+        workloadId: workload.workloadId,
+        event: { kind: "warning", message: "hello" },
+        timestamp,
+      })
+      .submit();
+
+    const eventsBody = await clients.user
+      .listEvents(workload!.workloadId)
+      .submit();
+    const events = eventsBody.events;
+    events.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+
+    expect(events).toHaveLength(2);
+    const warning = events[1];
+    expect(warning.details).toEqual({ kind: "warning", message: "hello" });
+
+    await clients.user.deleteWorkload(workload.workloadId).submit();
+  });
+
   it("should allow creating a workload using a custom domain", async ({
     expect,
     clients,

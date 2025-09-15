@@ -139,7 +139,8 @@ export class WorkloadEventEntity {
     | "stopped"
     | "vmRestarted"
     | "forcedRestart"
-    | "failedToStart";
+    | "failedToStart"
+    | "warning";
 
   @Column({ type: "varchar", nullable: true })
   details?: string;
