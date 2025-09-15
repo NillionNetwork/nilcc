@@ -13,7 +13,6 @@ import {
   NotEnoughCredits,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
-import type { WorkloadEventKind } from "#/metal-instance/metal-instance.dto";
 import type {
   ListContainersRequest,
   WorkloadContainerLogsRequest,
@@ -22,6 +21,7 @@ import type {
   ListWorkloadEventsRequest,
   SubmitEventRequest,
   WorkloadEvent,
+  WorkloadEventKind,
 } from "#/workload-event/workload-event.dto";
 import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
 import type {
@@ -281,10 +281,15 @@ export class WorkloadService {
       case "failedToStart":
         workload.status = "error";
         break;
+      case "warning":
+        // We don't want a state change for warnings
+        break;
     }
     let details: string | undefined;
     if (request.event.kind === "failedToStart") {
       details = request.event.error;
+    } else if (request.event.kind === "warning") {
+      details = request.event.message;
     }
     const event: WorkloadEventEntity = {
       id: uuidv4(),
@@ -317,6 +322,8 @@ export class WorkloadService {
       let details: WorkloadEventKind;
       if (event.event === "failedToStart") {
         details = { kind: "failedToStart", error: event.details || "" };
+      } else if (event.event === "warning") {
+        details = { kind: "warning", message: event.details || "" };
       } else {
         details = { kind: event.event };
       }
