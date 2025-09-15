@@ -108,6 +108,9 @@ export class WorkloadService {
       creditRate: tier.cost,
     });
     const createdWorkload = await repository.save(entity);
+    bindings.log.info(
+      `Assigning workload ${createdWorkload.id} to metal instance ${metalInstance.id}`,
+    );
 
     const event: WorkloadEventEntity = {
       id: uuidv4(),
@@ -131,6 +134,9 @@ export class WorkloadService {
         metalInstance.id,
       );
     }
+    bindings.log.info(
+      `Created workload ${createdWorkload.id} on metal instance ${metalInstance.id}`,
+    );
     return createdWorkload;
   }
 
