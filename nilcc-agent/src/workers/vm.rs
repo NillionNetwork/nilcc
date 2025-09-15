@@ -202,10 +202,6 @@ impl VmWorker {
                     if !response.bootstrapped {
                         info!("CVM agent is running, bootstrapping it");
                         let request = BootstrapRequest {
-                            // TODO: these are deprecated and should be removed once all active
-                            // cvms are migrated
-                            acme_eab_key_id: self.zerossl_config.eab_key_id.clone(),
-                            acme_eab_mac_key: self.zerossl_config.eab_mac_key.clone(),
                             acme: AcmeCredentials {
                                 eab_key_id: self.zerossl_config.eab_key_id.clone(),
                                 eab_mac_key: self.zerossl_config.eab_mac_key.clone(),
