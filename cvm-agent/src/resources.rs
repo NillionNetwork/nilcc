@@ -47,6 +47,16 @@ impl Resources {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use regex::bytes::Regex;
+    use std::sync::LazyLock;
+
+    static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new("\n    image: ghcr.io/nillionnetwork/nilcc-attester:[^\n]+").expect("invalid regex")
+    });
+
+    fn replace_version(compose: &[u8]) -> Vec<u8> {
+        VERSION_REGEX.replace(compose, b"\n    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION").to_vec()
+    }
 
     #[test]
     fn caddyfile() {
@@ -89,9 +99,10 @@ https://foo.com {
             api: ContainerMetadata { container: "api".into(), port: 1337 },
         };
         let compose = Resources::render(&metadata, &VmType::Cpu).docker_compose;
+        let compose = replace_version(&compose);
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:0.2.0
+    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION
     restart: unless-stopped
     privileged: true
     volumes:
@@ -132,9 +143,10 @@ https://foo.com {
             api: ContainerMetadata { container: "api".into(), port: 1337 },
         };
         let compose = Resources::render(&metadata, &VmType::Gpu).docker_compose;
+        let compose = replace_version(&compose);
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:0.2.0
+    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION
     restart: unless-stopped
     privileged: true
     volumes:
