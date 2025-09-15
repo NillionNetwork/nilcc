@@ -872,6 +872,7 @@ dependencies = [
  "clap",
  "cvm-agent-models",
  "futures",
+ "regex",
  "serde",
  "serde_json",
  "sysinfo 0.36.1",
