@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use cvm_agent_models::health::HealthResponse;
-use cvm_agent_models::health::LastError;
+use cvm_agent_models::health::LastEvent;
 use cvm_agent_models::logs::SystemLogsRequest;
 use cvm_agent_models::logs::SystemLogsResponse;
 use cvm_agent_models::logs::SystemLogsSource;
@@ -443,16 +443,16 @@ fn restart(client: ApiClient, args: RestartArgs) -> anyhow::Result<()> {
 fn health(client: ApiClient, args: HealthArgs) -> anyhow::Result<()> {
     let HealthArgs { id } = args;
     let response: HealthResponse = client.get(&format!("/api/v1/workloads/{id}/health"))?;
-    let HealthResponse { https, bootstrapped, last_error } = response;
+    let HealthResponse { https, bootstrapped, last_event, .. } = response;
     let color = bool_to_color(bootstrapped);
     println!("bootstrapped: {}", color.paint(bootstrapped.to_string()));
 
     let color = bool_to_color(https);
     println!("https up:     {}", color.paint(https.to_string()));
 
-    if let Some(last_error) = last_error {
-        let LastError { message, failed_at, .. } = last_error;
-        let text = format!("cvm failed to start at {failed_at}: {message}");
+    if let Some(last_event) = last_event {
+        let LastEvent { message, timestamp, kind, .. } = last_event;
+        let text = format!("cvm reported {kind:?} event at {timestamp}: {message}");
         println!("{}", Color::Red.paint(text));
     }
     Ok(())

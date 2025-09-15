@@ -1,9 +1,10 @@
-use crate::routes::SystemState;
+use crate::{monitors::EventHolder, routes::SystemState};
 use bollard::{
     container::LogOutput,
     query_parameters::{LogsOptionsBuilder, RestartContainerOptionsBuilder},
     Docker,
 };
+use cvm_agent_models::health::EventKind;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use std::{
@@ -22,11 +23,12 @@ const LOOP_INTERVAL: Duration = Duration::from_secs(10);
 pub struct CaddyMonitor {
     docker: Docker,
     system_state: Arc<Mutex<SystemState>>,
+    event_holder: EventHolder,
 }
 
 impl CaddyMonitor {
-    pub fn spawn(docker: Docker, system_state: Arc<Mutex<SystemState>>) {
-        let monitor = Self { docker, system_state };
+    pub fn spawn(docker: Docker, system_state: Arc<Mutex<SystemState>>, event_holder: EventHolder) {
+        let monitor = Self { docker, system_state, event_holder };
         info!("Spawning caddy monitor");
         tokio::spawn(async move {
             monitor.run().await;
@@ -50,6 +52,10 @@ impl CaddyMonitor {
                             *system_state = SystemState::Ready
                         }
                     }
+                }
+                Status::FailedToGenerateCert => {
+                    self.event_holder.set("could not generate TLS certificate, retrying", EventKind::Warning);
+                    warn!("Caddy failed to generate TLS certificate");
                 }
                 Status::Unknown => {
                     debug!("Caddy is in an unknown state")
@@ -86,6 +92,8 @@ impl CaddyMonitor {
             }
             if line.msg == "certificate obtained successfully" {
                 status = Status::CertificateGenerated;
+            } else if line.msg == "could not get certificate from issuer" {
+                status = Status::FailedToGenerateCert;
             } else if line.error.contains("https://acme-staging-v02.api.letsencrypt.org") {
                 status = Status::NeedsRestart;
             }
@@ -106,6 +114,7 @@ struct LogLine<'a> {
 #[cfg_attr(test, derive(Debug, PartialEq))]
 enum Status {
     CertificateGenerated,
+    FailedToGenerateCert,
     Unknown,
     NeedsRestart,
 }

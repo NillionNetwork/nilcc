@@ -1,3 +1,4 @@
+use crate::monitors::EventHolder;
 use axum::{
     extract::State,
     routing::{get, post},
@@ -10,8 +11,6 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-
-use crate::monitors::ErrorHolder;
 
 pub(crate) mod containers;
 pub(crate) mod health;
@@ -35,7 +34,7 @@ pub struct BootstrapContext {
     pub version: String,
     pub vm_type: VmType,
     pub iso_mount: PathBuf,
-    pub error_holder: ErrorHolder,
+    pub event_holder: EventHolder,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
