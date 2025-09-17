@@ -43,20 +43,14 @@ jobs:
       - name: Build QEMU
         run: artifacts/qemu/build.sh
 
-      - name: Build guest cpu iso
-        run: artifacts/autoinstall_ubuntu/build.sh cpu
-
-      - name: Build guest gpu iso
-        run: artifacts/autoinstall_ubuntu/build.sh gpu
-
       - name: Build initrd
         run: artifacts/initramfs/build.sh
 
-      - name: Build guest cpu qcow2
-        run: artifacts/vm_image/build.sh cpu
+      - name: Build guest cpu disk
+        run: artifacts/cvm-image/build.sh cpu
 
-      - name: Build guest gpu qcow2
-        run: artifacts/vm_image/build.sh gpu
+      - name: Build guest gpu disk
+        run: artifacts/cvm-image/build.sh gpu
 
       - name: Generate build metadata
         run: |

@@ -1,9 +1,11 @@
 [Unit]
 Description=Nillion CVM agent.
+After=default.target
 
 [Service]
 Type=simple
 ExecStart=/opt/nillion/cvm-agent /media/cvm-agent-entrypoint
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
+

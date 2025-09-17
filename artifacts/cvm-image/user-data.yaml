@@ -1,0 +1,28 @@
+#cloud-config
+
+users: []
+
+ssh_keys: {}
+
+network:
+  ethernets:
+    all-eth:
+      match:
+        name: en*
+      dhcp4: true
+  version: 2
+
+write_files:
+  - path: /tmp/setup.sh
+    encoding: b64
+    content: {SETUP_CONTENTS}
+    owner: 'root:root'
+    permissions: '0644' 
+
+runcmd:
+  # Setup the system up.
+  - VM_TYPE={VM_TYPE} bash /tmp/setup.sh
+
+  # THIS MUST BE THE LAST COMMAND EXECUTED.
+  - shutdown -P now
+
