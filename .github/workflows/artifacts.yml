@@ -57,7 +57,10 @@ jobs:
         run: artifacts/vm_image/build.sh gpu
 
       - name: Generate build metadata
-        run: artifacts/generate-metadata.sh
+        run: |
+          ./artifacts/generate-metadata.sh
+          hash=$(sha256sum artifacts/dist/metadata.json | cut -d " " -f 1)
+          echo "metadata_hash=${hash}" >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS credentials
         if: github.ref == 'refs/heads/main'
@@ -69,3 +72,4 @@ jobs:
       - name: Publish
         if: github.ref == 'refs/heads/main'
         run: artifacts/upload.sh
+
