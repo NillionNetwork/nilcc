@@ -62,6 +62,6 @@ sudo umount "${MOUNT_POINT}"
 sudo rmdir "$MOUNT_POINT"
 
 echo "Generating hashes for ${PARTITION}. This may take some time.."
-sudo veritysetup format "${PARTITION}" "${OUTPUT_DIR}/verity-hash-dev" | grep "Root hash" | cut -f2 >"${OUTPUT_DIR}/root-hash"
+sudo veritysetup format "${PARTITION}" "${OUTPUT_DIR}/verity-hash-dev" | grep "Root hash" | cut -f2 | tr -d '\n' >"${OUTPUT_DIR}/root-hash"
 
 echo "Output generated in ${OUTPUT_DIR}"
