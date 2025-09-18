@@ -15,10 +15,14 @@ CPU_DISK=vm_images/cvm-cpu.qcow2
 CPU_DISK_HASH=$(sha256sum "$SCRIPT_PATH/dist/$CPU_DISK" | cut -d " " -f 1)
 CPU_VERITY_ROOT_HASH=$(cat "$SCRIPT_PATH/dist/vm_images/cvm-cpu-verity/root-hash")
 CPU_VERITY_HASHES_DISK=vm_images/cvm-cpu-verity/verity-hash-dev
+CPU_KERNEL=vm_images/kernel/cpu-vmlinuz
+CPU_KERNEL_HASH=$(sha256sum "$SCRIPT_PATH/dist/$CPU_KERNEL" | cut -d " " -f 1)
 GPU_DISK=vm_images/cvm-gpu.qcow2
 GPU_DISK_HASH=$(sha256sum "$SCRIPT_PATH/dist/$GPU_DISK" | cut -d " " -f 1)
 GPU_VERITY_ROOT_HASH=$(cat "$SCRIPT_PATH/dist/vm_images/cvm-gpu-verity/root-hash")
 GPU_VERITY_HASHES_DISK=vm_images/cvm-gpu-verity/verity-hash-dev
+GPU_KERNEL=vm_images/kernel/gpu-vmlinuz
+GPU_KERNEL_HASH=$(sha256sum "$SCRIPT_PATH/dist/$GPU_KERNEL" | cut -d " " -f 1)
 
 METADATA=$(
   cat <<EOF
@@ -52,6 +56,10 @@ METADATA=$(
             "format": "raw"
           },
           "root_hash": "${CPU_VERITY_ROOT_HASH}"
+        },
+        "kernel": {
+          "path": "${CPU_KERNEL}",
+          "sha256": "${CPU_KERNEL_HASH}"
         }
       },
       "gpu": {
@@ -66,6 +74,10 @@ METADATA=$(
             "format": "raw"
           },
           "root_hash": "${GPU_VERITY_ROOT_HASH}"
+        },
+        "kernel": {
+          "path": "${GPU_KERNEL}",
+          "sha256": "${GPU_KERNEL_HASH}"
         }
       }
     }

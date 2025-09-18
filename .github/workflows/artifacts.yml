@@ -60,7 +60,7 @@ jobs:
         run: |
           ./artifacts/generate-metadata.sh
           hash=$(sha256sum artifacts/dist/metadata.json | cut -d " " -f 1)
-          echo "metadata_hash=${hash}" >> $GITHUB_STEP_SUMMARY
+          echo "Metadata hash: ${hash}" >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS credentials
         if: github.ref == 'refs/heads/main'
