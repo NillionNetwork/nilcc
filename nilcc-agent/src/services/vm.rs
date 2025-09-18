@@ -3,8 +3,8 @@ use crate::{
         cvm_agent::CvmAgentClient,
         qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
     },
-    config::{CvmFiles, DockerConfig, ZeroSslConfig},
-    repositories::workload::Workload,
+    config::{DockerConfig, ZeroSslConfig},
+    repositories::{sqlite::RepositoryProvider, workload::Workload},
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::{
         events::EventSender,
@@ -14,11 +14,13 @@ use crate::{
 use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::bootstrap::DockerCredentials;
-use nilcc_artifacts::VmType;
+use nilcc_artifacts::{
+    metadata::{ArtifactsMetadata, KernelArgs},
+    VmType,
+};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    fmt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -50,6 +52,7 @@ pub struct VmServiceArgs {
     pub zerossl_config: ZeroSslConfig,
     pub docker_config: DockerConfig,
     pub event_sender: EventSender,
+    pub repository_provider: Arc<dyn RepositoryProvider>,
 }
 
 pub struct DefaultVmService {
@@ -62,6 +65,7 @@ pub struct DefaultVmService {
     zerossl_config: ZeroSslConfig,
     docker_config: DockerConfig,
     event_sender: EventSender,
+    repository_provider: Arc<dyn RepositoryProvider>,
 }
 
 impl DefaultVmService {
@@ -75,6 +79,7 @@ impl DefaultVmService {
             zerossl_config,
             docker_config,
             event_sender,
+            repository_provider,
         } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
@@ -87,6 +92,7 @@ impl DefaultVmService {
             zerossl_config,
             docker_config,
             event_sender,
+            repository_provider,
         })
     }
 
@@ -95,12 +101,10 @@ impl DefaultVmService {
         workload: &Workload,
         iso_path: PathBuf,
         state_disk_path: PathBuf,
-        docker_compose_hash: String,
         cvm_config: CvmConfig,
+        kernel_args: String,
     ) -> VmSpec {
-        let CvmFiles { kernel, base_disk, verity_root_hash, verity_disk, .. } = cvm_config.vm;
-        let kernel_args =
-            KernelArgs { filesystem_root_hash: &verity_root_hash, docker_compose_hash: &docker_compose_hash };
+        let CvmFiles { kernel, base_disk, verity_disk, .. } = cvm_config.vm;
         VmSpec {
             cpu: workload.cpus,
             ram_mib: workload.memory_mb,
@@ -119,7 +123,7 @@ impl DefaultVmService {
             bios_path: Some(cvm_config.bios),
             initrd_path: Some(cvm_config.initrd),
             kernel_path: Some(kernel.clone()),
-            kernel_args: Some(kernel_args.to_string()),
+            kernel_args: Some(kernel_args),
             display: Default::default(),
             enable_cvm: true,
         }
@@ -235,17 +239,35 @@ impl VmService for DefaultVmService {
     }
 
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError> {
+        let mut repo = self
+            .repository_provider
+            .artifacts(Default::default())
+            .await
+            .map_err(|e| StartVmError(format!("failed to create repo: {e}")))?;
+        let metadata = repo
+            .find(&workload.artifacts_version)
+            .await
+            .map_err(|e| StartVmError(format!("failed tto artifact metadata: {e}")))?
+            .ok_or_else(|| StartVmError("artifact not found".into()))?
+            .metadata
+            .ok_or_else(|| StartVmError("artifact has no metadata".into()))?;
         let vm_type = if workload.gpus.is_empty() { VmType::Cpu } else { VmType::Gpu };
         let config_path = self.cvm_artifacts_path.join(&workload.artifacts_version);
-        let mut cvm_config = CvmConfig::from_path(&config_path, vm_type).await.map_err(|e| {
-            StartVmError(format!("failed to load artifacts version {}: {e}", workload.artifacts_version))
-        })?;
+        let mut cvm_config = CvmConfig::from_metadata(&config_path, &metadata, vm_type);
         let (iso_path, docker_compose_hash) = self.create_application_iso(workload).await?;
         let state_disk = self.create_state_disk(workload).await?;
+        let kernel_args = metadata
+            .cvm
+            .cmdline
+            .render(KernelArgs {
+                filesystem_root_hash: &metadata.cvm.images.resolve(vm_type).verity.root_hash,
+                docker_compose_hash: &docker_compose_hash,
+            })
+            .map_err(|e| StartVmError(e.to_string()))?;
         // Keep everything the same except the base disk since we'll use a snapshot
         cvm_config.vm.base_disk =
             self.create_disk_snapshot(workload, &cvm_config.vm.base_disk, "base", HardDiskFormat::Qcow2).await?;
-        let spec = self.create_vm_spec(workload, iso_path, state_disk, docker_compose_hash, cvm_config);
+        let spec = self.create_vm_spec(workload, iso_path, state_disk, cvm_config, kernel_args);
         Ok(spec)
     }
 
@@ -277,47 +299,32 @@ impl VmService for DefaultVmService {
 }
 
 impl CvmConfig {
-    pub async fn from_path(path: &Path, vm_type: VmType) -> anyhow::Result<Self> {
-        let vm_type = vm_type.to_string();
-        let verity_root_hash_path = path.join(format!("vm_images/cvm-{vm_type}-verity/root-hash"));
-        let verity_root_hash =
-            fs::read_to_string(&verity_root_hash_path).await.context("Could not read verity hash")?.trim().into();
-        let vm = CvmFiles {
-            kernel: path.join(format!("vm_images/kernel/{vm_type}-vmlinuz")),
-            base_disk: path.join(format!("vm_images/cvm-{vm_type}.qcow2")),
-            verity_disk: path.join(format!("vm_images/cvm-{vm_type}-verity/verity-hash-dev")),
-            verity_root_hash,
-        };
-        Ok(CvmConfig {
-            initrd: path.join("initramfs/initramfs.cpio.gz"),
-            bios: path.join("vm_images/ovmf/OVMF.fd"),
-            vm,
-        })
+    pub fn from_metadata(base_path: &Path, meta: &ArtifactsMetadata, vm_type: VmType) -> Self {
+        let vm = meta.cvm.images.resolve(vm_type);
+        Self {
+            initrd: base_path.join(&meta.initrd.path),
+            bios: base_path.join(&meta.ovmf.path),
+            vm: CvmFiles {
+                kernel: base_path.join(&vm.kernel.path),
+                base_disk: base_path.join(&vm.disk.artifact.path),
+                verity_disk: base_path.join(&vm.verity.disk.path),
+            },
+        }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct CvmConfig {
-    /// The path to the initrd file.
-    pub initrd: PathBuf,
-
-    /// The path to the bios file.
-    pub bios: PathBuf,
-
-    /// The disk, kernel and verity files to be used.
-    pub vm: CvmFiles,
+struct CvmConfig {
+    initrd: PathBuf,
+    bios: PathBuf,
+    vm: CvmFiles,
 }
 
-struct KernelArgs<'a> {
-    docker_compose_hash: &'a str,
-    filesystem_root_hash: &'a str,
-}
-
-impl fmt::Display for KernelArgs<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { docker_compose_hash, filesystem_root_hash } = self;
-        write!(f, "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}")
-    }
+#[derive(Clone, Debug)]
+struct CvmFiles {
+    kernel: PathBuf,
+    base_disk: PathBuf,
+    verity_disk: PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -329,9 +336,14 @@ mod tests {
     use super::*;
     use crate::{
         clients::{cvm_agent::MockCvmAgentClient, qemu::MockVmClient},
+        repositories::{
+            artifacts::{Artifacts, MockArtifactsRepository},
+            sqlite::MockRepositoryProvider,
+        },
         services::disk::MockDiskService,
     };
     use mockall::predicate::eq;
+    use nilcc_artifacts::metadata::LegacyMetadata;
     use tempfile::{tempdir, TempDir};
     use tokio::sync::mpsc::channel;
 
@@ -349,6 +361,7 @@ mod tests {
         cvm_artifacts_path: PathBuf,
         zerossl_config: ZeroSslConfig,
         docker_config: DockerConfig,
+        repository_provider: MockRepositoryProvider,
     }
 
     impl Builder {
@@ -361,6 +374,7 @@ mod tests {
                 cvm_artifacts_path,
                 zerossl_config,
                 docker_config,
+                repository_provider,
             } = self;
             let args = VmServiceArgs {
                 state_path: state_path.path().into(),
@@ -371,6 +385,7 @@ mod tests {
                 zerossl_config,
                 docker_config,
                 event_sender: EventSender(channel(1).0),
+                repository_provider: Arc::new(repository_provider),
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }
@@ -396,6 +411,7 @@ mod tests {
                 cvm_artifacts_path: base_path.join("artifacts"),
                 zerossl_config: ZeroSslConfig { eab_key_id: "key".into(), eab_mac_key: "mac".into() },
                 docker_config: DockerConfig { username: "user".into(), password: "pass".into() },
+                repository_provider: Default::default(),
             }
         }
     }
@@ -447,6 +463,18 @@ mod tests {
                 eq(HardDiskFormat::Qcow2),
             )
             .return_once(move |_, _, _| Ok(()));
+        builder.repository_provider.expect_artifacts().return_once(|_| {
+            let mut repo = MockArtifactsRepository::default();
+            repo.expect_find().with(eq("default")).return_once(|_| {
+                let legacy_meta = LegacyMetadata {
+                    cpu_verity_root_hash: Default::default(),
+                    gpu_verity_root_hash: Default::default(),
+                };
+                let metadata = Some(ArtifactsMetadata::legacy(legacy_meta));
+                Ok(Some(Artifacts { version: "default".into(), metadata, current: true }))
+            });
+            Ok(Box::new(repo))
+        });
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;

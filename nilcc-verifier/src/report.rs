@@ -1,5 +1,9 @@
 use clap::ValueEnum;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader, DownloadError, VmTypeArtifacts};
+use nilcc_artifacts::{
+    downloader::{ArtifactsDownloader, DownloadError},
+    metadata::ArtifactsMetadata,
+    Artifacts,
+};
 use reqwest::{blocking::ClientBuilder, tls::TlsInfo, Url};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
@@ -95,11 +99,13 @@ impl ReportFetcher {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(ReportBundleError::Tokio)?;
         let artifacts = runtime.block_on(downloader.download(&download_path))?;
-        let Artifacts { ovmf_path, initrd_path, mut type_artifacts } = artifacts;
-        let VmTypeArtifacts { kernel_path, filesystem_root_hash, .. } =
-            type_artifacts.remove(&vm_type).expect("missing vm type artifacts");
+        let Artifacts { ovmf_path, initrd_path, metadata, .. } = artifacts;
+        let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
+        let filesystem_root_hash = vm_type_metadata.verity.root_hash;
+        let kernel_path = download_path.join(&vm_type_metadata.kernel.path);
         Ok(ReportBundle {
             report,
+            metadata,
             cpu_count,
             ovmf_path,
             initrd_path,
@@ -147,6 +153,7 @@ pub enum ReportBundleError {
 #[derive(Clone, Debug)]
 pub struct ReportBundle {
     pub report: AttestationReport,
+    pub metadata: ArtifactsMetadata,
     pub cpu_count: u32,
     pub ovmf_path: PathBuf,
     pub initrd_path: PathBuf,

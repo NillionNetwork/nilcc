@@ -56,22 +56,6 @@ pub struct CvmConfigs {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct CvmFiles {
-    /// The path to the kernel file.
-    pub kernel: PathBuf,
-
-    /// The path to the base disk.
-    pub base_disk: PathBuf,
-
-    /// The path to the verity disk.
-    pub verity_disk: PathBuf,
-
-    /// The path to the verity root hash.
-    #[serde(deserialize_with = "read_file_as_string")]
-    pub verity_root_hash: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 pub struct QemuConfig {
     /// Path to the qemu-system binary
     pub system_bin: PathBuf,

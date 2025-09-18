@@ -1,3 +1,4 @@
+use nilcc_artifacts::metadata::{KernelArgs, KernelCommandLine, MissingCommandLineParameter};
 use sev::{
     error::MeasurementError,
     measurement::{
@@ -17,28 +18,18 @@ pub struct MeasurementGenerator {
     pub initrd: PathBuf,
     pub docker_compose_hash: [u8; 32],
     pub filesystem_root_hash: [u8; 32],
-    pub kernel_debug_options: bool,
+    pub kernel_args: KernelCommandLine,
 }
 
 impl MeasurementGenerator {
-    pub fn generate(self) -> Result<Vec<u8>, MeasurementError> {
-        let Self {
-            ovmf,
-            kernel,
-            initrd,
-            docker_compose_hash,
-            filesystem_root_hash,
-            vcpus,
-            kernel_debug_options: debug_options,
-        } = self;
-        let debug_options = match debug_options {
-            true => "console=ttyS0 earlyprintk=serial ",
-            false => "",
-        };
+    pub fn generate(self) -> Result<Vec<u8>, MeasurementHashError> {
+        let Self { ovmf, kernel, initrd, docker_compose_hash, filesystem_root_hash, vcpus, kernel_args } = self;
         let docker_compose_hash = hex::encode(docker_compose_hash);
-        let filesystem_root_hash = hex::encode(filesystem_root_hash);
-        let cmd_line = format!("{debug_options}panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={filesystem_root_hash} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={docker_compose_hash}");
-        info!("Using kernel parameters for measurement: {cmd_line}");
+        let cmdline = kernel_args.render(KernelArgs {
+            docker_compose_hash: &docker_compose_hash,
+            filesystem_root_hash: &filesystem_root_hash,
+        })?;
+        info!("Using kernel parameters for measurement: {cmdline}");
         let guest_features = GuestFeatures(0x01);
         let args = SnpMeasurementArgs {
             vcpus,
@@ -47,11 +38,20 @@ impl MeasurementGenerator {
             guest_features,
             kernel_file: Some(kernel),
             initrd_file: Some(initrd),
-            append: Some(&cmd_line),
+            append: Some(&cmdline),
             ovmf_hash_str: None,
             vmm_type: Some(VMMType::QEMU),
         };
         let digest: Vec<u8> = snp_calc_launch_digest(args)?.try_into()?;
         Ok(digest)
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MeasurementHashError {
+    #[error("generating measurement hash: {0}")]
+    Measurement(#[from] MeasurementError),
+
+    #[error(transparent)]
+    KernelArgs(#[from] MissingCommandLineParameter),
 }

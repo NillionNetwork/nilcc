@@ -1,6 +1,6 @@
 use crate::{
     repositories::{
-        artifacts::ArtifactsVersionRepositoryError,
+        artifacts::ArtifactsRepositoryError,
         sqlite::{ProviderError, ProviderMode, RepositoryProvider},
         workload::{Workload, WorkloadRepositoryError},
     },
@@ -48,8 +48,8 @@ pub enum CreateWorkloadError {
     DomainExists,
 }
 
-impl From<ArtifactsVersionRepositoryError> for CreateWorkloadError {
-    fn from(e: ArtifactsVersionRepositoryError) -> Self {
+impl From<ArtifactsRepositoryError> for CreateWorkloadError {
+    fn from(e: ArtifactsRepositoryError) -> Self {
         Self::Internal(e.to_string())
     }
 }
@@ -258,9 +258,9 @@ impl WorkloadService for DefaultWorkloadService {
     }
 
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
-        let artifacts_version = self
+        let artifacts = self
             .repository_provider
-            .artifacts_version(Default::default())
+            .artifacts(Default::default())
             .await?
             .get()
             .await?
@@ -285,13 +285,13 @@ impl WorkloadService for DefaultWorkloadService {
         if resources.ports.len() < TOTAL_PORTS {
             return Err(CreateWorkloadError::InsufficientResources("open ports"));
         }
-        let workload = self.build_workload(request, &resources, artifacts_version.clone());
+        let workload = self.build_workload(request, &resources, artifacts.version.clone());
         let id = workload.id;
         info!("Storing workload {id} in database");
         let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         repo.create(&workload).await?;
 
-        info!("Scheduling VM {id} using artifacts version {artifacts_version}");
+        info!("Scheduling VM {id} using artifacts version {}", artifacts.version);
         let proxied_vm = ProxiedVm::from(&workload);
         self.vm_service.create_vm(workload).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
@@ -382,7 +382,9 @@ mod tests {
     use super::*;
     use crate::{
         repositories::{
-            artifacts::MockArtifactsVersionRepository, sqlite::MockRepositoryProvider, workload::MockWorkloadRepository,
+            artifacts::{Artifacts, MockArtifactsRepository},
+            sqlite::MockRepositoryProvider,
+            workload::MockWorkloadRepository,
         },
         resources::Gpus,
         services::{
@@ -391,13 +393,14 @@ mod tests {
         },
     };
     use mockall::predicate::eq;
+    use nilcc_artifacts::metadata::{ArtifactsMetadata, LegacyMetadata};
     use rstest::rstest;
     use uuid::Uuid;
 
     struct Builder {
         vm_service: MockVmService,
         workloads_repository: MockWorkloadRepository,
-        artifacts_version_repository: MockArtifactsVersionRepository,
+        artifacts_repository: MockArtifactsRepository,
         proxy_service: MockProxyService,
         resources: SystemResources,
         open_ports: Range<u16>,
@@ -417,7 +420,7 @@ mod tests {
             let Self {
                 vm_service,
                 workloads_repository,
-                artifacts_version_repository,
+                artifacts_repository,
                 proxy_service,
                 resources,
                 open_ports,
@@ -431,7 +434,7 @@ mod tests {
                 Ok(Box::new(repo))
             });
             provider.expect_workloads().return_once(move |_| Ok(Box::new(workloads_repository)));
-            provider.expect_artifacts_version().return_once(move |_| Ok(Box::new(artifacts_version_repository)));
+            provider.expect_artifacts().return_once(move |_| Ok(Box::new(artifacts_repository)));
 
             let args = WorkloadServiceArgs {
                 vm_service: Box::new(vm_service),
@@ -449,7 +452,7 @@ mod tests {
             Self {
                 vm_service: Default::default(),
                 workloads_repository: Default::default(),
-                artifacts_version_repository: Default::default(),
+                artifacts_repository: Default::default(),
                 proxy_service: Default::default(),
                 resources: SystemResources {
                     hostname: "foo".into(),
@@ -609,10 +612,17 @@ mod tests {
         let expected_cpus = builder.resources.available_cpus() - request.cpus as u32;
         let expected_memory = builder.resources.available_memory_mb() - request.memory_mb;
         let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb;
+        let metadata = ArtifactsMetadata::legacy(LegacyMetadata {
+            cpu_verity_root_hash: Default::default(),
+            gpu_verity_root_hash: Default::default(),
+        });
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder.artifacts_version_repository.expect_get().return_once(|| Ok(Some("default".into())));
+        builder
+            .artifacts_repository
+            .expect_get()
+            .return_once(|| Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into(), current: true })));
         builder.workloads_repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder.workloads_repository.expect_commit().once().return_once(|| Ok(()));
         builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));
