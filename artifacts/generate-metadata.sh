@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_PATH=$(dirname $(realpath $0))
 
+BUILD_TIMESTAMP=$(date +%s)
 KERNEL_COMMIT=$(cat "$SCRIPT_PATH/kernel/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
 QEMU_COMMIT=$(cat "$SCRIPT_PATH/qemu/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
 INITRD=initramfs/initramfs.cpio.gz
@@ -27,6 +28,7 @@ GPU_KERNEL_HASH=$(sha256sum "$SCRIPT_PATH/dist/$GPU_KERNEL" | cut -d " " -f 1)
 METADATA=$(
   cat <<EOF
 {
+  "built_at": ${BUILD_TIMESTAMP},
   "kernel": {
     "commit": "${KERNEL_COMMIT}"
   },
