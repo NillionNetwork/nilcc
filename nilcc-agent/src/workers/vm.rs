@@ -202,6 +202,8 @@ impl VmWorker {
                     if !response.bootstrapped {
                         info!("CVM agent is running, bootstrapping it");
                         let request = BootstrapRequest {
+                            acme_eab_key_id: Some(self.zerossl_config.eab_key_id.clone()),
+                            acme_eab_mac_key: Some(self.zerossl_config.eab_mac_key.clone()),
                             acme: AcmeCredentials {
                                 eab_key_id: self.zerossl_config.eab_key_id.clone(),
                                 eab_mac_key: self.zerossl_config.eab_mac_key.clone(),

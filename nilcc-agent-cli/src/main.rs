@@ -141,6 +141,10 @@ struct LaunchArgs {
     #[clap(long)]
     id: Option<Uuid>,
 
+    /// The artifacts version to use.
+    #[clap(short, long)]
+    artifacts: String,
+
     /// Add an environment variable to the workload, in the format `<name>=<value>`.
     #[clap(short, long = "env-var")]
     env_vars: Vec<KeyValue>,
@@ -353,6 +357,7 @@ fn load_dotenv(path: &Path) -> anyhow::Result<HashMap<String, String>> {
 fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
     let LaunchArgs {
         id,
+        artifacts,
         env_vars,
         dotenv,
         files,
@@ -376,6 +381,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         .collect::<Result<_, _>>()?;
     let request = CreateWorkloadRequest {
         id: id.unwrap_or_else(Uuid::new_v4),
+        artifacts_version: Some(artifacts),
         docker_compose,
         env_vars,
         files,
