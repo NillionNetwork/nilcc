@@ -1,5 +1,5 @@
 use crate::repositories::{
-    artifacts::{ArtifactsVersionRepository, SqliteArtifactsVersionRepository},
+    artifacts::{ArtifactsRepository, SqliteArtifactsRepository},
     workload::{SqliteWorkloadRepository, WorkloadRepository},
 };
 use async_trait::async_trait;
@@ -110,8 +110,7 @@ pub struct ProviderError(String);
 #[async_trait]
 pub trait RepositoryProvider: Send + Sync {
     async fn workloads(&self, mode: ProviderMode) -> Result<Box<dyn WorkloadRepository>, ProviderError>;
-    async fn artifacts_version(&self, mode: ProviderMode)
-        -> Result<Box<dyn ArtifactsVersionRepository>, ProviderError>;
+    async fn artifacts(&self, mode: ProviderMode) -> Result<Box<dyn ArtifactsRepository>, ProviderError>;
 }
 
 pub struct SqliteRepositoryProvider {
@@ -145,12 +144,9 @@ impl RepositoryProvider for SqliteRepositoryProvider {
         Ok(Box::new(SqliteWorkloadRepository::new(ctx)))
     }
 
-    async fn artifacts_version(
-        &self,
-        mode: ProviderMode,
-    ) -> Result<Box<dyn ArtifactsVersionRepository>, ProviderError> {
+    async fn artifacts(&self, mode: ProviderMode) -> Result<Box<dyn ArtifactsRepository>, ProviderError> {
         let ctx = self.build_ctx(mode).await?;
-        Ok(Box::new(SqliteArtifactsVersionRepository::new(ctx)))
+        Ok(Box::new(SqliteArtifactsRepository::new(ctx)))
     }
 }
 

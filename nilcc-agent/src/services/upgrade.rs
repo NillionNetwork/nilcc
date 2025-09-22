@@ -1,4 +1,4 @@
-use crate::repositories::artifacts::ArtifactVersion;
+use crate::repositories::artifacts::Artifacts;
 use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use crate::routes::Json;
@@ -10,8 +10,8 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use nilcc_agent_models::errors::RequestHandlerError;
-use nilcc_artifacts::FileDownloader;
-use nilcc_artifacts::{ArtifactsDownloader, VmType};
+use nilcc_artifacts::downloader::{ArtifactsDownloader, FileDownloader};
+use nilcc_artifacts::VmType;
 use reqwest::StatusCode;
 use std::collections::HashSet;
 use std::env;
@@ -123,7 +123,7 @@ impl UpgradeService for DefaultUpgradeService {
             }
             UpgradeState::None | UpgradeState::Done { .. } => (),
         };
-        let mut repo = self.repository_provider.artifacts_version(Default::default()).await.map_err(|e| {
+        let mut repo = self.repository_provider.artifacts(Default::default()).await.map_err(|e| {
             error!("Failed to get repository: {e}");
             UpgradeError::Internal
         })?;
@@ -168,7 +168,7 @@ impl UpgradeService for DefaultUpgradeService {
             workloads.into_iter().map(|w| w.artifacts_version).collect()
         };
 
-        let mut repo = self.repository_provider.artifacts_version(Default::default()).await.map_err(|e| {
+        let mut repo = self.repository_provider.artifacts(Default::default()).await.map_err(|e| {
             error!("Failed to get repository: {e}");
             CleanupError::Internal
         })?;
@@ -180,7 +180,7 @@ impl UpgradeService for DefaultUpgradeService {
 
         let mut deleted_versions = Vec::new();
         for version in versions {
-            let ArtifactVersion { version, current } = version;
+            let Artifacts { version, current, .. } = version;
             if current {
                 info!("Not deleting version {version} because it's the current one");
                 continue;
@@ -267,9 +267,9 @@ impl UpgradeService for DefaultUpgradeService {
     }
 
     async fn artifacts_version(&self) -> anyhow::Result<String> {
-        let mut repo = self.repository_provider.artifacts_version(Default::default()).await?;
+        let mut repo = self.repository_provider.artifacts(Default::default()).await?;
         let version = repo.get().await?;
-        version.ok_or_else(|| anyhow!("no version in db"))
+        Ok(version.ok_or_else(|| anyhow!("no version in db"))?.version)
     }
 
     async fn agent_upgrade_state(&self) -> UpgradeState {
@@ -336,15 +336,15 @@ impl ArtifactUpgradeWorker {
 
     async fn perform_upgrade(&self) -> anyhow::Result<()> {
         let version = &self.version;
-        self.downloader.download(&self.target_path).await?;
+        let artifacts = self.downloader.download(&self.target_path).await?;
         info!("Upgrade to version {version} successful");
 
         let mut repo = self
             .repository_provider
-            .artifacts_version(ProviderMode::Transactional)
+            .artifacts(ProviderMode::Transactional)
             .await
             .context("Failed to get repository")?;
-        repo.set(version).await.context("Failed to set version")?;
+        repo.set(version, &artifacts.metadata).await.context("Failed to set version")?;
         repo.commit().await?;
         Ok(())
     }

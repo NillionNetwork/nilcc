@@ -1,5 +1,6 @@
 use crate::{
     certs::FetcherError,
+    measurement::MeasurementHashError,
     report::{ReportBundle, ReportBundleError, VmType},
     verify::VerificationError,
 };
@@ -7,10 +8,13 @@ use anyhow::Context;
 use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
-use nilcc_artifacts::{Artifacts, ArtifactsDownloader, DownloadError, VmTypeArtifacts};
+use nilcc_artifacts::{
+    downloader::{ArtifactsDownloader, DownloadError},
+    metadata::ArtifactsMetadata,
+    Artifacts,
+};
 use report::ReportFetcher;
 use serde::Serialize;
-use sev::error::MeasurementError;
 use std::{io, path::PathBuf, process::exit};
 use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
@@ -70,10 +74,6 @@ struct OfflineArgs {
     /// The number of VCPUs the VM has.
     #[clap(long)]
     vcpus: u32,
-
-    /// Whether to include debug options in kernel command line (e.g. console/earlyprintk/panic).
-    #[clap(long)]
-    kernel_debug_options: bool,
 }
 
 #[derive(Args)]
@@ -88,10 +88,6 @@ struct ValidateArgs {
     /// The path where certificates will be cached.
     #[clap(short, long, default_value = default_cert_cache_path().into_os_string())]
     cert_cache: PathBuf,
-
-    /// Whether to include debug options in kernel command line (e.g. console/earlyprintk/panic).
-    #[clap(long)]
-    kernel_debug_options: bool,
 
     /// The docker compose hash that the CVM executes.
     #[clap(long)]
@@ -154,8 +150,8 @@ enum ValidateError {
     #[error("fetching report bundle: {0}")]
     ReportBundle(#[from] ReportBundleError),
 
-    #[error("generating measurement hash: {0}")]
-    MeasurementHash(#[from] MeasurementError),
+    #[error(transparent)]
+    MeasurementHash(#[from] MeasurementHashError),
 
     #[error("verifying report: {0}")]
     VerifyReports(#[from] VerificationError),
@@ -168,8 +164,7 @@ fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
 }
 
 fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
-    let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, kernel_debug_options, artifacts_url } =
-        args;
+    let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, artifacts_url } = args;
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint)?;
@@ -181,6 +176,7 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
         filesystem_root_hash,
         tls_fingerprint,
         nilcc_version,
+        metadata,
         ..
     } = bundle;
 
@@ -191,7 +187,7 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
         initrd: initrd_path,
         docker_compose_hash,
         filesystem_root_hash,
-        kernel_debug_options,
+        kernel_args: metadata.cvm.cmdline.clone(),
     }
     .generate()?;
     let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
@@ -201,7 +197,7 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let meta = ReportMetadata {
         measurement_hash: hex::encode(measurement),
         tls_fingerprint,
-        artifacts_version: nilcc_version,
+        artifacts: ReportArtifacts { version: nilcc_version, metadata },
     };
     Ok(meta)
 }
@@ -217,9 +213,10 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
     let artifacts = runtime.block_on(downloader.download(&download_path))?;
-    let Artifacts { ovmf_path, initrd_path, mut type_artifacts } = artifacts;
-    let VmTypeArtifacts { kernel_path, filesystem_root_hash, .. } =
-        type_artifacts.remove(&vm_type.into()).expect("missing type artifacts");
+    let Artifacts { ovmf_path, initrd_path, metadata, .. } = artifacts;
+    let vm_type_metadata = metadata.cvm.images.resolve(vm_type.into());
+    let filesystem_root_hash = vm_type_metadata.verity.root_hash;
+    let kernel_path = download_path.join(&vm_type_metadata.kernel.path);
     let measurement = MeasurementGenerator {
         vcpus: cpus,
         ovmf: ovmf_path,
@@ -227,7 +224,7 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
         initrd: initrd_path,
         docker_compose_hash,
         filesystem_root_hash,
-        kernel_debug_options: false,
+        kernel_args: metadata.cvm.cmdline.clone(),
     }
     .generate()?;
     let measurement = hex::encode(&measurement);
@@ -299,13 +296,20 @@ impl From<ValidateError> for ErrorCode {
 struct ReportMetadata {
     measurement_hash: String,
     tls_fingerprint: String,
-    artifacts_version: String,
+    artifacts: ReportArtifacts,
+}
+
+#[derive(Serialize)]
+struct ReportArtifacts {
+    version: String,
+    #[serde(flatten)]
+    metadata: ArtifactsMetadata,
 }
 
 #[derive(Serialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 enum ValidateResult {
-    Success { metadata: ReportMetadata },
+    Success { metadata: Box<ReportMetadata> },
     Failure { error_code: ErrorCode, message: String },
 }
 
@@ -327,7 +331,7 @@ fn main() {
     match cli.command {
         Command::Validate(args) => {
             let (exit_code, result) = match validate(args) {
-                Ok(metadata) => (0, ValidateResult::Success { metadata }),
+                Ok(metadata) => (0, ValidateResult::Success { metadata: metadata.into() }),
                 Err(e) => {
                     let message = e.to_string();
                     (1, ValidateResult::Failure { error_code: e.into(), message })

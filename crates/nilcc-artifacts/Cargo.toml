@@ -6,7 +6,12 @@ edition = "2024"
 [dependencies]
 hex = "0.4"
 futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_with = { version = "3.14", features = ["hex"] }
 thiserror = "2.0"
 tracing = "0.1"
 tokio = { version = "1.47", features = ["fs"] }
-reqwest = { version = "0.12", features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+
+[dev-dependencies]
+serde_json = "1.0"

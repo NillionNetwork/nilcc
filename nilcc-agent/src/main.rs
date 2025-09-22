@@ -28,7 +28,11 @@ use nilcc_agent::{
         heartbeat::HeartbeatWorker,
     },
 };
-use nilcc_artifacts::{ArtifactsDownloader, VmType};
+use nilcc_artifacts::{
+    downloader::ArtifactsDownloader,
+    metadata::{ArtifactsMetadata, LegacyMetadata},
+    VmType,
+};
 use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
 use std::{
     fmt, fs, io,
@@ -249,6 +253,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
+        repository_provider: repository_provider.clone(),
     })
     .await?;
     let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
@@ -283,16 +288,54 @@ async fn download_initial_artifacts(
     vm_types: &[VmType],
     config: &CvmConfigs,
 ) -> Result<()> {
-    let mut repo = provider.artifacts_version(Default::default()).await?;
-    let version = repo.get().await?;
-    if let Some(version) = version {
-        info!("No need to download initial artifacts since we're configured to use version {version}");
+    let mut repo = provider.artifacts(Default::default()).await?;
+    let artifacts = repo.get().await?;
+    if let Some(artifacts) = artifacts {
+        info!("No need to download initial artifacts since we're configured to use version {}", artifacts.version);
         return Ok(());
     }
     let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types.to_vec());
     let download_path = config.artifacts_path.join(&config.initial_version);
-    downloader.download(&download_path).await.context("Failed to download artifacts")?;
-    repo.set(&config.initial_version).await.context("Failed to set artifact version in repository")?;
+    let artifacts = downloader.download(&download_path).await.context("Failed to download artifacts")?;
+    repo.set(&config.initial_version, &artifacts.metadata)
+        .await
+        .context("Failed to set artifact version in repository")?;
+    Ok(())
+}
+
+fn load_verity_root_hash(version: &str, vm_type: VmType, config: &CvmConfigs) -> Result<[u8; 32]> {
+    let path = config.artifacts_path.join(version).join(format!("vm_images/cvm-{vm_type}-verity/root-hash"));
+    let hex_hash = fs::read_to_string(&path).context("Failed to read verity root hash")?;
+    let mut hash = [0; 32];
+    hex::decode_to_slice(hex_hash.trim(), &mut hash).context("Invalid hex")?;
+    Ok(hash)
+}
+
+async fn set_missing_artifact_metadata(provider: &SqliteRepositoryProvider, config: &CvmConfigs) -> Result<()> {
+    let mut repo = provider.artifacts(Default::default()).await?;
+    let mut total = 0;
+    for artifact in repo.list().await? {
+        if artifact.metadata.is_some() {
+            continue;
+        }
+        let version = &artifact.version;
+        info!("Need to update metadata for artifact version {version}");
+        let cpu_verity_root_hash =
+            load_verity_root_hash(&artifact.version, VmType::Cpu, config).context("No CPU verity root hash")?;
+        // If we don't have GPU root hashes, just use the CPU one. If we had GPU configs then we'd
+        // have this root hash so this means this nilcc-agent is not configured to run GPU VMs.
+        let gpu_verity_root_hash =
+            load_verity_root_hash(&artifact.version, VmType::Gpu, config).unwrap_or(cpu_verity_root_hash);
+        let meta = ArtifactsMetadata::legacy(LegacyMetadata { cpu_verity_root_hash, gpu_verity_root_hash });
+        info!(
+            "Updating metadata for artifact version {version}: CPU root hash = {}, GPU root hash = {}",
+            hex::encode(cpu_verity_root_hash),
+            hex::encode(gpu_verity_root_hash)
+        );
+        repo.update_metadata(version, &meta).await.context("Failed to update metadata")?;
+        total += 1;
+    }
+    info!("{total} artifacts had their legacy metadata updated");
     Ok(())
 }
 
@@ -329,6 +372,9 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
     download_initial_artifacts(&repository_provider, &vm_types, &config.cvm)
         .await
         .context("Failed to download initial artifacts")?;
+    set_missing_artifact_metadata(&repository_provider, &config.cvm)
+        .await
+        .context("Failed to set legacy artifact metadata")?;
 
     let proxied_vms = {
         let mut workload_repository = repository_provider.workloads(Default::default()).await?;
@@ -375,6 +421,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         zerossl_config: config.zerossl,
         docker_config: config.docker,
         event_sender,
+        repository_provider: repository_provider.clone(),
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
