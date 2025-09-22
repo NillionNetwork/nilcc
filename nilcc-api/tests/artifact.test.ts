@@ -18,5 +18,7 @@ describe("Artifact", () => {
     const expected = ["1.1.0", "0.1.0", "abc"];
     const versions = artifacts.map((a) => a.version);
     expect(versions).toEqual(expected);
+
+    expect(artifacts[0].builtAt).toEqual(new Date(1758561580000).toISOString());
   });
 });
