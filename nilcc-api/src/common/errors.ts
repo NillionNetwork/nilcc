@@ -30,6 +30,11 @@ export class MetalInstanceManagingWorkloads extends AppError {
   override description = "Metal instance is handling 1 or more workloads";
 }
 
+export class ArtifactVersionDoesNotExist extends AppError {
+  override kind = "ARTIFACT_VERSION_DOES_NOT_EXIST";
+  override description = "Artifact version does not exist";
+}
+
 export class InvalidDockerCompose extends AppError {
   override kind = "INVALID_DOCKER_COMPOSE";
   override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;

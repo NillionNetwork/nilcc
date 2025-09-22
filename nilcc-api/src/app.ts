@@ -7,6 +7,7 @@ import { timeout } from "hono/timeout";
 import { Temporal } from "temporal-polyfill";
 import { errorHandler } from "#/common/handler";
 import { buildAccountRouter } from "./account/account.router";
+import { buildArtifactRouter } from "./artifact/artifact.router";
 import {
   type AppBindings,
   type AppEnv,
@@ -47,6 +48,7 @@ export async function buildApp(
   }
 
   buildAccountRouter({ app, bindings });
+  buildArtifactRouter({ app, bindings });
   buildWorkloadRouter({ app, bindings });
   buildWorkloadContainerRouter({ app, bindings });
   buildWorkloadEventRouter({ app, bindings });

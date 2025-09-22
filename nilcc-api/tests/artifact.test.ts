@@ -1,0 +1,22 @@
+import { describe } from "vitest";
+import { createTestFixtureExtension } from "./fixture/it";
+
+describe("Artifact", () => {
+  const { it, beforeAll, afterAll } = createTestFixtureExtension();
+
+  beforeAll(async (_ctx) => {});
+  afterAll(async (_ctx) => {});
+
+  it("should create an account that hasn't been created", async ({
+    expect,
+    clients,
+  }) => {
+    for (const version of ["abc", "0.1.0", "1.1.0"]) {
+      await clients.admin.enableArtifactVersion(version).submit();
+    }
+    const artifacts = await clients.user.listArtifacts().submit();
+    const expected = ["1.1.0", "0.1.0", "abc"];
+    const versions = artifacts.map((a) => a.version);
+    expect(versions).toEqual(expected);
+  });
+});

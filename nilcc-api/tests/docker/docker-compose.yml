@@ -17,3 +17,10 @@ services:
       - "35433:80"
     command: |
       caddy respond --listen :80 --body '{}' --header "Content-Type: application/json" 
+
+  artifacts:
+    image: caddy:2
+    ports:
+      - "35434:80"
+    command: |
+      caddy respond --listen :80 --body '{"built_at": 1758561580}' --header "Content-Type: application/json" 

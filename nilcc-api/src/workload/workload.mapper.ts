@@ -11,6 +11,7 @@ export const workloadMapper = {
     return {
       workloadId: workload.id,
       name: workload.name,
+      artifactsVersion: workload.artifactsVersion,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars ?? undefined,
       dockerCredentials: workload.dockerCredentials ?? undefined,

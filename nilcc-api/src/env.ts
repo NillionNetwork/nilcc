@@ -8,6 +8,11 @@ import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
 import { WorkloadService } from "#/workload/workload.service";
 import type { AccountEntity } from "./account/account.entity";
 import { AccountService } from "./account/account.service";
+import { ArtifactService } from "./artifact/artifact.service";
+import {
+  type ArtifactClient,
+  DefaultArtifactClient,
+} from "./clients/artifact.client";
 import {
   DefaultNilccAgentClient,
   type NilccAgentClient,
@@ -58,9 +63,11 @@ export type AppServices = {
   workload: WorkloadService;
   workloadTier: WorkloadTierService;
   account: AccountService;
+  artifact: ArtifactService;
   dns: DnsServices;
   time: TimeService;
   nilccAgentClient: NilccAgentClient;
+  artifactsClient: ArtifactClient;
 };
 
 export interface TimeService {
@@ -98,6 +105,7 @@ export const EnvVarsSchema = z.object({
   metalInstancesEndpointScheme: z.enum(["http", "https"]).default("https"),
   metalInstancesEndpointPort: z.number().default(443),
   metalInstancesIdleThresholdSeconds: z.number().default(120),
+  artifactsBaseUrl: z.string(),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -120,6 +128,7 @@ declare global {
       APP_METAL_INSTANCES_ENDPOINT_SCHEME?: string;
       APP_METAL_INSTANCES_ENDPOINT_PORT?: string;
       APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS?: string;
+      APP_ARTIFACTS_BASE_URL: string;
     }
   }
 }
@@ -175,10 +184,15 @@ async function buildServices(
   const workloadService = new WorkloadService();
   const workloadTierService = new WorkloadTierService();
   const accountService = new AccountService();
+  const artifactService = new ArtifactService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
     config.metalInstancesDnsDomain,
     config.metalInstancesEndpointPort,
+    log,
+  );
+  const artifactsClient = new DefaultArtifactClient(
+    config.artifactsBaseUrl,
     log,
   );
   const timeService = new (class {
@@ -192,9 +206,11 @@ async function buildServices(
     workload: workloadService,
     workloadTier: workloadTierService,
     account: accountService,
+    artifact: artifactService,
     dns,
     time: timeService,
     nilccAgentClient,
+    artifactsClient,
   };
 }
 
@@ -221,6 +237,7 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     metalInstancesIdleThresholdSeconds: tryNumber(
       process.env.APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS,
     ),
+    artifactsBaseUrl: process.env.APP_ARTIFACTS_BASE_URL,
   });
 
   return {

@@ -1,6 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
+import { ArtifactEntity } from "#/artifact/artifact.entity";
 import type {
   Container,
   SystemStatsResponse,
@@ -58,6 +59,14 @@ export class WorkloadService {
     });
     if (tier === null) {
       throw new InvalidWorkloadTier();
+    }
+    if (request.artifactsVersion !== undefined) {
+      const artifact = await tx.manager
+        .getRepository(ArtifactEntity)
+        .findOneBy({ version: request.artifactsVersion });
+      if (artifact === null) {
+        throw new EntityNotFound("artifact");
+      }
     }
 
     // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
