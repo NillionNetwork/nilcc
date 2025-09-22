@@ -5,6 +5,7 @@ import {
   MyAccount,
 } from "#/account/account.dto";
 import type { App } from "#/app";
+import { Artifact } from "#/artifact/artifact.dto";
 import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
 import {
@@ -166,6 +167,14 @@ export class AdminClient extends TestClient {
     });
     return new RequestPromise(promise, z.unknown());
   }
+
+  enableArtifactVersion(version: string): RequestPromise<Artifact> {
+    const promise = this.request(PathsV1.artifacts.enable, {
+      method: "POST",
+      body: { version },
+    });
+    return new RequestPromise(promise, Artifact);
+  }
 }
 
 export class UserClient extends TestClient {
@@ -295,6 +304,13 @@ export class UserClient extends TestClient {
       method: "GET",
     });
     return new RequestPromise(promise, MyAccount);
+  }
+
+  listArtifacts(): RequestPromise<Artifact[]> {
+    const promise = this.request(PathsV1.artifacts.list, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, Artifact.array());
   }
 }
 

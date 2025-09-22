@@ -251,6 +251,36 @@ services:
     await clients.user.deleteWorkload(workload.workloadId).submit();
   });
 
+  it("should allow creating a workload using a specific artifact version", async ({
+    expect,
+    clients,
+  }) => {
+    const artifactsVersion = "abc";
+    await clients.admin.enableArtifactVersion(artifactsVersion).submit();
+    const createWorkloadRequest: CreateWorkloadRequest = {
+      name: "some",
+      dockerCompose: `
+services:
+  app:
+    image: nginx
+    ports:
+      - '80'
+`,
+      artifactsVersion,
+      publicContainerName: "app",
+      publicContainerPort: 80,
+      memory: 1024,
+      cpus: 1,
+      disk: 10,
+      gpus: 0,
+    };
+    const workload = await clients.user
+      .createWorkload(createWorkloadRequest)
+      .submit();
+    expect(workload.artifactsVersion).toBe(artifactsVersion);
+    await clients.user.deleteWorkload(workload.workloadId).submit();
+  });
+
   it("should now allow cross account operations", async ({
     expect,
     app,

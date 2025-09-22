@@ -20,6 +20,7 @@ import { AccountCredits1756146720184 } from "migrations/1756146720184-AccountCre
 import { WorkloadCreditRate1756151064011 } from "migrations/1756151064011-WorkloadTier";
 import { BigRename1756308586154 } from "migrations/1756308586154-BigRename";
 import { MetalInstanceIdNotNull1757713209092 } from "migrations/1757713209092-MetalInstanceIdNotNull";
+import { CreateArtifactsTable1758563696154 } from "migrations/1758563696154-CreateArtifactsTable";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -28,6 +29,7 @@ import {
   WorkloadEventEntity,
 } from "#/workload/workload.entity";
 import { AccountEntity } from "./account/account.entity";
+import { ArtifactEntity } from "./artifact/artifact.entity";
 import { WorkloadTierEntity } from "./workload-tier/workload-tier.entity";
 
 export async function buildDataSource(config: EnvVars): Promise<DataSource> {
@@ -36,6 +38,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
     url: config.dbUri,
     entities: [
       AccountEntity,
+      ArtifactEntity,
       WorkloadEntity,
       MetalInstanceEntity,
       WorkloadEventEntity,
@@ -54,6 +57,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       WorkloadCreditRate1756151064011,
       BigRename1756308586154,
       MetalInstanceIdNotNull1757713209092,
+      CreateArtifactsTable1758563696154,
     ],
     synchronize: false,
     logging: false,

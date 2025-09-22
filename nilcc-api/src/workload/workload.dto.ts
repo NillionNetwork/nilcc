@@ -29,6 +29,13 @@ export const CreateWorkloadRequest = z
         description: "A descriptive name for the workload",
         examples: ["my-favorite-workload"],
       }),
+    artifactsVersion: z
+      .string()
+      .optional()
+      .openapi({
+        description: "The artifact version to use for this workload.",
+        examples: ["0.1.0"],
+      }),
     dockerCompose: z.string().openapi({
       description:
         "The docker compose to be ran. The docker compose can contain any number of services but it must contain a single one that will act as the public entry point to the CVM.",
