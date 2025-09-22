@@ -26,7 +26,7 @@ export class ArtifactService {
     try {
       return await repository.save({
         version: request.version,
-        builtAt: new Date(metadata.built_at),
+        builtAt: new Date(metadata.built_at * 1000),
       });
     } catch (e: unknown) {
       if (isUniqueConstraint(e)) {
