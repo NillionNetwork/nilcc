@@ -141,8 +141,10 @@ describe("Metal Instance", () => {
       .getMetalInstance(myMetalInstance.metalInstanceId)
       .submit();
 
+    await clients.admin.enableArtifactVersion("aaa").submit();
     const createWorkloadRequest: CreateWorkloadRequest = {
       name: "my-cool-workload",
+      artifactsVersion: "aaa",
       dockerCompose: `
 services:
   app:

@@ -87,6 +87,7 @@ export class WorkloadService {
           memory: request.memory,
           disk: request.disk,
           gpus: request.gpus,
+          artifactsVersion: request.artifactsVersion,
         },
         bindings,
         tx,

@@ -93,8 +93,13 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     this.log.info(
       `Creating workload ${workload.id} in agent ${metalInstance.id}`,
     );
+    if (workload.artifactsVersion === undefined) {
+      // This is temporary
+      throw new Error("artifacts version not set");
+    }
     const request: CreateWorkloadRequest = {
       id: workload.id,
+      artifactsVersion: workload.artifactsVersion,
       dockerCompose: workload.dockerCompose,
       envVars: workload.envVars,
       files: workload.files,
@@ -288,6 +293,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
 
 type CreateWorkloadRequest = {
   id: string;
+  artifactsVersion: string;
   dockerCompose: string;
   envVars?: Record<string, string>;
   files?: Record<string, string>;
