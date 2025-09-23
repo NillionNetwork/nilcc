@@ -54,6 +54,9 @@ pub(crate) enum HandlerError {
     #[error("domain is already managed by another workload")]
     DomainExists,
 
+    #[error("artifact version is not installed")]
+    ArtifactVersionMissing,
+
     #[error("{0} can't be higher than {1}")]
     ResourceLimit(&'static str, u32),
 
@@ -68,6 +71,7 @@ impl From<CreateWorkloadError> for HandlerError {
             CreateWorkloadError::Internal(e) => Self::Internal(e),
             CreateWorkloadError::AlreadyExists => Self::AlreadyExists,
             CreateWorkloadError::DomainExists => Self::DomainExists,
+            CreateWorkloadError::ArtifactVersionMissing => Self::ArtifactVersionMissing,
         }
     }
 }
@@ -76,7 +80,9 @@ impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {
         let discriminant = HandlerErrorDiscriminants::from(&self);
         let (code, message) = match self {
-            Self::InsufficientResources(_) => (StatusCode::PRECONDITION_FAILED, self.to_string()),
+            Self::InsufficientResources(_) | Self::ArtifactVersionMissing => {
+                (StatusCode::PRECONDITION_FAILED, self.to_string())
+            }
             Self::AlreadyExists
             | Self::DomainExists
             | Self::DockerCompose(_)

@@ -41,6 +41,9 @@ pub enum CreateWorkloadError {
     #[error("internal: {0}")]
     Internal(String),
 
+    #[error("artifacts version is not installed")]
+    ArtifactVersionMissing,
+
     #[error("workload already exists")]
     AlreadyExists,
 
@@ -213,7 +216,9 @@ impl DefaultWorkloadService {
             gpus,
             disk_space_gb,
             domain,
+            ..
         } = request;
+
         let gpus = resources.gpus.iter().take(gpus as usize).cloned().collect();
         let ports: Vec<_> = resources.ports.iter().take(TOTAL_PORTS).copied().collect();
         let ports = ports.try_into().expect("not enough ports");
@@ -258,13 +263,14 @@ impl WorkloadService for DefaultWorkloadService {
     }
 
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
-        let artifacts = self
-            .repository_provider
-            .artifacts(Default::default())
-            .await?
-            .get()
-            .await?
-            .ok_or_else(|| CreateWorkloadError::Internal("no artifacts version configured".into()))?;
+        let mut artifacts_repo = self.repository_provider.artifacts(Default::default()).await?;
+        let artifacts = match request.artifacts_version.clone() {
+            Some(version) => artifacts_repo.find(&version).await?.ok_or(CreateWorkloadError::ArtifactVersionMissing)?,
+            None => artifacts_repo
+                .get()
+                .await?
+                .ok_or_else(|| CreateWorkloadError::Internal("no artifacts version configured".into()))?,
+        };
         let mut resources = self.resources.lock().await;
         let cpus = request.cpus;
         let gpus = request.gpus as usize;
@@ -576,6 +582,7 @@ mod tests {
     async fn create_success() {
         let request = CreateWorkloadRequest {
             id: Uuid::new_v4(),
+            artifacts_version: Some("default".into()),
             docker_compose: "compose".into(),
             env_vars: Default::default(),
             files: Default::default(),
@@ -619,10 +626,9 @@ mod tests {
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder
-            .artifacts_repository
-            .expect_get()
-            .return_once(|| Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into(), current: true })));
+        builder.artifacts_repository.expect_find().with(eq("default")).return_once(|_| {
+            Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into(), current: true }))
+        });
         builder.workloads_repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder.workloads_repository.expect_commit().once().return_once(|| Ok(()));
         builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));
