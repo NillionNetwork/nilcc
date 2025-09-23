@@ -138,6 +138,7 @@ export class MetalInstanceService {
       memory: number;
       disk: number;
       gpus: number;
+      artifactsVersion: string;
     },
     bindings: AppBindings,
     tx: QueryRunner,
@@ -171,7 +172,10 @@ export class MetalInstanceService {
         { requiredGpu: param.gpus },
       );
 
-    return await queryBuilder.getMany();
+    const instances = await queryBuilder.getMany();
+    return instances.filter((instance) =>
+      instance.availableArtifactVersions.includes(param.artifactsVersion),
+    );
   }
 
   async update(

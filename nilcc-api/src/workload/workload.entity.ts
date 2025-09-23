@@ -12,8 +12,8 @@ export class WorkloadEntity {
   @Column({ type: "varchar" })
   name: string;
 
-  @Column({ type: "varchar", nullable: true })
-  artifactsVersion?: string;
+  @Column({ type: "varchar" })
+  artifactsVersion: string;
 
   @ManyToOne(
     () => AccountEntity,

@@ -17,6 +17,7 @@ describe("workload CRUD", () => {
 
   const createWorkloadRequest: CreateWorkloadRequest = {
     name: "my-cool-workload",
+    artifactsVersion: "aaa",
     dockerCompose: `
 services:
   app:
@@ -66,6 +67,7 @@ services:
     expect,
     clients,
   }) => {
+    await clients.admin.enableArtifactVersion("aaa").submit();
     await clients.admin
       .createTier({
         name: "tiny",
@@ -83,7 +85,11 @@ services:
   });
 
   it("should create a workload", async ({ expect, clients }) => {
+    // Register the agent and heartbeat to indicate which artifact versions it supports.
     await clients.metalInstance.register(myMetalInstance).submit();
+    await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, ["aaa"])
+      .submit();
 
     const workload = await clients.user
       .createWorkload(createWorkloadRequest)
@@ -229,6 +235,7 @@ services:
   }) => {
     const createWorkloadRequest: CreateWorkloadRequest = {
       name: "some",
+      artifactsVersion: "aaa",
       dockerCompose: `
 services:
   app:
@@ -248,36 +255,6 @@ services:
       .createWorkload(createWorkloadRequest)
       .submit();
     expect(workload.domain).toBe("foo.com");
-    await clients.user.deleteWorkload(workload.workloadId).submit();
-  });
-
-  it("should allow creating a workload using a specific artifact version", async ({
-    expect,
-    clients,
-  }) => {
-    const artifactsVersion = "abc";
-    await clients.admin.enableArtifactVersion(artifactsVersion).submit();
-    const createWorkloadRequest: CreateWorkloadRequest = {
-      name: "some",
-      dockerCompose: `
-services:
-  app:
-    image: nginx
-    ports:
-      - '80'
-`,
-      artifactsVersion,
-      publicContainerName: "app",
-      publicContainerPort: 80,
-      memory: 1024,
-      cpus: 1,
-      disk: 10,
-      gpus: 0,
-    };
-    const workload = await clients.user
-      .createWorkload(createWorkloadRequest)
-      .submit();
-    expect(workload.artifactsVersion).toBe(artifactsVersion);
     await clients.user.deleteWorkload(workload.workloadId).submit();
   });
 
