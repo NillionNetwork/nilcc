@@ -21,6 +21,7 @@ import { WorkloadCreditRate1756151064011 } from "migrations/1756151064011-Worklo
 import { BigRename1756308586154 } from "migrations/1756308586154-BigRename";
 import { MetalInstanceIdNotNull1757713209092 } from "migrations/1757713209092-MetalInstanceIdNotNull";
 import { CreateArtifactsTable1758563696154 } from "migrations/1758563696154-CreateArtifactsTable";
+import { MetalInstanceArtifactVersions1758645450546 } from "migrations/1758645450546-MetalInstanceArtifactVersions";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -58,6 +59,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       BigRename1756308586154,
       MetalInstanceIdNotNull1757713209092,
       CreateArtifactsTable1758563696154,
+      MetalInstanceArtifactVersions1758645450546,
     ],
     synchronize: false,
     logging: false,

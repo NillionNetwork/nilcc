@@ -406,7 +406,7 @@ services:
 
     // Heartbeat once, this should subtract the credit rate.
     await clients.metalInstance
-      .heartbeat(myMetalInstance.metalInstanceId)
+      .heartbeat(myMetalInstance.metalInstanceId, [])
       .submit();
     const updatedAccount = await clients.admin
       .getAccount(workloads[0].accountId)
@@ -415,7 +415,7 @@ services:
 
     // Heartbeat again, this shouldn't do anything.
     await clients.metalInstance
-      .heartbeat(myMetalInstance.metalInstanceId)
+      .heartbeat(myMetalInstance.metalInstanceId, [])
       .submit();
     const latestAccount = await clients.admin
       .getAccount(workloads[0].accountId)

@@ -1,4 +1,5 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from "typeorm";
+import z from "zod";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
 @Entity({ name: "metal_instances" })
@@ -47,6 +48,15 @@ export class MetalInstanceEntity {
     (workload) => workload.metalInstance,
   )
   workloads: WorkloadEntity[];
+
+  @Column({
+    type: "text",
+    transformer: {
+      to: (value: string[]) => JSON.stringify(value),
+      from: (value: string) => z.string().array().parse(JSON.parse(value)),
+    },
+  })
+  availableArtifactVersions: string[];
 
   @Column({ type: "timestamp" })
   createdAt: Date;

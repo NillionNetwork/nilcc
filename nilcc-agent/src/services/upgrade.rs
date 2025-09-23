@@ -30,9 +30,10 @@ use tracing::{error, info};
 
 const UPDATER_SCRIPT: &[u8] = include_bytes!("../../resources/update.sh");
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait UpgradeService: Send + Sync {
-    async fn upgrade_artifacts(&self, version: String, vm_types: Vec<VmType>) -> Result<(), UpgradeError>;
+    async fn install_artifacts(&self, version: String) -> Result<(), UpgradeError>;
     async fn upgrade_agent(&self, version: String) -> Result<(), UpgradeError>;
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError>;
     async fn artifacts_upgrade_state(&self) -> UpgradeState;
@@ -90,6 +91,7 @@ pub struct DefaultUpgradeServiceArgs {
     pub repository_provider: Arc<dyn RepositoryProvider>,
     pub config_file_path: PathBuf,
     pub cvm_artifacts_path: PathBuf,
+    pub vm_types: Vec<VmType>,
 }
 
 pub struct DefaultUpgradeService {
@@ -98,24 +100,26 @@ pub struct DefaultUpgradeService {
     config_file_path: PathBuf,
     cvm_artifacts_path: PathBuf,
     repository_provider: Arc<dyn RepositoryProvider>,
+    pub vm_types: Vec<VmType>,
 }
 
 impl DefaultUpgradeService {
     pub fn new(args: DefaultUpgradeServiceArgs) -> Self {
-        let DefaultUpgradeServiceArgs { repository_provider, config_file_path, cvm_artifacts_path } = args;
+        let DefaultUpgradeServiceArgs { repository_provider, config_file_path, cvm_artifacts_path, vm_types } = args;
         Self {
             artifacts: Default::default(),
             agent: Default::default(),
             repository_provider,
             config_file_path,
             cvm_artifacts_path,
+            vm_types,
         }
     }
 }
 
 #[async_trait]
 impl UpgradeService for DefaultUpgradeService {
-    async fn upgrade_artifacts(&self, version: String, vm_types: Vec<VmType>) -> Result<(), UpgradeError> {
+    async fn install_artifacts(&self, version: String) -> Result<(), UpgradeError> {
         let mut current = self.artifacts.lock().await;
         match &*current {
             UpgradeState::Upgrading { metadata, .. } => {
@@ -135,6 +139,7 @@ impl UpgradeService for DefaultUpgradeService {
             return Err(UpgradeError::ExistingVersion);
         }
 
+        let vm_types = self.vm_types.clone();
         let downloader = ArtifactsDownloader::new(version.clone(), vm_types.clone());
         downloader.validate_exists().await.map_err(|_| UpgradeError::InvalidVersion)?;
 
@@ -144,7 +149,7 @@ impl UpgradeService for DefaultUpgradeService {
         *current = UpgradeState::Upgrading { metadata };
 
         let target_path = self.cvm_artifacts_path.join(&version);
-        let worker = ArtifactUpgradeWorker {
+        let worker = ArtifactInstallWorker {
             downloader,
             target_path,
             state,
@@ -302,7 +307,7 @@ pub struct UpgradeMetadata {
     pub vm_types: Vec<VmType>,
 }
 
-struct ArtifactUpgradeWorker {
+struct ArtifactInstallWorker {
     downloader: ArtifactsDownloader,
     target_path: PathBuf,
     state: Arc<Mutex<UpgradeState>>,
@@ -310,7 +315,7 @@ struct ArtifactUpgradeWorker {
     repository_provider: Arc<dyn RepositoryProvider>,
 }
 
-impl ArtifactUpgradeWorker {
+impl ArtifactInstallWorker {
     async fn run(self) {
         let version = &self.version;
         let error = match self.perform_upgrade().await {

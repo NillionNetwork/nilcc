@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Method, StatusCode};
-use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use strum::EnumDiscriminants;
 use tracing::info;
@@ -31,7 +32,7 @@ pub trait NilccApiClient: Send + Sync {
     ) -> Result<(), NilccApiError>;
 
     /// Send a heartbeat to the API.
-    async fn heartbeat(&self) -> Result<(), NilccApiError>;
+    async fn heartbeat(&self, available_artifact_versions: Vec<String>) -> Result<HeartbeatResponse, NilccApiError>;
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, EnumDiscriminants)]
@@ -76,13 +77,14 @@ impl HttpNilccApiClient {
         Ok(Self { client, api_base_url, agent_id })
     }
 
-    async fn send_request<T>(&self, method: Method, url: String, payload: &T) -> Result<(), NilccApiError>
+    async fn send_request<T, R>(&self, method: Method, url: String, payload: &T) -> Result<R, NilccApiError>
     where
         T: Serialize,
+        R: DeserializeOwned,
     {
         let response = self.client.request(method, url).json(&payload).send().await?;
         if response.status().is_success() {
-            Ok(())
+            Ok(response.json().await?)
         } else {
             let status = response.status();
             let message = response.text().await.unwrap_or_default();
@@ -140,9 +142,9 @@ impl NilccApiClient for HttpNilccApiClient {
         self.send_request(Method::POST, url, &payload).await
     }
 
-    async fn heartbeat(&self) -> Result<(), NilccApiError> {
+    async fn heartbeat(&self, available_artifact_versions: Vec<String>) -> Result<HeartbeatResponse, NilccApiError> {
         let url = self.make_url("/api/v1/metal-instances/heartbeat");
-        let payload = HeartbeatRequest { id: self.agent_id };
+        let payload = HeartbeatRequest { id: self.agent_id, available_artifact_versions };
         self.send_request(Method::POST, url, &payload).await
     }
 }
@@ -171,9 +173,9 @@ impl NilccApiClient for DummyNilccApiClient {
         Ok(())
     }
 
-    async fn heartbeat(&self) -> Result<(), NilccApiError> {
-        info!("Reporting heartbeat");
-        Ok(())
+    async fn heartbeat(&self, available_artifact_versions: Vec<String>) -> Result<HeartbeatResponse, NilccApiError> {
+        info!("Reporting heartbeat, available versions = {available_artifact_versions:?}");
+        Ok(HeartbeatResponse { expected_artifact_versions: available_artifact_versions })
     }
 }
 
@@ -217,4 +219,12 @@ struct VmEventRequest {
 struct HeartbeatRequest {
     #[serde(rename = "metalInstanceId")]
     id: Uuid,
+
+    available_artifact_versions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatResponse {
+    pub(crate) expected_artifact_versions: Vec<String>,
 }

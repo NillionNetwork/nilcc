@@ -24,6 +24,7 @@ export const metalInstanceMapper = {
       metalInstanceId: metalInstance.id,
       gpus: metalInstance.gpus,
       gpuModel: metalInstance.gpuModel ?? undefined,
+      availableArtifactVersions: metalInstance.availableArtifactVersions,
       createdAt: metalInstance.createdAt.toISOString(),
       updatedAt: metalInstance.updatedAt.toISOString(),
       lastSeenAt: metalInstance.lastSeenAt.toISOString(),

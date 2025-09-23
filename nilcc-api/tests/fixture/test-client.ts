@@ -10,6 +10,7 @@ import { PathsV1 } from "#/common/paths";
 import type { AppBindings } from "#/env";
 import {
   GetMetalInstanceResponse,
+  HeartbeatResponse,
   type RegisterMetalInstanceRequest,
 } from "#/metal-instance/metal-instance.dto";
 import {
@@ -323,12 +324,15 @@ export class MetalInstanceClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
-  heartbeat(id: string): RequestPromise<unknown> {
+  heartbeat(
+    id: string,
+    availableArtifactVersions: string[],
+  ): RequestPromise<HeartbeatResponse> {
     const promise = this.request(PathsV1.metalInstance.heartbeat, {
       method: "POST",
-      body: { metalInstanceId: id },
+      body: { metalInstanceId: id, availableArtifactVersions },
     });
-    return new RequestPromise(promise, z.unknown());
+    return new RequestPromise(promise, HeartbeatResponse);
   }
 
   submitEvent(request: SubmitEventRequest): RequestPromise<unknown> {

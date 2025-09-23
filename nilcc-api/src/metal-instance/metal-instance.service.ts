@@ -1,4 +1,5 @@
 import type { QueryRunner, Repository } from "typeorm";
+import { ArtifactEntity } from "#/artifact/artifact.entity";
 import {
   EntityNotFound,
   MetalInstanceManagingWorkloads,
@@ -6,6 +7,7 @@ import {
 import type { AppBindings } from "#/env";
 import type {
   HeartbeatRequest,
+  HeartbeatResponse,
   RegisterMetalInstanceRequest,
 } from "./metal-instance.dto";
 import { MetalInstanceEntity } from "./metal-instance.entity";
@@ -75,7 +77,7 @@ export class MetalInstanceService {
     bindings: AppBindings,
     request: HeartbeatRequest,
     tx: QueryRunner,
-  ) {
+  ): Promise<HeartbeatResponse> {
     const repository = this.getRepository(bindings, tx);
     const instances = await repository.find({
       where: { id: request.metalInstanceId },
@@ -84,6 +86,9 @@ export class MetalInstanceService {
     if (instances.length === 0) {
       throw new EntityNotFound("metal instance");
     }
+    const expectedArtifacts = await tx.manager
+      .getRepository(ArtifactEntity)
+      .find();
     const instance = instances[0];
     const now = bindings.services.time.getTime();
     bindings.metrics.metalInstanceHeartbeats.labels({ id: instance.id }).inc();
@@ -118,8 +123,13 @@ export class MetalInstanceService {
       }
     }
     instance.lastSeenAt = now;
+    instance.availableArtifactVersions = request.availableArtifactVersions;
 
     await repository.save(instance);
+    return {
+      metalInstanceId: instance.id,
+      expectedArtifactVersions: expectedArtifacts.map((a) => a.version),
+    };
   }
 
   async findWithFreeResources(
