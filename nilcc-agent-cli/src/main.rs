@@ -116,8 +116,8 @@ enum AdminCommand {
 
 #[derive(Subcommand)]
 enum AdminArtifactsCommand {
-    /// Upgrade the artifacts version.
-    Upgrade(UpgradeArtifactsArgs),
+    /// Install a new artifacts version.
+    Install(InstallArtifactsArgs),
 
     /// Get the current artifacts version.
     Version,
@@ -271,7 +271,7 @@ struct HealthArgs {
 }
 
 #[derive(Args)]
-struct UpgradeArtifactsArgs {
+struct InstallArtifactsArgs {
     /// The artifact version to update to.
     version: String,
 }
@@ -522,11 +522,11 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn upgrade_artifacts(client: ApiClient, args: UpgradeArtifactsArgs) -> anyhow::Result<()> {
-    let UpgradeArtifactsArgs { version } = args;
+fn install_artifacts(client: ApiClient, args: InstallArtifactsArgs) -> anyhow::Result<()> {
+    let InstallArtifactsArgs { version } = args;
     let request = InstallArtifactVersionRequest { version: version.clone() };
-    let _: () = client.post("/api/v1/system/artifacts/upgrade", &request)?;
-    println!("Upgrade to version {version} scheduled");
+    let _: () = client.post("/api/v1/system/artifacts/install", &request)?;
+    println!("Installation of version {version} scheduled");
     Ok(())
 }
 
@@ -567,7 +567,7 @@ fn display_version(response: VersionResponse) -> anyhow::Result<()> {
     match last_upgrade {
         Some(upgrade) => {
             let LastUpgrade { version, started_at, state } = upgrade;
-            print!("Upgrade to version {version} was started at {started_at} ");
+            print!("Installation of version {version} was started at {started_at} ");
             match state {
                 UpgradeState::InProgress => println!("and is {}", Color::Yellow.paint("still in progress")),
                 UpgradeState::Success { finished_at } => {
@@ -578,7 +578,7 @@ fn display_version(response: VersionResponse) -> anyhow::Result<()> {
                 }
             }
         }
-        None => println!("No upgrades in progress"),
+        None => println!("No version installs in progress"),
     };
     Ok(())
 }
@@ -629,8 +629,8 @@ fn main() {
             SystemCommand::Logs(args) => system_logs(client, args),
             SystemCommand::Stats(args) => system_stats(client, args),
         },
-        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Upgrade(args))) => {
-            upgrade_artifacts(client, args)
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Install(args))) => {
+            install_artifacts(client, args)
         }
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Version)) => artifacts_version(client),
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Cleanup)) => cleanup_artifacts(client),
