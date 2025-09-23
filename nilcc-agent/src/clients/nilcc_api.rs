@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Method, StatusCode};
-use serde::de::DeserializeOwned;
+use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use strum::EnumDiscriminants;
@@ -128,7 +128,8 @@ impl NilccApiClient for HttpNilccApiClient {
             gpus: resources.gpus.as_ref().map(|g| g.addresses.len() as u32).unwrap_or_default(),
             gpu_model: resources.gpus.as_ref().map(|g| g.model.clone()),
         };
-        self.send_request(Method::POST, url, &payload).await
+        let _: IgnoredAny = self.send_request(Method::POST, url, &payload).await?;
+        Ok(())
     }
 
     async fn report_vm_event(
@@ -139,7 +140,8 @@ impl NilccApiClient for HttpNilccApiClient {
     ) -> Result<(), NilccApiError> {
         let url = self.make_url("/api/v1/workload-events/submit");
         let payload = VmEventRequest { agent_id: self.agent_id, workload_id, event, timestamp };
-        self.send_request(Method::POST, url, &payload).await
+        let _: IgnoredAny = self.send_request(Method::POST, url, &payload).await?;
+        Ok(())
     }
 
     async fn heartbeat(&self, available_artifact_versions: Vec<String>) -> Result<HeartbeatResponse, NilccApiError> {
