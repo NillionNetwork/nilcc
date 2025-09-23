@@ -381,7 +381,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         .collect::<Result<_, _>>()?;
     let request = CreateWorkloadRequest {
         id: id.unwrap_or_else(Uuid::new_v4),
-        artifacts_version: Some(artifacts),
+        artifacts_version: artifacts,
         docker_compose,
         env_vars,
         files,

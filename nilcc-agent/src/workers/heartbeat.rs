@@ -117,7 +117,7 @@ mod tests {
         async fn set_versions(&mut self, versions: &[&str]) {
             let artifacts = versions
                 .into_iter()
-                .map(|version| Artifacts { version: version.to_string(), metadata: None, current: false })
+                .map(|version| Artifacts { version: version.to_string(), metadata: None })
                 .collect();
             self.provider.expect_artifacts().return_once(move |_| {
                 let mut repo = MockArtifactsRepository::default();

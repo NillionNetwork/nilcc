@@ -471,7 +471,7 @@ mod tests {
                     gpu_verity_root_hash: Default::default(),
                 };
                 let metadata = Some(ArtifactsMetadata::legacy(legacy_meta));
-                Ok(Some(Artifacts { version: "default".into(), metadata, current: true }))
+                Ok(Some(Artifacts { version: "default".into(), metadata }))
             });
             Ok(Box::new(repo))
         });

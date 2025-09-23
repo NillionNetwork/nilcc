@@ -264,13 +264,10 @@ impl WorkloadService for DefaultWorkloadService {
 
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError> {
         let mut artifacts_repo = self.repository_provider.artifacts(Default::default()).await?;
-        let artifacts = match request.artifacts_version.clone() {
-            Some(version) => artifacts_repo.find(&version).await?.ok_or(CreateWorkloadError::ArtifactVersionMissing)?,
-            None => artifacts_repo
-                .get()
-                .await?
-                .ok_or_else(|| CreateWorkloadError::Internal("no artifacts version configured".into()))?,
-        };
+        let artifacts = artifacts_repo
+            .find(&request.artifacts_version)
+            .await?
+            .ok_or(CreateWorkloadError::ArtifactVersionMissing)?;
         let mut resources = self.resources.lock().await;
         let cpus = request.cpus;
         let gpus = request.gpus as usize;
@@ -582,7 +579,7 @@ mod tests {
     async fn create_success() {
         let request = CreateWorkloadRequest {
             id: Uuid::new_v4(),
-            artifacts_version: Some("default".into()),
+            artifacts_version: "default".into(),
             docker_compose: "compose".into(),
             env_vars: Default::default(),
             files: Default::default(),
@@ -626,9 +623,11 @@ mod tests {
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
-        builder.artifacts_repository.expect_find().with(eq("default")).return_once(|_| {
-            Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into(), current: true }))
-        });
+        builder
+            .artifacts_repository
+            .expect_find()
+            .with(eq("default"))
+            .return_once(|_| Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into() })));
         builder.workloads_repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder.workloads_repository.expect_commit().once().return_once(|| Ok(()));
         builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));
