@@ -49,7 +49,6 @@ pub fn build_router(state: AppState, token: String) -> Router {
             .nest(
                 "/system",
                 Router::new()
-                    .route("/artifacts/upgrade", post(system::artifacts::install::handler))
                     .route("/artifacts/install", post(system::artifacts::install::handler))
                     .route("/artifacts/version", get(system::artifacts::version::handler))
                     .route("/artifacts/cleanup", post(system::artifacts::cleanup::handler))
