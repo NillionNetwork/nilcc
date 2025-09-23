@@ -25,7 +25,7 @@ use nilcc_agent::{
     version,
     workers::{
         events::{EventWorker, EventWorkerArgs},
-        heartbeat::HeartbeatWorker,
+        heartbeat::{HeartbeatWorker, HeartbeatWorkerArgs},
     },
 };
 use nilcc_artifacts::{
@@ -365,10 +365,12 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
     let system_resources =
         SystemResources::gather(config.resources.reserved).await.context("Failed to find resources")?;
     system_resources.create_gpu_vfio_devices().await.context("Failed to create PCI VFIO GPU devices")?;
+
     let vm_types = if system_resources.gpus.is_some() { vec![VmType::Cpu, VmType::Gpu] } else { vec![VmType::Cpu] };
 
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let repository_provider = SqliteRepositoryProvider::new(db.clone());
+    system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
     download_initial_artifacts(&repository_provider, &vm_types, &config.cvm)
         .await
         .context("Failed to download initial artifacts")?;
@@ -400,16 +402,12 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
     info!("Registering with API");
     nilcc_api_client.register(&config.api, &system_resources, public_ip).await.context("Failed to register")?;
 
-    info!("Starting heartbeat worker");
-    HeartbeatWorker::spawn(nilcc_api_client.clone());
-
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
-    system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
 
     let repository_provider = Arc::new(repository_provider);
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
     let event_sender = EventWorker::spawn(EventWorkerArgs {
-        api_client: nilcc_api_client,
+        api_client: nilcc_api_client.clone(),
         repository_provider: repository_provider.clone(),
     });
     let vm_service = DefaultVmService::new(VmServiceArgs {
@@ -441,17 +439,25 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         repository_provider: repository_provider.clone(),
         config_file_path: config_path,
         cvm_artifacts_path: config.cvm.artifacts_path.clone(),
+        vm_types,
     }));
     let state = AppState {
-        services: Services { workload: workload_service.clone(), upgrade: upgrade_service },
+        services: Services { workload: workload_service.clone(), upgrade: upgrade_service.clone() },
         clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
         agent_domain: config.api.domain.clone(),
-        vm_types,
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();
     tokio::spawn(shutdown_handler(handle.clone()));
+
+    info!("Starting heartbeat worker");
+
+    HeartbeatWorker::spawn(HeartbeatWorkerArgs {
+        api_client: nilcc_api_client,
+        provider: repository_provider.clone(),
+        upgrader: upgrade_service,
+    });
 
     info!("Listening to requests on {}", config.api.bind_endpoint);
     let server = axum_server::bind(config.api.bind_endpoint).handle(handle);

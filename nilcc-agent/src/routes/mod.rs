@@ -14,7 +14,6 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use nilcc_agent_models::errors::RequestHandlerError;
-use nilcc_artifacts::VmType;
 use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -41,7 +40,6 @@ pub struct AppState {
     pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
     pub agent_domain: String,
-    pub vm_types: Vec<VmType>,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {
@@ -51,7 +49,8 @@ pub fn build_router(state: AppState, token: String) -> Router {
             .nest(
                 "/system",
                 Router::new()
-                    .route("/artifacts/upgrade", post(system::artifacts::upgrade::handler))
+                    .route("/artifacts/upgrade", post(system::artifacts::install::handler))
+                    .route("/artifacts/install", post(system::artifacts::install::handler))
                     .route("/artifacts/version", get(system::artifacts::version::handler))
                     .route("/artifacts/cleanup", post(system::artifacts::cleanup::handler))
                     .route("/agent/upgrade", post(system::agent::upgrade::handler))

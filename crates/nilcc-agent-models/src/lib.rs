@@ -20,6 +20,15 @@ pub mod system {
         }
     }
 
+    /// A request to install an artifacts version.
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct InstallArtifactVersionRequest {
+        // The version to install.
+        #[validate(custom(function = "validate_version"))]
+        pub version: String,
+    }
+
     /// A request to upgrade the version.
     #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
     #[serde(rename_all = "camelCase")]

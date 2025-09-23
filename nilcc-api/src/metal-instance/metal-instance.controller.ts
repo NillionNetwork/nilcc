@@ -19,6 +19,7 @@ import {
   DeleteMetalInstanceRequest,
   GetMetalInstanceResponse,
   HeartbeatRequest,
+  HeartbeatResponse,
   ListMetalInstancesResponse,
   RegisterMetalInstanceRequest,
 } from "#/metal-instance/metal-instance.dto";
@@ -69,6 +70,11 @@ export function heartbeat(options: ControllerOptions) {
       responses: {
         200: {
           description: "The heartbeat was processed successfully",
+          content: {
+            "application/json": {
+              schema: resolver(HeartbeatResponse),
+            },
+          },
         },
         ...OpenApiSpecCommonErrorResponses,
       },
@@ -78,12 +84,12 @@ export function heartbeat(options: ControllerOptions) {
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      await bindings.services.metalInstance.heartbeat(
+      const response = await bindings.services.metalInstance.heartbeat(
         bindings,
         payload,
         c.get("txQueryRunner"),
       );
-      return c.json({});
+      return c.json(response);
     },
   );
 }

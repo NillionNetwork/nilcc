@@ -16,8 +16,8 @@ use cvm_agent_models::{
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
 use nilcc_agent_models::system::ArtifactsCleanupResponse;
+use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
-use nilcc_agent_models::system::UpgradeRequest;
 use nilcc_agent_models::system::UpgradeState;
 use nilcc_agent_models::system::VersionResponse;
 use nilcc_agent_models::workloads::{
@@ -524,7 +524,7 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
 
 fn upgrade_artifacts(client: ApiClient, args: UpgradeArtifactsArgs) -> anyhow::Result<()> {
     let UpgradeArtifactsArgs { version } = args;
-    let request = UpgradeRequest { version: version.clone() };
+    let request = InstallArtifactVersionRequest { version: version.clone() };
     let _: () = client.post("/api/v1/system/artifacts/upgrade", &request)?;
     println!("Upgrade to version {version} scheduled");
     Ok(())
@@ -550,7 +550,7 @@ fn cleanup_artifacts(client: ApiClient) -> anyhow::Result<()> {
 
 fn upgrade_agent(client: ApiClient, args: UpgradeAgentArgs) -> anyhow::Result<()> {
     let UpgradeAgentArgs { version } = args;
-    let request = UpgradeRequest { version: version.clone() };
+    let request = InstallArtifactVersionRequest { version: version.clone() };
     let _: () = client.post("/api/v1/system/agent/upgrade", &request)?;
     println!("Upgrade to version {version} scheduled");
     Ok(())

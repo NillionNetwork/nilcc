@@ -51,6 +51,7 @@ describe("Metal Instance", () => {
       updatedAt: undefined,
       createdAt: undefined,
       lastSeenAt: undefined,
+      availableArtifactVersions: undefined,
       token: myMetalInstance.token,
     };
     expect(cleanInstance).toEqual(myMetalInstance);
@@ -81,6 +82,7 @@ describe("Metal Instance", () => {
       updatedAt: undefined,
       createdAt: undefined,
       lastSeenAt: undefined,
+      availableArtifactVersions: undefined,
       token: myMetalInstance.token,
     };
     expect(cleanInstance).toEqual(updatedInstance);
@@ -100,7 +102,7 @@ describe("Metal Instance", () => {
     const timeService = bindings.services.time as MockTimeService;
     timeService.advance(1);
     await clients.metalInstance
-      .heartbeat(myMetalInstance.metalInstanceId)
+      .heartbeat(myMetalInstance.metalInstanceId, [])
       .submit();
 
     // now the last seen timestamp should have moved the same amount
@@ -109,6 +111,29 @@ describe("Metal Instance", () => {
       .submit();
     const currentLastSeen = new Date(updatedInstance.lastSeenAt);
     expect(currentLastSeen.getTime()).toBe(lastSeen.getTime() + 1000);
+  });
+
+  it("should update the artifacts versions", async ({ expect, clients }) => {
+    const firstResponse = await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, [])
+      .submit();
+    expect(firstResponse.expectedArtifactVersions).toEqual([]);
+
+    // Enable this version and expect to be told to enable it
+    await clients.admin.enableArtifactVersion("aaa").submit();
+    const secondResponse = await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, [])
+      .submit();
+    expect(secondResponse.expectedArtifactVersions).toEqual(["aaa"]);
+
+    // Now claim we support this version and make sure that's reflected on DB
+    await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, ["aaa"])
+      .submit();
+    const instance = await clients.admin
+      .getMetalInstance(myMetalInstance.metalInstanceId)
+      .submit();
+    expect(instance.availableArtifactVersions).toEqual(["aaa"]);
   });
 
   it("should allow deleting metal instances", async ({ expect, clients }) => {
