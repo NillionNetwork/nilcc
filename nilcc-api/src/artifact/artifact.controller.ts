@@ -91,7 +91,7 @@ export function list(options: ControllerOptions) {
           // Only right is semver, it should go first
           return 1;
         }
-        return left - right;
+        return right - left;
       });
       return c.json(accounts.map(artifactMapper.entityToResponse));
     },
