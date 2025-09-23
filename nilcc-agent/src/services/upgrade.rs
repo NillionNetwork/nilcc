@@ -185,11 +185,7 @@ impl UpgradeService for DefaultUpgradeService {
 
         let mut deleted_versions = Vec::new();
         for version in versions {
-            let Artifacts { version, current, .. } = version;
-            if current {
-                info!("Not deleting version {version} because it's the current one");
-                continue;
-            }
+            let Artifacts { version, .. } = version;
             if used_versions.contains(&version) {
                 info!("Not deleting version {version} because there's workloads using it");
                 continue;
@@ -273,8 +269,9 @@ impl UpgradeService for DefaultUpgradeService {
 
     async fn artifacts_version(&self) -> anyhow::Result<String> {
         let mut repo = self.repository_provider.artifacts(Default::default()).await?;
-        let version = repo.get().await?;
-        Ok(version.ok_or_else(|| anyhow!("no version in db"))?.version)
+        // TODO this is returning a random one
+        let mut version = repo.list().await?;
+        Ok(version.pop().ok_or_else(|| anyhow!("no version in db"))?.version)
     }
 
     async fn agent_upgrade_state(&self) -> UpgradeState {
@@ -349,7 +346,7 @@ impl ArtifactInstallWorker {
             .artifacts(ProviderMode::Transactional)
             .await
             .context("Failed to get repository")?;
-        repo.set(version, &artifacts.metadata).await.context("Failed to set version")?;
+        repo.create(version, &artifacts.metadata).await.context("Failed to set version")?;
         repo.commit().await?;
         Ok(())
     }

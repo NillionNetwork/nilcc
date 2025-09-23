@@ -102,7 +102,7 @@ pub mod workloads {
         #[serde(rename_all = "camelCase")]
         pub struct CreateWorkloadRequest {
             pub id: Uuid,
-            pub artifacts_version: Option<String>,
+            pub artifacts_version: String,
             pub docker_compose: String,
 
             #[serde(default)]

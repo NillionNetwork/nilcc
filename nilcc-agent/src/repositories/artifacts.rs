@@ -6,8 +6,8 @@ use sqlx::FromRow;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait ArtifactsRepository: Send + Sync {
-    /// Set the current artifacts version.
-    async fn set(&mut self, version: &str, metadata: &ArtifactsMetadata) -> Result<(), ArtifactsRepositoryError>;
+    /// Insert a new version.
+    async fn create(&mut self, version: &str, metadata: &ArtifactsMetadata) -> Result<(), ArtifactsRepositoryError>;
 
     /// Update the metadata for an artifact.
     async fn update_metadata(
@@ -16,10 +16,7 @@ pub trait ArtifactsRepository: Send + Sync {
         metadata: &ArtifactsMetadata,
     ) -> Result<(), ArtifactsRepositoryError>;
 
-    /// Get the current artifacts version, if any
-    async fn get(&mut self) -> Result<Option<Artifacts>, ArtifactsRepositoryError>;
-
-    /// Get the current artifacts version, if any
+    /// Find an artifacts version.
     async fn find(&mut self, version: &str) -> Result<Option<Artifacts>, ArtifactsRepositoryError>;
 
     /// List the available versions.
@@ -40,7 +37,6 @@ pub struct Artifacts {
     pub version: String,
     #[sqlx(json)]
     pub metadata: Option<ArtifactsMetadata>,
-    pub current: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -61,11 +57,8 @@ impl<'a> SqliteArtifactsRepository<'a> {
 
 #[async_trait]
 impl<'a> ArtifactsRepository for SqliteArtifactsRepository<'a> {
-    async fn set(&mut self, version: &str, metadata: &ArtifactsMetadata) -> Result<(), ArtifactsRepositoryError> {
-        let query = "UPDATE artifacts SET current = 0";
-        sqlx::query(query).execute(&mut *self.ctx).await?;
-
-        let query = "INSERT INTO artifacts (version, metadata, current) VALUES (?, ?, 1)";
+    async fn create(&mut self, version: &str, metadata: &ArtifactsMetadata) -> Result<(), ArtifactsRepositoryError> {
+        let query = "INSERT INTO artifacts (version, metadata) VALUES (?, ?)";
         sqlx::query(query).bind(version).bind(sqlx::types::Json(metadata)).execute(&mut *self.ctx).await?;
         Ok(())
     }
@@ -80,20 +73,14 @@ impl<'a> ArtifactsRepository for SqliteArtifactsRepository<'a> {
         Ok(())
     }
 
-    async fn get(&mut self) -> Result<Option<Artifacts>, ArtifactsRepositoryError> {
-        let query = "SELECT version, metadata, current FROM artifacts WHERE current = 1";
-        let row = sqlx::query_as(query).fetch_optional(&mut *self.ctx).await?;
-        Ok(row)
-    }
-
     async fn find(&mut self, version: &str) -> Result<Option<Artifacts>, ArtifactsRepositoryError> {
-        let query = "SELECT version, metadata, current FROM artifacts WHERE version = ?";
+        let query = "SELECT version, metadata FROM artifacts WHERE version = ?";
         let row = sqlx::query_as(query).bind(version).fetch_optional(&mut *self.ctx).await?;
         Ok(row)
     }
 
     async fn list(&mut self) -> Result<Vec<Artifacts>, ArtifactsRepositoryError> {
-        let query = "SELECT version, metadata, current FROM artifacts";
+        let query = "SELECT version, metadata FROM artifacts";
         let rows = sqlx::query_as(query).fetch_all(&mut *self.ctx).await?;
         Ok(rows)
     }
@@ -128,17 +115,12 @@ mod tests {
         let connection = db.0.acquire().await.expect("failed to acquire");
         let mut repo = SqliteArtifactsRepository::new(SqliteTransactionContextInner::Connection(connection).into());
 
-        assert!(repo.get().await.expect("failed to get").is_none());
-
         let meta = ArtifactsMetadata::legacy(LegacyMetadata {
             cpu_verity_root_hash: Default::default(),
             gpu_verity_root_hash: Default::default(),
         });
-        repo.set("aaa", &meta).await.expect("failed to set");
-        assert_eq!(repo.get().await.expect("failed to get").unwrap().version, "aaa");
-
-        repo.set("bbb", &meta).await.expect("failed to set");
-        assert_eq!(repo.get().await.expect("failed to get").unwrap().version, "bbb");
+        repo.create("aaa", &meta).await.expect("failed to set");
+        repo.create("bbb", &meta).await.expect("failed to set");
 
         assert!(repo.exists("aaa").await.expect("lookup failed"));
         assert!(repo.exists("bbb").await.expect("lookup failed"));

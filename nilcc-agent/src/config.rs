@@ -48,11 +48,8 @@ pub struct AgentConfig {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct CvmConfigs {
-    // The base path where all configs are.
+    /// The base path where all configs are.
     pub artifacts_path: PathBuf,
-
-    /// The initial version to use.
-    pub initial_version: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

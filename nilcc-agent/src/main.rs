@@ -283,26 +283,6 @@ async fn download_artifacts(args: DownloadArtifactsArgs) -> Result<()> {
     Ok(())
 }
 
-async fn download_initial_artifacts(
-    provider: &SqliteRepositoryProvider,
-    vm_types: &[VmType],
-    config: &CvmConfigs,
-) -> Result<()> {
-    let mut repo = provider.artifacts(Default::default()).await?;
-    let artifacts = repo.get().await?;
-    if let Some(artifacts) = artifacts {
-        info!("No need to download initial artifacts since we're configured to use version {}", artifacts.version);
-        return Ok(());
-    }
-    let downloader = ArtifactsDownloader::new(config.initial_version.clone(), vm_types.to_vec());
-    let download_path = config.artifacts_path.join(&config.initial_version);
-    let artifacts = downloader.download(&download_path).await.context("Failed to download artifacts")?;
-    repo.set(&config.initial_version, &artifacts.metadata)
-        .await
-        .context("Failed to set artifact version in repository")?;
-    Ok(())
-}
-
 fn load_verity_root_hash(version: &str, vm_type: VmType, config: &CvmConfigs) -> Result<[u8; 32]> {
     let path = config.artifacts_path.join(version).join(format!("vm_images/cvm-{vm_type}-verity/root-hash"));
     let hex_hash = fs::read_to_string(&path).context("Failed to read verity root hash")?;
@@ -371,9 +351,6 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
     let db = SqliteDb::connect(&config.db.url).await.context("Failed to create database")?;
     let repository_provider = SqliteRepositoryProvider::new(db.clone());
     system_resources.adjust_gpu_assignment(&repository_provider).await.context("Failed to adjust GPU configs")?;
-    download_initial_artifacts(&repository_provider, &vm_types, &config.cvm)
-        .await
-        .context("Failed to download initial artifacts")?;
     set_missing_artifact_metadata(&repository_provider, &config.cvm)
         .await
         .context("Failed to set legacy artifact metadata")?;
