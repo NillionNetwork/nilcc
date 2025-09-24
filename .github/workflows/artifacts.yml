@@ -7,6 +7,8 @@ on:
       - 'crates/cvm-agent-models/**'
     branches:
       - main
+    tags:
+      - 'nilcc-artifacts-*'
 
 permissions:
   id-token: write
@@ -63,13 +65,21 @@ jobs:
           echo "Metadata hash: ${hash}" >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS credentials
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags')
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: "arn:aws:iam::592920173613:role/github-runners-productionnilcc-ci-nilcc-bucket"
           aws-region: eu-west-1
 
       - name: Publish
-        if: github.ref == 'refs/heads/main'
-        run: artifacts/upload.sh
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags')
+        run: |
+          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-artifacts-.* ]]; then
+            # Remove the 'refs/tags/nilcc-artifacts-' prefix and keep the version
+            version=${GITHUB_REF:26}
+          else
+            # Or the short git hash otherwise.
+            version=$(git rev-parse --short HEAD)
+          fi
+          ./artifacts/upload.sh "${version}"
 
