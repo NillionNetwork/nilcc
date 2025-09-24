@@ -1,7 +1,7 @@
 use crate::{
     clients::{
         cvm_agent::CvmAgentClient,
-        qemu::{HardDiskFormat, HardDiskSpec, VmClient, VmSpec},
+        qemu::{HardDiskSpec, VmClient, VmSpec},
     },
     config::{DockerConfig, ZeroSslConfig},
     repositories::{sqlite::RepositoryProvider, workload::Workload},
@@ -15,7 +15,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::bootstrap::DockerCredentials;
 use nilcc_artifacts::{
-    metadata::{ArtifactsMetadata, KernelArgs},
+    metadata::{ArtifactsMetadata, DiskFormat, KernelArgs},
     VmType,
 };
 use sha2::{Digest, Sha256};
@@ -109,9 +109,14 @@ impl DefaultVmService {
             cpu: workload.cpus,
             ram_mib: workload.memory_mb,
             hard_disks: vec![
-                HardDiskSpec { path: base_disk, format: HardDiskFormat::Qcow2, read_only: false },
-                HardDiskSpec { path: verity_disk, format: HardDiskFormat::Raw, read_only: true },
-                HardDiskSpec { path: state_disk_path, format: HardDiskFormat::Raw, read_only: false },
+                HardDiskSpec {
+                    path: base_disk.path,
+                    format: base_disk.format,
+                    // we make qcow2 snapshots so those are not read only
+                    read_only: matches!(base_disk.format, DiskFormat::Raw),
+                },
+                HardDiskSpec { path: verity_disk.path, format: DiskFormat::Raw, read_only: true },
+                HardDiskSpec { path: state_disk_path, format: DiskFormat::Raw, read_only: false },
             ],
             cdrom_iso_path: Some(iso_path),
             gpus: workload.gpus.clone(),
@@ -137,27 +142,26 @@ impl DefaultVmService {
             return Ok(disk_path);
         }
         self.disk_service
-            .create_disk(&disk_path, HardDiskFormat::Raw, workload.disk_space_gb)
+            .create_disk(&disk_path, DiskFormat::Raw, workload.disk_space_gb)
             .await
             .map_err(|e| StartVmError(format!("failed to create state disk: {e}")))?;
         Ok(disk_path)
     }
 
-    async fn create_disk_snapshot(
+    async fn create_qcow2_snapshot(
         &self,
         workload: &Workload,
         original_disk: &Path,
         disk_type: &str,
-        disk_format: HardDiskFormat,
     ) -> Result<PathBuf, StartVmError> {
-        let disk_name = format!("{}.{disk_type}.{disk_format}", workload.id);
+        let disk_name = format!("{}.{disk_type}.qcow2", workload.id);
         let disk_path = self.state_path.join(disk_name);
         if disk_path.exists() {
             info!("Not copying base image because it already exists");
             return Ok(disk_path);
         }
         self.disk_service
-            .create_disk_snapshot(&disk_path, original_disk, disk_format)
+            .create_qcow2_snapshot(&disk_path, original_disk)
             .await
             .map_err(|e| StartVmError(format!("failed to create {disk_type} disk snapshot: {e}")))?;
         Ok(disk_path)
@@ -264,9 +268,14 @@ impl VmService for DefaultVmService {
                 docker_compose_hash: &docker_compose_hash,
             })
             .map_err(|e| StartVmError(e.to_string()))?;
-        // Keep everything the same except the base disk since we'll use a snapshot
-        cvm_config.vm.base_disk =
-            self.create_disk_snapshot(workload, &cvm_config.vm.base_disk, "base", HardDiskFormat::Qcow2).await?;
+        match cvm_config.vm.base_disk.format {
+            DiskFormat::Qcow2 => {
+                // Create a snapshot for qcow2 disks.
+                cvm_config.vm.base_disk.path =
+                    self.create_qcow2_snapshot(workload, &cvm_config.vm.base_disk.path, "base").await?;
+            }
+            DiskFormat::Raw => (),
+        };
         let spec = self.create_vm_spec(workload, iso_path, state_disk, cvm_config, kernel_args);
         Ok(spec)
     }
@@ -306,8 +315,8 @@ impl CvmConfig {
             bios: base_path.join(&meta.ovmf.path),
             vm: CvmFiles {
                 kernel: base_path.join(&vm.kernel.path),
-                base_disk: base_path.join(&vm.disk.artifact.path),
-                verity_disk: base_path.join(&vm.verity.disk.path),
+                base_disk: Disk { path: base_path.join(&vm.disk.artifact.path), format: vm.disk.format },
+                verity_disk: Disk { path: base_path.join(&vm.verity.disk.path), format: vm.disk.format },
             },
         }
     }
@@ -323,8 +332,14 @@ struct CvmConfig {
 #[derive(Clone, Debug)]
 struct CvmFiles {
     kernel: PathBuf,
-    base_disk: PathBuf,
-    verity_disk: PathBuf,
+    base_disk: Disk,
+    verity_disk: Disk,
+}
+
+#[derive(Clone, Debug)]
+struct Disk {
+    path: PathBuf,
+    format: DiskFormat,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -452,17 +467,13 @@ mod tests {
         builder
             .disk_service
             .expect_create_disk()
-            .with(eq(state_disk_path), eq(HardDiskFormat::Raw), eq(1))
+            .with(eq(state_disk_path), eq(DiskFormat::Raw), eq(1))
             .return_once(move |_, _, _| Ok(()));
         builder
             .disk_service
-            .expect_create_disk_snapshot()
-            .with(
-                eq(base_disk_path.clone()),
-                eq(builder.cvm_artifacts_path.join("default/vm_images/cvm-cpu.qcow2")),
-                eq(HardDiskFormat::Qcow2),
-            )
-            .return_once(move |_, _, _| Ok(()));
+            .expect_create_qcow2_snapshot()
+            .with(eq(base_disk_path.clone()), eq(builder.cvm_artifacts_path.join("default/vm_images/cvm-cpu.qcow2")))
+            .return_once(move |_, _| Ok(()));
         builder.repository_provider.expect_artifacts().return_once(|_| {
             let mut repo = MockArtifactsRepository::default();
             repo.expect_find().with(eq("default")).return_once(|_| {
