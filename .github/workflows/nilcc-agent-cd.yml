@@ -1,8 +1,6 @@
 name: nilcc-agent build/push
 on:
   push:
-    tags:
-      - 'nilcc-agent-*'
     branches:
       - main
 
@@ -31,11 +29,5 @@ jobs:
 
       - name: Publish
         run: |
-          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-agent-.* ]]; then
-            # Remove the 'refs/tags/nilcc-agent-' prefix and keep the version
-            version=${GITHUB_REF:22}
-          else
-            # Or the short git hash otherwise.
-            version=$(git rev-parse --short HEAD)
-          fi
-          aws s3 cp "target/release/nilcc-agent" "s3://nilcc/${version}/nilcc-agent/x86-64/nilcc-agent"
+          COMMIT=$(git rev-parse --short HEAD)
+          aws s3 cp "target/release/nilcc-agent" "s3://nilcc/${COMMIT}/nilcc-agent/x86-64/nilcc-agent"
