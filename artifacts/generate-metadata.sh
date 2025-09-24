@@ -6,7 +6,6 @@ set -euo pipefail
 SCRIPT_PATH=$(dirname $(realpath $0))
 
 BUILD_TIMESTAMP=$(date +%s)
-GIT_HASH=$(git rev-parse --short HEAD)
 KERNEL_COMMIT=$(cat "$SCRIPT_PATH/kernel/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
 QEMU_COMMIT=$(cat "$SCRIPT_PATH/qemu/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
 INITRD=initramfs/initramfs.cpio.gz
@@ -30,7 +29,6 @@ METADATA=$(
   cat <<EOF
 {
   "built_at": ${BUILD_TIMESTAMP},
-  "git_hash": "${GIT_HASH}",
   "kernel": {
     "commit": "${KERNEL_COMMIT}"
   },

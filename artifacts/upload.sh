@@ -3,13 +3,7 @@
 
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <version>"
-  exit 1
-fi
-
 SCRIPT_PATH=$(dirname $(realpath $0))
-TARGET_URL="s3://nilcc/${1}/"
 
-echo "Uploading to ${TARGET_URL}"
-aws s3 cp --recursive "$SCRIPT_PATH/dist" "${TARGET_URL}"
+COMMIT=$(git rev-parse --short HEAD)
+aws s3 cp --recursive "$SCRIPT_PATH/dist" "s3://nilcc/${COMMIT}/"
