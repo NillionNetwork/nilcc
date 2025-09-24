@@ -1,7 +1,7 @@
-use crate::clients::qemu::HardDiskFormat;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
+use nilcc_artifacts::metadata::DiskFormat;
 use serde::Serialize;
 use std::{
     fmt::Write,
@@ -30,10 +30,10 @@ static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &[
 #[async_trait]
 pub trait DiskService: Send + Sync {
     /// Create a disk at the given path with the given format.
-    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u32) -> anyhow::Result<()>;
+    async fn create_disk(&self, path: &Path, format: DiskFormat, size_gib: u32) -> anyhow::Result<()>;
 
     /// Create a qemu disk snapshot.
-    async fn create_disk_snapshot(&self, target: &Path, origin: &Path, format: HardDiskFormat) -> anyhow::Result<()>;
+    async fn create_qcow2_snapshot(&self, target: &Path, origin: &Path) -> anyhow::Result<()>;
 
     /// Create the ISO for an application.
     async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> Result<(), CreateIsoError>;
@@ -94,15 +94,15 @@ impl DefaultDiskService {
 
 #[async_trait]
 impl DiskService for DefaultDiskService {
-    async fn create_disk(&self, path: &Path, format: HardDiskFormat, size_gib: u32) -> anyhow::Result<()> {
+    async fn create_disk(&self, path: &Path, format: DiskFormat, size_gib: u32) -> anyhow::Result<()> {
         let format = format.to_string();
         let args = ["create", "-f", &format, &path.to_string_lossy(), &format!("{size_gib}G")];
         self.qemu_img(&args).await
     }
 
-    async fn create_disk_snapshot(&self, target: &Path, origin: &Path, format: HardDiskFormat) -> anyhow::Result<()> {
-        let format = format.to_string();
-        let args = ["create", "-f", &format, "-b", &origin.to_string_lossy(), "-F", &format, &target.to_string_lossy()];
+    async fn create_qcow2_snapshot(&self, target: &Path, origin: &Path) -> anyhow::Result<()> {
+        let format = "qcow2";
+        let args = ["create", "-f", format, "-b", &origin.to_string_lossy(), "-F", format, &target.to_string_lossy()];
         self.qemu_img(&args).await
     }
 

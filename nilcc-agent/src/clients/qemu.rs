@@ -1,12 +1,13 @@
 use crate::resources::GpuAddress;
 use async_trait::async_trait;
+use nilcc_artifacts::metadata::DiskFormat;
 use qapi::{
     futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
     qmp::{quit, system_powerdown, system_reset, QmpCommand},
     Command as QapiCommandTrait, ExecuteError,
 };
 use std::{
-    fmt, io,
+    io,
     ops::Deref,
     path::{Path, PathBuf},
     process::ExitStatus,
@@ -33,30 +34,10 @@ pub struct HardDiskSpec {
     pub path: PathBuf,
 
     /// The hard disk format
-    pub format: HardDiskFormat,
+    pub format: DiskFormat,
 
     /// Whether the disk should be set to read only.
     pub read_only: bool,
-}
-
-/// A hard disk format.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum HardDiskFormat {
-    /// A hard disk in raw format.
-    Raw,
-
-    /// A hard disk in qcow2 format.
-    Qcow2,
-}
-
-impl fmt::Display for HardDiskFormat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let format = match self {
-            Self::Raw => "raw",
-            Self::Qcow2 => "qcow2",
-        };
-        write!(f, "{format}")
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -403,8 +384,8 @@ mod tests {
             cpu: 2,
             ram_mib: 2048,
             hard_disks: vec![
-                HardDiskSpec { path: "/tmp/1.qcow2".into(), format: HardDiskFormat::Qcow2, read_only: true },
-                HardDiskSpec { path: "/tmp/2.raw".into(), format: HardDiskFormat::Raw, read_only: false },
+                HardDiskSpec { path: "/tmp/1.qcow2".into(), format: DiskFormat::Qcow2, read_only: true },
+                HardDiskSpec { path: "/tmp/2.raw".into(), format: DiskFormat::Raw, read_only: false },
             ],
             cdrom_iso_path: Some("/tmp/cd.iso".into()),
             gpus: vec![GpuAddress("A".into()), GpuAddress("B".into())],
@@ -509,7 +490,7 @@ mod tests {
         fs::create_dir_all(&store).await.unwrap();
 
         let hard_disk_path = store.path().join("disk.qcow2");
-        let hard_disk_format = HardDiskFormat::Qcow2;
+        let hard_disk_format = DiskFormat::Qcow2;
         DefaultDiskService::new("qemu-img".into())
             .create_disk(&hard_disk_path, hard_disk_format, 1)
             .await
