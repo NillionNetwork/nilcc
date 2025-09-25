@@ -35,6 +35,7 @@ BASE_IMG_PATH="$SCRIPT_PATH/build/base-image.img"
 IMG_PATH="$BUILD_PATH/image.qcow2"
 SEED_PATH=$(mktemp /tmp/nilcc.XXXXX)
 CDROM_PATH=$(mktemp /tmp/nilcc.XXXXX)
+NILCC_VERSION=${NILCC_VERSION:-$(git rev-parse --short HEAD)}
 
 sudo rm -rf "$ISO_SOURCES_PATH/packages"
 
@@ -54,7 +55,7 @@ cp "$CVM_AGENT_PATH" "$ISO_SOURCES_PATH/nillion/"
 cp "$SCRIPT_PATH/cvm-agent.service" "$ISO_SOURCES_PATH/nillion/"
 
 # Store version and type so the VM can store this persistently.
-echo "$(git rev-parse --short HEAD)" >"$ISO_SOURCES_PATH/nillion/nilcc-version"
+echo "$NILCC_VERSION" >"$ISO_SOURCES_PATH/nillion/nilcc-version"
 echo "$VM_TYPE" >"$ISO_SOURCES_PATH/nillion/nilcc-vm-type"
 
 [[ ! -f "${BASE_IMG_PATH}" ]] && curl -L "$IMAGE_URL" -o "$BASE_IMG_PATH"
