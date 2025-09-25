@@ -40,4 +40,9 @@ export class ArtifactService {
     const repository = this.getRepository(bindings);
     return await repository.find();
   }
+
+  async remove(bindings: AppBindings, version: string): Promise<void> {
+    const repository = this.getRepository(bindings);
+    await repository.delete({ version });
+  }
 }

@@ -4,4 +4,5 @@ import * as ArtifactController from "./artifact.controller";
 export function buildArtifactRouter(options: ControllerOptions): void {
   ArtifactController.enable(options);
   ArtifactController.list(options);
+  ArtifactController.remove(options);
 }

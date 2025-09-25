@@ -19,3 +19,12 @@ export const EnableArtifactRequest = z
   })
   .openapi({ ref: "EnableArtifactRequest" });
 export type EnableArtifactRequest = z.infer<typeof EnableArtifactRequest>;
+
+export const DeleteArtifactRequest = z
+  .object({
+    version: z.string().openapi({
+      description: "The artifact version to be deleted.",
+    }),
+  })
+  .openapi({ ref: "DeleteArtifactRequest" });
+export type DeleteArtifactRequest = z.infer<typeof DeleteArtifactRequest>;
