@@ -37,7 +37,7 @@ jobs:
             # Or the short git hash otherwise.
             version=$(git rev-parse --short HEAD)
           fi
-          echo "Building version ${NILCC_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "Building version ${version}"
           echo "NILCC_VERSION=${version}" >> $GITHUB_ENV
 
       - name: Install rust toolchain
@@ -59,9 +59,13 @@ jobs:
         run: artifacts/initramfs/build.sh
 
       - name: Build guest cpu disk
+        env:
+          NILCC_VERSION: ${{ env.NILCC_VERSION }}
         run: artifacts/cvm-image/build.sh cpu
 
       - name: Build guest gpu disk
+        env:
+          NILCC_VERSION: ${{ env.NILCC_VERSION }}
         run: artifacts/cvm-image/build.sh gpu
 
       - name: Generate build metadata
@@ -80,6 +84,5 @@ jobs:
       - name: Publish
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags')
         run: |
-          export NILCC_VERSION=${{ env.NILCC_VERSION }}
-          ./artifacts/upload.sh "${version}"
+          ./artifacts/upload.sh "${{ env.NILCC_VERSION }}"
 
