@@ -64,10 +64,12 @@ log "Opening $ROOT device and ensuring it matches root hash $VERITY_ROOT_HASH"
 veritysetup open $ROOT root $VERITY_DISK $VERITY_ROOT_HASH
 
 # mount root disk as read-only
-mount -o ro,noload /dev/mapper/root $MNT_DIR
+log "Mounting disk on $MNT_DIR"
+mount -o ro /dev/mapper/root $MNT_DIR
 
 # Generate a random password and use LUKS to encrypt the state disk with it.
 STATE_PASSWORD=$(head -c 64 /dev/random | base64 -w 0)
+log "Setting state disk $STATE_DISK"
 echo "$STATE_PASSWORD" | cryptsetup luksFormat "$STATE_DISK"
 
 # Now open the disk and format it using ext4
@@ -89,6 +91,7 @@ cp -r "${MNT_DIR}/ro/etc" "${MNT_DIR}/"
 mount -t tmpfs -o size=1024M tmpfs "$MNT_DIR/tmp"
 
 # Mount the ISO that contains the docker compose file into the path where cvm-agent will look it up.
+log "Validating docker compose file"
 mount -o loop "$DOCKER_COMPOSE_DISK" "$MNT_DIR/media/cvm-agent-entrypoint"
 
 # Ensure docker compose hash exists.

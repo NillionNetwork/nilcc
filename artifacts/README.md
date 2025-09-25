@@ -59,17 +59,6 @@ The initramfs can be built by running:
 ./initramfs/build.sh
 ```
 
-### OS installation ISO
-
-An installation ISO can be created by running the following command, specifying `gpu` or `cpu` depending on whether 
-`gpu` support is desired or not:
-
-```bash
-./autoinstall_ubuntu/build.sh guest <cpu|gpu>
-```
-
-This will create an ISO file that will contain all necessary resources to get a guest operating system up.
-
 ### Base VM disk image
 
 A base VM disk image can be created by running:
@@ -80,7 +69,7 @@ A base VM disk image can be created by running:
 
 This will take some time but in the end will generate:
 
-* A `qcow2` file that contains the disk image for the VM.
+* A `.squashfs` file that contains the raw disk image for the VM, in squashfs format.
 * A file that contains the verity hash device and another one that contains the root hash. See more about this 
 [here](../README.md#dm-verity)
 
