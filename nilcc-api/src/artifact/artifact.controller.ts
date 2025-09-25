@@ -2,11 +2,18 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import semver, { SemVer } from "semver";
 import { adminAuthentication, userAuthentication } from "#/common/auth";
-import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
+import {
+  OpenApiSpecCommonErrorResponses,
+  OpenApiSpecEmptySuccessResponses,
+} from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { payloadValidator } from "#/common/zod-utils";
-import { Artifact, EnableArtifactRequest } from "./artifact.dto";
+import {
+  Artifact,
+  DeleteArtifactRequest,
+  EnableArtifactRequest,
+} from "./artifact.dto";
 import type { ArtifactEntity } from "./artifact.entity";
 import { artifactMapper } from "./artifact.mapper";
 
@@ -94,6 +101,31 @@ export function list(options: ControllerOptions) {
         return right - left;
       });
       return c.json(accounts.map(artifactMapper.entityToResponse));
+    },
+  );
+}
+
+export function remove(options: ControllerOptions): void {
+  const { app, bindings } = options;
+
+  app.post(
+    PathsV1.artifacts.delete,
+    describeRoute({
+      tags: ["artifacts"],
+      summary: "Delete a supported artifact version",
+      description:
+        "This will delete a supported artifact version. Any workload that is already running using the deleted version will continue to do so.",
+      responses: {
+        200: OpenApiSpecEmptySuccessResponses[200],
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    adminAuthentication(bindings),
+    payloadValidator(DeleteArtifactRequest),
+    async (c) => {
+      const version = c.req.valid("json").version;
+      await bindings.services.artifact.remove(bindings, version);
+      return c.json({});
     },
   );
 }
