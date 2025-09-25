@@ -4,9 +4,9 @@ use crate::{
 };
 use axum::response::Response;
 use axum::{extract::State, Json};
-use nilcc_agent_models::system::{LastUpgrade, VersionResponse};
+use nilcc_agent_models::system::{AgentVersionResponse, LastUpgrade};
 
-pub(crate) async fn handler(state: State<AppState>) -> Result<Json<VersionResponse>, Response> {
+pub(crate) async fn handler(state: State<AppState>) -> Result<Json<AgentVersionResponse>, Response> {
     let version = state.services.upgrade.agent_version();
     let last_upgrade = match state.services.upgrade.agent_upgrade_state().await {
         UpgradeState::None => None,
@@ -23,5 +23,5 @@ pub(crate) async fn handler(state: State<AppState>) -> Result<Json<VersionRespon
             Some(LastUpgrade { version, started_at, state })
         }
     };
-    Ok(Json(VersionResponse { version, last_upgrade }))
+    Ok(Json(AgentVersionResponse { version, last_upgrade }))
 }

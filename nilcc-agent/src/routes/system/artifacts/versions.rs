@@ -6,12 +6,12 @@ use axum::{extract::State, response::IntoResponse, Json};
 use axum::{http::StatusCode, response::Response};
 use nilcc_agent_models::{
     errors::RequestHandlerError,
-    system::{LastUpgrade, VersionResponse},
+    system::{ArtifactVersionsResponse, LastUpgrade},
 };
 use tracing::error;
 
-pub(crate) async fn handler(state: State<AppState>) -> Result<Json<VersionResponse>, Response> {
-    let version = state.services.upgrade.artifacts_version().await.map_err(|e| {
+pub(crate) async fn handler(state: State<AppState>) -> Result<Json<ArtifactVersionsResponse>, Response> {
+    let versions = state.services.upgrade.artifacts_versions().await.map_err(|e| {
         error!("Failed to get current artifacts version: {e:#}");
         (StatusCode::INTERNAL_SERVER_ERROR, Json(RequestHandlerError::new("internal server error", "INTERNAL")))
             .into_response()
@@ -31,5 +31,5 @@ pub(crate) async fn handler(state: State<AppState>) -> Result<Json<VersionRespon
             Some(LastUpgrade { version, started_at, state })
         }
     };
-    Ok(Json(VersionResponse { version, last_upgrade }))
+    Ok(Json(ArtifactVersionsResponse { versions, last_upgrade }))
 }
