@@ -15,11 +15,12 @@ use cvm_agent_models::{
     container::Container,
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
+use nilcc_agent_models::system::AgentVersionResponse;
+use nilcc_agent_models::system::ArtifactVersionsResponse;
 use nilcc_agent_models::system::ArtifactsCleanupResponse;
 use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeState;
-use nilcc_agent_models::system::VersionResponse;
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
@@ -119,8 +120,8 @@ enum AdminArtifactsCommand {
     /// Install a new artifacts version.
     Install(InstallArtifactsArgs),
 
-    /// Get the current artifacts version.
-    Version,
+    /// Get the current artifacts versions.
+    Versions,
 
     /// Cleanup unused artifact versions.
     Cleanup,
@@ -509,7 +510,7 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
         let CpuStats { name, usage, frequency } = cpu;
         let color = percent_to_color((usage / 100.0).into());
         let details = format!("{usage:.1}%");
-        println!("* {name} ({frequency} MHz): {}", color.paint(details));
+        println!("  * {name} ({frequency} MHz): {}", color.paint(details));
     }
     println!("Disks:");
     for disk in disks {
@@ -517,7 +518,7 @@ fn system_stats(client: ApiClient, args: SystemStatsArgs) -> anyhow::Result<()> 
         let mount_point = mount_point.display();
         let color = percent_to_color(used as f64 / size as f64);
         let details = format!("{:.2}GB/{:.2}GB", bytes_to_gb(used), bytes_to_gb(size));
-        println!("* {name} mounted at {mount_point} ({filesystem}): {}", color.paint(details));
+        println!("  * {name} mounted at {mount_point} ({filesystem}): {}", color.paint(details));
     }
     Ok(())
 }
@@ -530,9 +531,19 @@ fn install_artifacts(client: ApiClient, args: InstallArtifactsArgs) -> anyhow::R
     Ok(())
 }
 
-fn artifacts_version(client: ApiClient) -> anyhow::Result<()> {
-    let response: VersionResponse = client.get("/api/v1/system/artifacts/version")?;
-    display_version(response)
+fn artifacts_versions(client: ApiClient) -> anyhow::Result<()> {
+    let response: ArtifactVersionsResponse = client.get("/api/v1/system/artifacts/versions")?;
+    let ArtifactVersionsResponse { versions, last_upgrade } = response;
+    if versions.is_empty() {
+        println!("No artifact versions installed");
+    } else {
+        println!("Supported versions:");
+        for version in versions {
+            println!("  * {version}")
+        }
+    }
+    display_last_upgrade(last_upgrade);
+    Ok(())
 }
 
 fn cleanup_artifacts(client: ApiClient) -> anyhow::Result<()> {
@@ -557,13 +568,14 @@ fn upgrade_agent(client: ApiClient, args: UpgradeAgentArgs) -> anyhow::Result<()
 }
 
 fn agent_version(client: ApiClient) -> anyhow::Result<()> {
-    let response: VersionResponse = client.get("/api/v1/system/agent/version")?;
-    display_version(response)
+    let response: AgentVersionResponse = client.get("/api/v1/system/agent/version")?;
+    let AgentVersionResponse { version, last_upgrade } = response;
+    println!("Version: {version}");
+    display_last_upgrade(last_upgrade);
+    Ok(())
 }
 
-fn display_version(response: VersionResponse) -> anyhow::Result<()> {
-    let VersionResponse { version, last_upgrade } = response;
-    println!("Version: {version}");
+fn display_last_upgrade(last_upgrade: Option<LastUpgrade>) {
     match last_upgrade {
         Some(upgrade) => {
             let LastUpgrade { version, started_at, state } = upgrade;
@@ -580,7 +592,6 @@ fn display_version(response: VersionResponse) -> anyhow::Result<()> {
         }
         None => println!("No version installs in progress"),
     };
-    Ok(())
 }
 
 fn bytes_to_mb(bytes: u64) -> u64 {
@@ -632,7 +643,7 @@ fn main() {
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Install(args))) => {
             install_artifacts(client, args)
         }
-        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Version)) => artifacts_version(client),
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Versions)) => artifacts_versions(client),
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Cleanup)) => cleanup_artifacts(client),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Upgrade(args))) => upgrade_agent(client, args),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Version)) => agent_version(client),

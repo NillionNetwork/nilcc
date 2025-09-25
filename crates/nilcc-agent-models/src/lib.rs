@@ -40,9 +40,20 @@ pub mod system {
 
     #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
     #[serde(rename_all = "camelCase")]
-    pub struct VersionResponse {
+    pub struct AgentVersionResponse {
         // The version we are running.
         pub version: String,
+
+        // Information about the last upgrade, if any.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub last_upgrade: Option<LastUpgrade>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactVersionsResponse {
+        // The versions supported.
+        pub versions: Vec<String>,
 
         // Information about the last upgrade, if any.
         #[serde(skip_serializing_if = "Option::is_none")]

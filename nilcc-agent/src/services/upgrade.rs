@@ -2,7 +2,6 @@ use crate::repositories::artifacts::Artifacts;
 use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use crate::routes::Json;
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use async_trait::async_trait;
@@ -37,7 +36,7 @@ pub trait UpgradeService: Send + Sync {
     async fn upgrade_agent(&self, version: String) -> Result<(), UpgradeError>;
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError>;
     async fn artifacts_upgrade_state(&self) -> UpgradeState;
-    async fn artifacts_version(&self) -> anyhow::Result<String>;
+    async fn artifacts_versions(&self) -> anyhow::Result<Vec<String>>;
     async fn agent_upgrade_state(&self) -> UpgradeState;
     fn agent_version(&self) -> String;
 }
@@ -267,11 +266,10 @@ impl UpgradeService for DefaultUpgradeService {
         self.artifacts.lock().await.clone()
     }
 
-    async fn artifacts_version(&self) -> anyhow::Result<String> {
+    async fn artifacts_versions(&self) -> anyhow::Result<Vec<String>> {
         let mut repo = self.repository_provider.artifacts(Default::default()).await?;
-        // TODO this is returning a random one
-        let mut version = repo.list().await?;
-        Ok(version.pop().ok_or_else(|| anyhow!("no version in db"))?.version)
+        let versions = repo.list().await?.into_iter().map(|v| v.version).collect();
+        Ok(versions)
     }
 
     async fn agent_upgrade_state(&self) -> UpgradeState {
