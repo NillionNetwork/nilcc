@@ -8,8 +8,8 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 BUILD_TIMESTAMP=$(date +%s)
 GIT_HASH=$(git rev-parse --short HEAD)
 
-KERNEL_COMMIT=$(cat "$SCRIPT_PATH/core/kernel/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
-QEMU_COMMIT=$(cat "$SCRIPT_PATH/core/qemu/build.sh" | sed -n -e 's/^COMMIT="\(.*\)"/\1/p')
+KERNEL_COMMIT=$(cat "$SCRIPT_PATH/dist/core-metadata.json" | jq -r .kernel.commit)
+QEMU_COMMIT=$(cat "$SCRIPT_PATH/dist/core-metadata.json" | jq -r .qemu.commit)
 INITRD=initramfs/initramfs.cpio.gz
 INITRD_HASH=$(sha256sum "$SCRIPT_PATH/dist/$INITRD" | cut -d " " -f 1)
 OVMF=vm_images/ovmf/OVMF.fd

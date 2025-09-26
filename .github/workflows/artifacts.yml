@@ -11,6 +11,7 @@ on:
       - main
     tags:
       - 'nilcc-artifacts-*'
+    pull_request:
 
 permissions:
   id-token: write
