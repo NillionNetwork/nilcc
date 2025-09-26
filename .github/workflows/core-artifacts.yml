@@ -48,7 +48,10 @@ jobs:
         run: artifacts/core/qemu/build.sh
 
       - name: Generate build metadata
-        run: artifacts/core/generate-metadata.sh
+        run: |
+          ./artifacts/core/generate-metadata.sh
+          hash=$(sha256sum artifacts/dist/core/metadata.json | cut -d " " -f 1)
+          echo "Metadata hash: ${hash}" >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS credentials
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags')
