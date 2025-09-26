@@ -35,7 +35,7 @@ sudo chown -R $(whoami) $SCRIPT_PATH/build/
 PACKAGE_PATH="$SCRIPT_PATH/build/qemu-static.tar.gz"
 tar -czf "$PACKAGE_PATH" -C build/AMDSEV usr
 
-[[ ! -d $SCRIPT_PATH/../dist/ ]] && mkdir -p $SCRIPT_PATH/../dist/
-cp $PACKAGE_PATH "$SCRIPT_PATH/../dist/"
+mkdir -p $SCRIPT_PATH/../../dist/
+cp $PACKAGE_PATH "$SCRIPT_PATH/../../dist/"
 
 echo "Build done, output: $PACKAGE_PATH"

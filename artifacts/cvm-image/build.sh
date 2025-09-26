@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_PATH=$(dirname $(realpath $0))
 IMAGE_URL=https://cloud-images.ubuntu.com/minimal/releases/noble/release-20250727/ubuntu-24.04-minimal-cloudimg-amd64.img
 CVM_AGENT_PATH="${SCRIPT_PATH}/../../target/release/cvm-agent"
-QEMU_STATIC_PATH=($SCRIPT_PATH/../qemu/build/qemu-static.tar.gz)
+QEMU_STATIC_PATH=($SCRIPT_PATH/../dist/qemu-static.tar.gz)
 QEMU_PATH=$SCRIPT_PATH/build/qemu/usr/local/bin
 NBD_DEVICE=/dev/nbd1
 NBD_MAIN_PARTITION="${NBD_DEVICE}p1"
@@ -14,7 +14,7 @@ OUTPUT_PATH=$SCRIPT_PATH/../dist/vm_images/
 
 [[ "$1" != "cpu" && "$1" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
 [[ ! -f "$CVM_AGENT_PATH" ]] && echo "cvm-agent binary not found, run 'cargo build --release -p cvm-agent'" && exit 1
-[[ ! -f "$QEMU_STATIC_PATH" ]] && echo "QEMU static package not found, run 'qemu/build.sh' first" && exit 1
+[[ ! -f "$QEMU_STATIC_PATH" ]] && echo "QEMU static package not found, run 'download-core-artifacts.sh' first" && exit 1
 
 # Unpack static qemu.
 mkdir -p "$SCRIPT_PATH/build/qemu"
@@ -43,12 +43,12 @@ mkdir -p "$ISO_SOURCES_PATH/packages"
 mkdir -p "$ISO_SOURCES_PATH/nillion"
 
 # Copy all kernel packages over
-KERNEL_FILES=($SCRIPT_PATH/../kernel/build/guest/linux-*.deb)
-[[ ${#KERNEL_FILES[@]} == 0 ]] && echo "guest kernel not found, run 'kernel/build.sh guest' first" && exit 1
+KERNEL_FILES=($SCRIPT_PATH/../dist/kernel/guest/linux-*.deb)
+[[ ${#KERNEL_FILES[@]} == 0 ]] && echo "guest kernel not found, run 'download-core-artifacts.sh' first" && exit 1
 
-cp $SCRIPT_PATH/../kernel/build/guest/linux-headers.deb "$ISO_SOURCES_PATH/packages"
-cp $SCRIPT_PATH/../kernel/build/guest/linux-image.deb "$ISO_SOURCES_PATH/packages"
-cp $SCRIPT_PATH/../kernel/build/guest/linux-libc-dev.deb "$ISO_SOURCES_PATH/packages"
+cp $SCRIPT_PATH/../dist/kernel/guest/linux-headers.deb "$ISO_SOURCES_PATH/packages"
+cp $SCRIPT_PATH/../dist/kernel/guest/linux-image.deb "$ISO_SOURCES_PATH/packages"
+cp $SCRIPT_PATH/../dist/kernel/guest/linux-libc-dev.deb "$ISO_SOURCES_PATH/packages"
 
 # Copy cvm-agent script and dependencies.
 cp "$CVM_AGENT_PATH" "$ISO_SOURCES_PATH/nillion/"

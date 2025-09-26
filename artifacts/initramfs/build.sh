@@ -14,8 +14,8 @@ KERNEL_DIR=$BUILD_DIR/kernel
 
 mkdir -p $INITRD_DIR $KERNEL_DIR
 
-KERNEL_DEB=$SCRIPT_PATH/../kernel/build/guest/linux-image.deb
-[[ ! -f "$KERNEL_DEB" ]] && echo "Kernel not found, run 'kernel/build.sh guest' first" && exit 1
+KERNEL_DEB=$SCRIPT_PATH/../dist/kernel/guest/linux-image.deb
+[[ ! -f "$KERNEL_DEB" ]] && echo "Kernel not found, run 'download-core-artifacts.sh' first" && exit 1
 
 cp "$KERNEL_DEB" $KERNEL_DIR/kernel.deb
 
