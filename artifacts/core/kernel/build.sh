@@ -37,5 +37,5 @@ mv $SCRIPT_PATH/build/$1/AMDSEV/linux/linux-libc-dev* $SCRIPT_PATH/build/$1/linu
 
 echo "Build finished, artifacts in build/$1"
 
-mkdir -p $SCRIPT_PATH/../../dist/kernel/$1
-cp $SCRIPT_PATH/build/$1/*.deb "$SCRIPT_PATH/../../dist/kernel/$1"
+mkdir -p $SCRIPT_PATH/../../dist/core/kernel/$1
+cp $SCRIPT_PATH/build/$1/*.deb "$SCRIPT_PATH/../../dist/core/kernel/$1"
