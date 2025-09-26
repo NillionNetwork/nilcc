@@ -8,7 +8,7 @@ use cvm_agent_models::{
     stats::SystemStatsResponse,
 };
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tracing::info;
 
 #[async_trait]

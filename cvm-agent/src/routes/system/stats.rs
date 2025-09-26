@@ -1,7 +1,7 @@
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use cvm_agent_models::stats::{CpuStats, DiskStats, MemoryStats, SystemStatsResponse};
 use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System, MINIMUM_CPU_UPDATE_INTERVAL,
+    CpuRefreshKind, DiskRefreshKind, Disks, MINIMUM_CPU_UPDATE_INTERVAL, MemoryRefreshKind, RefreshKind, System,
 };
 use tokio::time::sleep;
 

@@ -2,9 +2,9 @@ use crate::resources::GpuAddress;
 use async_trait::async_trait;
 use nilcc_artifacts::metadata::DiskFormat;
 use qapi::{
-    futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
-    qmp::{quit, system_powerdown, system_reset, QmpCommand},
     Command as QapiCommandTrait, ExecuteError,
+    futures::{QapiService, QapiStream, QmpStreamNegotiation, QmpStreamTokio},
+    qmp::{QmpCommand, quit, system_powerdown, system_reset},
 };
 use std::{
     io,

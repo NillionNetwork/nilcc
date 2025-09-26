@@ -1,16 +1,16 @@
 use crate::{
     resources::{ApplicationMetadata, Resources},
-    routes::{create_router, AppState, BootstrapContext, VmType},
+    routes::{AppState, BootstrapContext, VmType, create_router},
 };
 use bollard::Docker;
-use clap::{error::ErrorKind, CommandFactory, Parser};
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use std::{
-    fs::{self, create_dir_all, File},
+    fs::{self, File, create_dir_all},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 use tokio::{
     net::TcpListener,
     signal::{self, unix::SignalKind},

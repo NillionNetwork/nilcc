@@ -13,11 +13,7 @@ pub mod system {
     use chrono::{DateTime, Utc};
 
     fn validate_version(version: &str) -> Result<(), ValidationError> {
-        if version.contains("/") {
-            Err(ValidationError::new("version can't contain '/'"))
-        } else {
-            Ok(())
-        }
+        if version.contains("/") { Err(ValidationError::new("version can't contain '/'")) } else { Ok(()) }
     }
 
     /// A request to install an artifacts version.

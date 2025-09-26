@@ -1,8 +1,8 @@
 use crate::{monitors::EventHolder, routes::SystemState};
 use bollard::{
+    Docker,
     container::LogOutput,
     query_parameters::{LogsOptionsBuilder, RestartContainerOptionsBuilder},
-    Docker,
 };
 use cvm_agent_models::health::EventKind;
 use futures::{Stream, StreamExt};

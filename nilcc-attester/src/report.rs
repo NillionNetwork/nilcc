@@ -1,5 +1,5 @@
 use crate::cert::CertFetcher;
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use sev::{
     firmware::guest::{AttestationReport, Firmware},
     parser::ByteParser,

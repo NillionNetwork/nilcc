@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::{
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel},
     time::sleep,
 };
 use tracing::{error, info, warn};

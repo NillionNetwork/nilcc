@@ -11,7 +11,7 @@ use nilcc_agent::{
     config::{AgentConfig, AgentMode, CvmConfigs},
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
-    routes::{build_router, AppState, Clients, Services},
+    routes::{AppState, Clients, Services, build_router},
     services::{
         disk::{
             ApplicationMetadata, ContainerMetadata, DefaultDiskService, DiskService, EnvironmentVariable, ExternalFile,
@@ -29,11 +29,11 @@ use nilcc_agent::{
     },
 };
 use nilcc_artifacts::{
+    VmType,
     downloader::ArtifactsDownloader,
     metadata::{ArtifactsMetadata, LegacyMetadata},
-    VmType,
 };
-use rustls_acme::{caches::DirCache, AcmeConfig, AcmeState};
+use rustls_acme::{AcmeConfig, AcmeState, caches::DirCache};
 use std::{
     fmt, fs, io,
     path::{Path, PathBuf},

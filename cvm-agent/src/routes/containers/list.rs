@@ -1,5 +1,5 @@
 use crate::routes::SharedState;
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use bollard::{query_parameters::ListContainersOptionsBuilder, secret::ContainerSummaryStateEnum};
 use cvm_agent_models::container::Container;
 use tracing::error;

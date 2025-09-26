@@ -1,10 +1,10 @@
 use clap::ValueEnum;
 use nilcc_artifacts::{
+    Artifacts,
     downloader::{ArtifactsDownloader, DownloadError},
     metadata::ArtifactsMetadata,
-    Artifacts,
 };
-use reqwest::{blocking::ClientBuilder, tls::TlsInfo, Url};
+use reqwest::{Url, blocking::ClientBuilder, tls::TlsInfo};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
 use sha2::{Digest, Sha256};

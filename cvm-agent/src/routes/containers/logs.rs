@@ -1,5 +1,5 @@
 use crate::routes::SharedState;
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{Json, extract::Query, http::StatusCode};
 use axum_valid::Valid;
 use bollard::query_parameters::{InspectContainerOptionsBuilder, LogsOptionsBuilder};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream};
@@ -9,7 +9,7 @@ pub(crate) async fn handler(
     state: SharedState,
     request: Valid<Query<ContainerLogsRequest>>,
 ) -> Result<Json<ContainerLogsResponse>, StatusCode> {
-    let ContainerLogsRequest { container, tail, stream, max_lines } = request.0 .0;
+    let ContainerLogsRequest { container, tail, stream, max_lines } = request.0.0;
     let mut builder = LogsOptionsBuilder::new();
     if tail {
         builder = builder.tail(&max_lines.to_string());

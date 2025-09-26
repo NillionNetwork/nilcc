@@ -1,10 +1,10 @@
 use nilcc_agent_models::errors::RequestHandlerError;
 use reqwest::{
+    StatusCode,
     blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderName, HeaderValue},
-    StatusCode,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub struct ApiClient {
     base_url: String,

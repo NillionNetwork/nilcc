@@ -52,11 +52,7 @@ pub(crate) fn validate_docker_compose(
         return Err(Error::Secrets);
     }
     validate_networks(&compose.networks)?;
-    if found_public_container {
-        Ok(())
-    } else {
-        Err(Error::PublicContainer(public_container_name.to_string()))
-    }
+    if found_public_container { Ok(()) } else { Err(Error::PublicContainer(public_container_name.to_string())) }
 }
 
 fn validate_service(service: &Service, top_level_volumes: &HashSet<&str>) -> Result<(), ServiceValidationError> {
@@ -189,7 +185,9 @@ fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Resu
         return Err(Error::LongFormVolumes);
     };
 
-    let Some((source, _)) = spec.split_once(':') else { return Err(Error::VolumeColon) };
+    let Some((source, _)) = spec.split_once(':') else {
+        return Err(Error::VolumeColon);
+    };
     if top_level_volumes.contains(source) {
         return Ok(());
     }
@@ -201,11 +199,7 @@ fn validate_volume_path(path: &str) -> Result<(), ServiceValidationError> {
     if !path.starts_with("$FILES") && !path.starts_with("${FILES}") {
         return Err(Error::FilesEnvVar);
     }
-    if path.contains("../") {
-        Err(Error::MountDotDot)
-    } else {
-        Ok(())
-    }
+    if path.contains("../") { Err(Error::MountDotDot) } else { Ok(()) }
 }
 
 fn validate_env_file(env: &EnvFile) -> Result<(), ServiceValidationError> {

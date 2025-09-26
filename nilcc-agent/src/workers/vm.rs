@@ -17,11 +17,11 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use strum::EnumDiscriminants;
 use tokio::{
     fs, select,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel},
     task::JoinHandle,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{Instrument, error, info, info_span, warn};
 use uuid::Uuid;
 
 const WATCH_INTERVAL: Duration = Duration::from_secs(10);

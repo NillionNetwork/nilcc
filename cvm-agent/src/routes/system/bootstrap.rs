@@ -2,7 +2,7 @@ use crate::{
     monitors::{caddy::CaddyMonitor, compose::ComposeMonitor},
     routes::{SharedState, SystemState},
 };
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use cvm_agent_models::bootstrap::BootstrapRequest;
 
 pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>) -> StatusCode {

@@ -1,5 +1,5 @@
 use crate::{config::VmType, report::HardwareReporter};
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use std::sync::Arc;
 
 pub(crate) mod health;

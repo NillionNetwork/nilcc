@@ -224,7 +224,9 @@ impl ReportVerifier {
                         return Err(InvalidCertificate("report TCB FMC and certificate FMC mismatch encountered"));
                     }
                 } else {
-                    return Err(InvalidCertificate("attestation report TCB FMC is not present in the report, but is expected for {processor:?} model"));
+                    return Err(InvalidCertificate(
+                        "attestation report TCB FMC is not present in the report, but is expected for {processor:?} model",
+                    ));
                 };
             }
         }
@@ -362,12 +364,12 @@ enum SnpOid {
 impl SnpOid {
     fn oid(&self) -> Oid<'_> {
         match self {
-            SnpOid::BootLoader => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .1),
-            SnpOid::Tee => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .2),
-            SnpOid::Snp => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .3),
-            SnpOid::Ucode => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .8),
-            SnpOid::HwId => oid!(1.3.6 .1 .4 .1 .3704 .1 .4),
-            SnpOid::Fmc => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .9),
+            SnpOid::BootLoader => oid!(1.3.6.1.4.1.3704.1.3.1),
+            SnpOid::Tee => oid!(1.3.6.1.4.1.3704.1.3.2),
+            SnpOid::Snp => oid!(1.3.6.1.4.1.3704.1.3.3),
+            SnpOid::Ucode => oid!(1.3.6.1.4.1.3704.1.3.8),
+            SnpOid::HwId => oid!(1.3.6.1.4.1.3704.1.4),
+            SnpOid::Fmc => oid!(1.3.6.1.4.1.3704.1.3.9),
         }
     }
 }

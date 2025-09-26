@@ -1,6 +1,6 @@
 use crate::{
     clients::cvm_agent::CvmAgentRequestError,
-    routes::{workloads::containers::CvmAgentHandlerError, AppState, Json, Query},
+    routes::{AppState, Json, Query, workloads::containers::CvmAgentHandlerError},
 };
 use axum::extract::{Path, State};
 use cvm_agent_models::logs::{ContainerLogsRequest, ContainerLogsResponse};

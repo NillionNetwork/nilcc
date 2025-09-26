@@ -2,7 +2,7 @@ use crate::{
     config::ReservedResourcesConfig,
     repositories::sqlite::{ProviderMode, RepositoryProvider},
 };
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{

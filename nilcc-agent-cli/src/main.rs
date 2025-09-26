@@ -1,7 +1,7 @@
 use crate::api::ApiClient;
 use ansi_term::Color;
-use anyhow::anyhow;
 use anyhow::Context;
+use anyhow::anyhow;
 use clap::{Args, Parser, Subcommand};
 use cvm_agent_models::health::HealthResponse;
 use cvm_agent_models::health::LastEvent;
