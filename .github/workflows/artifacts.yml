@@ -2,9 +2,11 @@ name: Artifacts
 on:
   push:
     paths:
-      - 'artifacts/**'
-      - 'cvm-agent/**'
-      - 'crates/cvm-agent-models/**'
+      - 'artifacts/cvm-image/**'
+      - 'artifacts/initramfs/**'
+      - 'artifacts/download-core-artifacts.sh'
+      - 'artifacts/generate-metadata.sh'
+      - 'artifacts/upload.sh'
     branches:
       - main
     tags:
@@ -46,14 +48,8 @@ jobs:
       - name: Build cvm-agent
         run: cargo build --release -p cvm-agent
 
-      - name: Build guest kernel
-        run: artifacts/kernel/build.sh guest
-
-      - name: Build host kernel
-        run: artifacts/kernel/build.sh host
-
-      - name: Build QEMU
-        run: artifacts/qemu/build.sh
+      - name: Download core artifacts
+        run: artifacts/download-core-artifacts.sh
 
       - name: Build initrd
         run: artifacts/initramfs/build.sh
