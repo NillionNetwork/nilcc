@@ -1,11 +1,11 @@
 use chrono::DateTime;
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BUILD_GIT_COMMIT_HASH: &str = env!("BUILD_GIT_COMMIT_HASH");
 const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
 
-static AGENT_VERSION: Lazy<String> = Lazy::new(|| {
+static AGENT_VERSION: LazyLock<String> = LazyLock::new(|| {
     let timestamp_secs = BUILD_TIMESTAMP.parse::<i64>().expect("BUILD_TIMESTAMP must be a Unix timestamp.");
     let build_datetime_str = DateTime::from_timestamp(timestamp_secs, 0)
         .expect("BUILD_TIMESTAMP must correspond to a valid UTC DateTime.")

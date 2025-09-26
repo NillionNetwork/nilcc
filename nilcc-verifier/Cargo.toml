@@ -12,17 +12,17 @@ openssl = { version = "^0.10", features = ["vendored"] }
 reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sev = { version = "7.0", default-features = false, features = ["openssl", "snp"] }
+sev = { version = "7.1", default-features = false, features = ["openssl", "snp"] }
 sha2 = "0.10"
 thiserror = "2.0"
-tokio = { version = "1.45", features = ["rt"] }
+tokio = { version = "1.47", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2.5"
-x509-parser = { version = "0.17.0", features = ["verify"] } 
+x509-parser = { version = "0.18", features = ["verify"] } 
 
 nilcc-artifacts = { path = "../crates/nilcc-artifacts" }
 attestation-report = { path = "../crates/attestation-report" }
 
 [dev-dependencies]
-rstest = { version = "0.25", default-features = false }
+rstest = { version = "0.26", default-features = false }

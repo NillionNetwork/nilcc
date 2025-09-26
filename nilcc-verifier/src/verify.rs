@@ -209,7 +209,7 @@ impl ReportVerifier {
         // Compare HWID information only on VCEK
         if common_name == CertType::VCEK
             && let Some(cert_hwid) = extensions.get(&SnpOid::HwId.oid())
-            && !Self::check_cert_bytes(cert_hwid, &*report.chip_id)?
+            && !Self::check_cert_bytes(cert_hwid, &report.chip_id)?
         {
             return Err(InvalidCertificate("report TCB ID and certificate ID mismatch encountered"));
         }
@@ -268,10 +268,10 @@ impl TryFrom<&AttestationReport> for Processor {
 
     fn try_from(report: &AttestationReport) -> Result<Self, Self::Error> {
         if report.version < 3 {
-            if [0u8; 64] == *report.chip_id {
+            if report.chip_id == [0; 64] {
                 return Err(FromReportError::ZeroChipIp);
             } else {
-                let chip_id = *report.chip_id;
+                let chip_id = report.chip_id;
                 if chip_id[8..64] == [0; 56] {
                     return Ok(Processor::Turin);
                 } else {
