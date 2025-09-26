@@ -16,7 +16,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Deserialize)]
 struct ReportResponse {
-    report: attestation_report::v1::AttestationReport,
+    report: attestation_report::v2::AttestationReport,
     environment: EnvironmentSpec,
 }
 
@@ -59,7 +59,7 @@ impl ReportFetcher {
         if url.scheme() != "https" {
             return Err(ReportBundleError::NotHttpsScheme);
         }
-        url.set_path("/nilcc/api/v1/report");
+        url.set_path("/nilcc/api/v2/report");
         url.set_query(None);
 
         info!("Fetching report from {url}");
