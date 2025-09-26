@@ -2,16 +2,18 @@ name: Artifacts
 on:
   push:
     paths:
-      - 'artifacts/cvm-image/**'
-      - 'artifacts/initramfs/**'
-      - 'artifacts/download-core-artifacts.sh'
-      - 'artifacts/generate-metadata.sh'
-      - 'artifacts/upload.sh'
+      - 'artifacts/**'
+      - '!artifacts/core/**'
+      - 'cvm-agent/**'
     branches:
       - main
     tags:
       - 'nilcc-artifacts-*'
-    pull_request:
+  pull_request:
+    paths:
+      - 'artifacts/**'
+      - '!artifacts/core/**'
+      - 'cvm-agent/**'
 
 permissions:
   id-token: write

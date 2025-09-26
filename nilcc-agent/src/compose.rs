@@ -1,6 +1,6 @@
 use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use docker_compose_types::{
-    Compose, ComposeNetworks, ComposeVolume, EnvFile, MapOrEmpty, Ports, PublishedPort, Service, TopLevelVolumes,
+    Compose, ComposeNetworks, ComposeVolume, MapOrEmpty, Ports, PublishedPort, Service, StringOrList, TopLevelVolumes,
     Volumes,
 };
 use std::{
@@ -202,10 +202,10 @@ fn validate_volume_path(path: &str) -> Result<(), ServiceValidationError> {
     if path.contains("../") { Err(Error::MountDotDot) } else { Ok(()) }
 }
 
-fn validate_env_file(env: &EnvFile) -> Result<(), ServiceValidationError> {
+fn validate_env_file(env: &StringOrList) -> Result<(), ServiceValidationError> {
     match env {
-        EnvFile::Simple(path) => validate_volume_path(path),
-        EnvFile::List(paths) => {
+        StringOrList::Simple(path) => validate_volume_path(path),
+        StringOrList::List(paths) => {
             for path in paths {
                 validate_volume_path(path)?;
             }
