@@ -15,8 +15,8 @@ use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::bootstrap::DockerCredentials;
 use nilcc_artifacts::{
-    metadata::{ArtifactsMetadata, DiskFormat, KernelArgs},
     VmType,
+    metadata::{ArtifactsMetadata, DiskFormat, KernelArgs},
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -359,7 +359,7 @@ mod tests {
     };
     use mockall::predicate::eq;
     use nilcc_artifacts::metadata::LegacyMetadata;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
     use tokio::sync::mpsc::channel;
 
     struct Context {

@@ -1,5 +1,5 @@
 use crate::{config::VmType, report::Reports, routes::AppState};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::Serialize;
 use std::sync::Arc;
 

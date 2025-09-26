@@ -1,8 +1,8 @@
 use crate::monitors::EventHolder;
 use axum::{
+    Router,
     extract::State,
     routing::{get, post},
-    Router,
 };
 use bollard::Docker;
 use serde::{Deserialize, Serialize};

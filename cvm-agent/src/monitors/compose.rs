@@ -1,7 +1,7 @@
 use crate::routes::BootstrapContext;
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use cvm_agent_models::{
-    bootstrap::{AcmeCredentials, DockerCredentials, CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY},
+    bootstrap::{AcmeCredentials, CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY, DockerCredentials},
     health::EventKind,
 };
 use std::{io, process::Stdio, time::Duration};

@@ -1,7 +1,7 @@
 use crate::verify::Processor;
 use reqwest::blocking::get;
 use sev::{
-    certs::snp::{ca::Chain, Certificate},
+    certs::snp::{Certificate, ca::Chain},
     firmware::guest::AttestationReport,
 };
 use std::{
@@ -70,17 +70,18 @@ impl DefaultCertificateFetcher {
     fn fetch_cert_chain(&self, processor: &Processor) -> Result<Chain, FetcherError> {
         let cache_file_name = self.cache_path.join(format!("{processor:?}.cert"));
         match self.load_cache_file(&cache_file_name)? {
-            Some(chain) => {
-                match Chain::from_pem_bytes(&chain) {
-                    Ok(chain) => {
-                        info!("Using cached certificate chain file {}", cache_file_name.display());
-                        return Ok(chain);
-                    }
-                    Err(e) => {
-                        error!("Downloading cert chain for processor {processor:?} because cached file {} is corrupted: {e}", cache_file_name.display());
-                    }
+            Some(chain) => match Chain::from_pem_bytes(&chain) {
+                Ok(chain) => {
+                    info!("Using cached certificate chain file {}", cache_file_name.display());
+                    return Ok(chain);
                 }
-            }
+                Err(e) => {
+                    error!(
+                        "Downloading cert chain for processor {processor:?} because cached file {} is corrupted: {e}",
+                        cache_file_name.display()
+                    );
+                }
+            },
             None => {
                 info!("Cert chain file for processor {processor:?} not found, downloading it");
             }

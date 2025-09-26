@@ -1,5 +1,5 @@
 use anyhow::Context;
-use reqwest::{tls::TlsInfo, ClientBuilder};
+use reqwest::{ClientBuilder, tls::TlsInfo};
 use sha2::{Digest, Sha256};
 use std::net::ToSocketAddrs;
 use x509_parser::parse_x509_certificate;

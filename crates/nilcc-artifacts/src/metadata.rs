@@ -233,7 +233,7 @@ mod tests {
         let rendered = cmdline
             .render(KernelArgs { docker_compose_hash: "aaa", filesystem_root_hash: &[0; 32] })
             .expect("failed to render");
-        let expected =  "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=0000000000000000000000000000000000000000000000000000000000000000 state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=aaa";
+        let expected = "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash=0000000000000000000000000000000000000000000000000000000000000000 state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash=aaa";
         assert_eq!(rendered, expected);
     }
 }

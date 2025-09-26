@@ -1,19 +1,19 @@
 use crate::routes::SharedState;
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{Json, extract::Query, http::StatusCode};
 use axum_valid::Valid;
 use cvm_agent_models::logs::{SystemLogsRequest, SystemLogsResponse, SystemLogsSource};
 use std::io;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 use tokio::{fs::File, io::BufReader};
-use tokio_stream::wrappers::LinesStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::LinesStream;
 use tracing::error;
 
 pub(crate) async fn handler(
     state: SharedState,
     request: Valid<Query<SystemLogsRequest>>,
 ) -> Result<Json<SystemLogsResponse>, StatusCode> {
-    let SystemLogsRequest { source, tail, max_lines } = request.0 .0;
+    let SystemLogsRequest { source, tail, max_lines } = request.0.0;
     let path = match source {
         SystemLogsSource::CvmAgent => &state.log_path,
     };

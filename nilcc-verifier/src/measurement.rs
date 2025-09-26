@@ -2,7 +2,7 @@ use nilcc_artifacts::metadata::{KernelArgs, KernelCommandLine, MissingCommandLin
 use sev::{
     error::MeasurementError,
     measurement::{
-        snp::{snp_calc_launch_digest, SnpMeasurementArgs},
+        snp::{SnpMeasurementArgs, snp_calc_launch_digest},
         vcpu_types::CpuType,
         vmsa::{GuestFeatures, VMMType},
     },

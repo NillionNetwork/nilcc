@@ -4,9 +4,9 @@ use crate::repositories::{
 };
 use async_trait::async_trait;
 use sqlx::{
+    Sqlite, SqliteConnection, SqlitePool, SqliteTransaction,
     pool::PoolConnection,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
-    Sqlite, SqliteConnection, SqlitePool, SqliteTransaction,
 };
 use std::{
     mem,

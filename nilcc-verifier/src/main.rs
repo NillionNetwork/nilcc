@@ -9,9 +9,9 @@ use certs::DefaultCertificateFetcher;
 use clap::{Args, Parser, Subcommand};
 use measurement::MeasurementGenerator;
 use nilcc_artifacts::{
+    Artifacts,
     downloader::{ArtifactsDownloader, DownloadError},
     metadata::ArtifactsMetadata,
-    Artifacts,
 };
 use report::ReportFetcher;
 use serde::Serialize;

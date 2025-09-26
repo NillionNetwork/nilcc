@@ -3,7 +3,7 @@ use crate::{
     services::upgrade::{UpgradeMetadata, UpgradeState},
 };
 use axum::response::Response;
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use nilcc_agent_models::system::{AgentVersionResponse, LastUpgrade};
 
 pub(crate) async fn handler(state: State<AppState>) -> Result<Json<AgentVersionResponse>, Response> {

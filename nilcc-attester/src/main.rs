@@ -5,7 +5,7 @@ use nilcc_attester::{
     cert::CertFetcher,
     config::{Config, VmType},
     report::{GpuReportConfig, HardwareReporter},
-    routes::{build_router, AppState},
+    routes::{AppState, build_router},
 };
 use std::{process::exit, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, signal, time::sleep};

@@ -1,6 +1,6 @@
 use crate::config::SniProxyConfigTimeouts;
 use crate::repositories::workload::Workload;
-use anyhow::{bail, Context as anyhowContext, Result};
+use anyhow::{Context as anyhowContext, Result, bail};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::{collections::BTreeMap, path::PathBuf};

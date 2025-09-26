@@ -1,7 +1,7 @@
-use crate::metadata::ArtifactsMetadata;
-use crate::metadata::LegacyMetadata;
 use crate::Artifacts;
 use crate::VmType;
+use crate::metadata::ArtifactsMetadata;
+use crate::metadata::LegacyMetadata;
 use futures_util::StreamExt;
 use std::io;
 use std::path::Path;

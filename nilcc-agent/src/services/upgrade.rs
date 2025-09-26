@@ -2,15 +2,15 @@ use crate::repositories::artifacts::Artifacts;
 use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use crate::routes::Json;
-use anyhow::bail;
 use anyhow::Context;
+use anyhow::bail;
 use async_trait::async_trait;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use nilcc_agent_models::errors::RequestHandlerError;
-use nilcc_artifacts::downloader::{ArtifactsDownloader, FileDownloader};
 use nilcc_artifacts::VmType;
+use nilcc_artifacts::downloader::{ArtifactsDownloader, FileDownloader};
 use reqwest::StatusCode;
 use std::collections::HashSet;
 use std::env;
@@ -122,7 +122,7 @@ impl UpgradeService for DefaultUpgradeService {
         let mut current = self.artifacts.lock().await;
         match &*current {
             UpgradeState::Upgrading { metadata, .. } => {
-                return Err(UpgradeError::ActiveUpgrade(metadata.version.clone()))
+                return Err(UpgradeError::ActiveUpgrade(metadata.version.clone()));
             }
             UpgradeState::None | UpgradeState::Done { .. } => (),
         };
@@ -211,7 +211,7 @@ impl UpgradeService for DefaultUpgradeService {
         let mut current = self.agent.lock().await;
         match &*current {
             UpgradeState::Upgrading { metadata, .. } => {
-                return Err(UpgradeError::ActiveUpgrade(metadata.version.clone()))
+                return Err(UpgradeError::ActiveUpgrade(metadata.version.clone()));
             }
             UpgradeState::None | UpgradeState::Done { .. } => (),
         };

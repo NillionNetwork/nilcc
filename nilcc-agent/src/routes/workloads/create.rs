@@ -1,5 +1,5 @@
 use crate::{
-    compose::{validate_docker_compose, DockerComposeValidationError},
+    compose::{DockerComposeValidationError, validate_docker_compose},
     routes::{AppState, Json, RequestHandlerError},
     services::workload::CreateWorkloadError,
 };

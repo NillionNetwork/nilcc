@@ -2,7 +2,7 @@ use crate::{
     routes::AppState,
     services::upgrade::{UpgradeMetadata, UpgradeState},
 };
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{Json, extract::State, response::IntoResponse};
 use axum::{http::StatusCode, response::Response};
 use nilcc_agent_models::{
     errors::RequestHandlerError,
