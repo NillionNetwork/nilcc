@@ -13,8 +13,7 @@ const CERT_FINGERPRINT_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct Reports {
-    pub attestation_v1: Arc<attestation_report::v1::AttestationReport>,
-    pub attestation_v2: Arc<attestation_report::v2::AttestationReport>,
+    pub attestation: Arc<attestation_report::v2::AttestationReport>,
     pub gpu_token: Option<String>,
 }
 
@@ -27,8 +26,7 @@ impl HardwareReporter {
         let fingerprint = cert_fetcher.fetch_fingerprint().await.context("Failed to fetch cert fingerpring")?;
         let hardware = Self::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?;
         let reports = Reports {
-            attestation_v1: Arc::new(hardware.into()),
-            attestation_v2: Arc::new(hardware.into()),
+            attestation: Arc::new(hardware.into()),
             gpu_token: Self::fetch_gpu_report(&fingerprint, &gpu).await.context("Failed to fetch GPU report")?,
         };
         let reports = Arc::new(Mutex::new(reports));
@@ -130,8 +128,7 @@ impl Worker {
         let gpu_token =
             HardwareReporter::fetch_gpu_report(&fingerprint, &self.gpu).await.context("Failed to fetch GPU report")?;
         self.fingerprint = fingerprint;
-        *self.reports.lock().await =
-            Reports { attestation_v1: Arc::new(hardware.into()), attestation_v2: Arc::new(hardware.into()), gpu_token };
+        *self.reports.lock().await = Reports { attestation: Arc::new(hardware.into()), gpu_token };
         Ok(())
     }
 }
