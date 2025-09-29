@@ -7,11 +7,13 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { pathValidator, payloadValidator } from "#/common/zod-utils";
+import { transactionMiddleware } from "#/data-source";
 import {
   Account,
   AddCreditsRequest,
   CreateAccountRequest,
   MyAccount,
+  UpdateAccountRequest,
 } from "./account.dto";
 import { accountMapper } from "./account.mapper";
 
@@ -43,6 +45,41 @@ export function create(options: ControllerOptions) {
     async (c) => {
       const payload = c.req.valid("json");
       const account = await bindings.services.account.create(bindings, payload);
+      return c.json(accountMapper.entityToResponse(account));
+    },
+  );
+}
+
+export function update(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.post(
+    PathsV1.account.update,
+    describeRoute({
+      tags: ["account"],
+      summary: "Update an account",
+      description: "This updates an account's properties.",
+      responses: {
+        200: {
+          description: "Account updated successfully",
+          content: {
+            "application/json": {
+              schema: resolver(Account),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    adminAuthentication(bindings),
+    payloadValidator(UpdateAccountRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const account = await bindings.services.account.update(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
       return c.json(accountMapper.entityToResponse(account));
     },
   );

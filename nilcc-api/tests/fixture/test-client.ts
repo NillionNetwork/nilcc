@@ -3,6 +3,7 @@ import {
   Account,
   type CreateAccountRequest,
   MyAccount,
+  type UpdateAccountRequest,
 } from "#/account/account.dto";
 import type { App } from "#/app";
 import { Artifact } from "#/artifact/artifact.dto";
@@ -133,6 +134,14 @@ export class AdminClient extends TestClient {
 
   createAccount(request: CreateAccountRequest): RequestPromise<Account> {
     const promise = this.request(PathsV1.account.create, {
+      method: "POST",
+      body: request,
+    });
+    return new RequestPromise(promise, Account);
+  }
+
+  updateAccount(request: UpdateAccountRequest): RequestPromise<Account> {
+    const promise = this.request(PathsV1.account.update, {
       method: "POST",
       body: request,
     });
