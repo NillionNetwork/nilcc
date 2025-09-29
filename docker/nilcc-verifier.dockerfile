@@ -1,10 +1,10 @@
 FROM rust:1.88-alpine AS build
 
 WORKDIR /opt/nillion
-RUN apk add --no-cache musl-dev perl make git
+RUN apk add --no-cache musl-dev git pkgconf openssl-dev 
 
 COPY . .
-RUN cargo build --release --locked -p nilcc-verifier
+RUN RUSTFLAGS="-Ctarget-feature=-crt-static" cargo build --release --locked -p nilcc-verifier
 
 FROM alpine
 
