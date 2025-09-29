@@ -4,7 +4,7 @@ use anyhow::{Context as anyhowContext, Result, bail};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::{collections::BTreeMap, path::PathBuf};
-use tera::{Context, Tera};
+use tinytemplate::TinyTemplate;
 use tokio::{io::AsyncWriteExt, net::UnixSocket, process::Command, sync::Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -179,8 +179,10 @@ struct SniProxyTemplateContext {
 
 impl SniProxyTemplateContext {
     fn render_config_file(&self) -> Result<String> {
-        let context = Context::from_serialize(self)?;
-        Tera::one_off(HAPROXY_TEMPLATE, &context, false).context("Error creating config")
+        let name = "haproxy";
+        let mut templates = TinyTemplate::new();
+        templates.add_template(name, HAPROXY_TEMPLATE).expect("failed to parse template");
+        templates.render(name, &self).context("Error creating config")
     }
 }
 
@@ -210,7 +212,9 @@ frontend http_frontend
     option httplog
 
     # Route based on HTTP Host header
+    
     use_backend backend-http-foo if { hdr(host) -i foo.nilcc.com }
+    
 
 # Frontend for HTTPS traffic (port 443)
 frontend https_frontend
@@ -226,7 +230,9 @@ frontend https_frontend
     use_backend agent-backend if { req.ssl_sni -i agent1.example.com }
 
     # Route based on SNI
+    
     use_backend backend-https-foo if { req.ssl_sni -i foo.nilcc.com }
+    
 
 # Backend servers
 
@@ -234,6 +240,7 @@ frontend https_frontend
 backend agent-backend 
     mode tcp
     server nilcc-agent 127.0.0.1:8080 check
+
 
 # VM foo backend servers
 backend backend-http-foo
