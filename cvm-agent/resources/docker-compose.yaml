@@ -1,6 +1,6 @@
 services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:0.2.0
+    image: ghcr.io/nillionnetwork/nilcc-attester@sha256:97e1173f4ee40809f140837def175bb87d4e181ec4f94f95040be169bdd23f38 # 0.3.0
     restart: unless-stopped
     privileged: true
     volumes:
