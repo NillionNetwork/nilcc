@@ -2,6 +2,7 @@
 
 !/nilcc-attester
 !/nilcc-agent
+!/nilcc-admin-cli
 !/nilcc-agent-cli
 !/nilcc-verifier
 !/cvm-agent

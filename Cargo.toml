@@ -7,8 +7,9 @@ members = [
   "crates/nilcc-agent-models",
   "crates/nilcc-artifacts",
   "cvm-agent",
+  "nilcc-admin-cli",
   "nilcc-attester",
   "nilcc-agent",
   "nilcc-agent-cli",
   "nilcc-verifier"
-]
+ ]
