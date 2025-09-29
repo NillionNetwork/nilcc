@@ -1,13 +1,13 @@
 global
     daemon
-    maxconn {{ max_connections }}
+    maxconn { max_connections }
     log stdout local0 info
 
 defaults
     mode tcp
-    timeout connect {{ timeouts.connect }}ms
-    timeout client {{ timeouts.client }}ms
-    timeout server {{ timeouts.server }}ms
+    timeout connect { timeouts.connect }ms
+    timeout client { timeouts.client }ms
+    timeout server { timeouts.server }ms
     option tcplog
     log global
 
@@ -18,9 +18,9 @@ frontend http_frontend
     option httplog
 
     # Route based on HTTP Host header
-    {%- for backend in backends %}
-    use_backend backend-http-{{ backend.id }} if { hdr(host) -i {{ backend.domain }} }
-    {%- endfor %}
+    {{ for backend in backends }}
+    use_backend backend-http-{ backend.id } if \{ hdr(host) -i { backend.domain } }
+    {{ endfor }}
 
 # Frontend for HTTPS traffic (port 443)
 frontend https_frontend
@@ -30,33 +30,32 @@ frontend https_frontend
 
     # SNI-based routing rules
     tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
+    tcp-request content accept if \{ req_ssl_hello_type 1 }
 
     # Route via SNI to nilcc-agent
-    use_backend agent-backend if { req.ssl_sni -i {{ agent_domain }} }
+    use_backend agent-backend if \{ req.ssl_sni -i { agent_domain } }
 
     # Route based on SNI
-    {%- for backend in backends %}
-    use_backend backend-https-{{ backend.id }} if { req.ssl_sni -i {{ backend.domain }} }
-    {%- endfor %}
+    {{ for backend in backends }}
+    use_backend backend-https-{ backend.id } if \{ req.ssl_sni -i { backend.domain } }
+    {{ endfor }}
 
 # Backend servers
 
 # nilcc-agent backend
 backend agent-backend 
     mode tcp
-    server nilcc-agent 127.0.0.1:{{ agent_port }} check
+    server nilcc-agent 127.0.0.1:{ agent_port } check
 
-{%- for backend in backends %}
-
-# VM {{ backend.id }} backend servers
-backend backend-http-{{ backend.id }}
+{{ for backend in backends }}
+# VM { backend.id } backend servers
+backend backend-http-{ backend.id }
     mode http
     balance roundrobin
-    server cvm {{ backend.http_address }} check
+    server cvm { backend.http_address } check
 
-backend backend-https-{{ backend.id }}
+backend backend-https-{ backend.id }
     mode tcp
     balance roundrobin
-    server cvm {{ backend.https_address }} check
-{% endfor %}
+    server cvm { backend.https_address } check
+{{ endfor }}
