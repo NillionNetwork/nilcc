@@ -8,7 +8,7 @@ pub(crate) mod v2;
 
 /// Build a router for the entire service.
 pub fn build_router(state: AppState) -> Router {
-    let router_v1 = Router::new().route("/about", get(v1::about::handler)).route("/report", get(v1::report::handler));
+    let router_v1 = Router::new().route("/about", get(v1::about::handler));
     let router_v2 = Router::new().route("/report", get(v2::report::handler));
     Router::new()
         .route("/health", get(health::handler))

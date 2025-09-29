@@ -19,7 +19,7 @@ pub(crate) struct EnvironmentSpec {
 
 pub(crate) async fn handler(state: State<AppState>) -> Result<Json<Response>, StatusCode> {
     let AppState { nilcc_version, vm_type, cpu_count, reporter } = state.0;
-    let Reports { attestation_v2, gpu_token, .. } = reporter.reports().await;
+    let Reports { attestation, gpu_token, .. } = reporter.reports().await;
     let environment = EnvironmentSpec { nilcc_version, vm_type, cpu_count };
-    Ok(Json(Response { report: attestation_v2, environment, gpu_token }))
+    Ok(Json(Response { report: attestation, environment, gpu_token }))
 }
