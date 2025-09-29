@@ -14,6 +14,7 @@ export const PathsV1 = {
   docs: PathSchema.parse("/openapi.json"),
   account: {
     create: PathSchema.parse("/api/v1/accounts/create"),
+    update: PathSchema.parse("/api/v1/accounts/update"),
     list: PathSchema.parse("/api/v1/accounts/list"),
     read: PathSchema.parse("/api/v1/accounts/:id"),
     me: PathSchema.parse("/api/v1/accounts/me"),

@@ -8,7 +8,11 @@ import {
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import { WorkloadEntity } from "#/workload/workload.entity";
-import type { AddCreditsRequest, CreateAccountRequest } from "./account.dto";
+import type {
+  AddCreditsRequest,
+  CreateAccountRequest,
+  UpdateAccountRequest,
+} from "./account.dto";
 import { AccountEntity } from "./account.entity";
 
 const API_TOKEN_BYTE_LENGTH: number = 16;
@@ -43,6 +47,20 @@ export class AccountService {
       }
       throw e;
     }
+  }
+
+  async update(
+    bindings: AppBindings,
+    request: UpdateAccountRequest,
+    tx: QueryRunner,
+  ): Promise<AccountEntity> {
+    const repository = this.getRepository(bindings, tx);
+    const account = await repository.findOneBy({ id: request.accountId });
+    if (account === null) {
+      throw new EntityNotFound("account");
+    }
+    account.name = request.name;
+    return await repository.save(account);
   }
 
   async read(bindings: AppBindings, id: string): Promise<AccountEntity | null> {

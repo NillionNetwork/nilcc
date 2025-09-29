@@ -49,4 +49,16 @@ describe("Account", () => {
     expected.creditRate = 0;
     expect(me).toEqual(expected);
   });
+
+  it("should allow updating", async ({ expect, clients }) => {
+    const account = await clients.admin
+      .createAccount({ name: "some name", credits: 2 })
+      .submit();
+    await clients.admin
+      .updateAccount({ accountId: account.accountId, name: "some other name" })
+      .submit();
+    const expected = { ...account, name: "some other name" };
+    const updated = await clients.admin.getAccount(account.accountId).submit();
+    expect(updated).toEqual(expected);
+  });
 });

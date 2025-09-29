@@ -41,6 +41,16 @@ export const CreateAccountRequest = z
   });
 export type CreateAccountRequest = z.infer<typeof CreateAccountRequest>;
 
+export const UpdateAccountRequest = z
+  .object({
+    accountId: z.string().openapi({ description: "The account identifier." }),
+    name: z.string().openapi({ description: "The new name for this account." }),
+  })
+  .openapi({
+    ref: "UpdateAccountRequest",
+  });
+export type UpdateAccountRequest = z.infer<typeof UpdateAccountRequest>;
+
 export const AddCreditsRequest = z
   .object({
     accountId: z.string(),
