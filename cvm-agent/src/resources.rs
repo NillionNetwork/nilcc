@@ -51,7 +51,7 @@ mod tests {
     use std::sync::LazyLock;
 
     static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new("\n    image: ghcr.io/nillionnetwork/nilcc-attester:[^\n]+").expect("invalid regex")
+        Regex::new("\n    image: ghcr.io/nillionnetwork/nilcc-attester@[^\n]+").expect("invalid regex")
     });
 
     fn replace_version(compose: &[u8]) -> Vec<u8> {
