@@ -37,5 +37,6 @@ describe("WorkloadTier", () => {
 
     await clients.admin.deleteTier(tier.tierId).submit();
     expect(await clients.user.listTiers().submit()).toEqual([]);
+    expect(await clients.admin.listTiers().submit()).toEqual([]);
   });
 });

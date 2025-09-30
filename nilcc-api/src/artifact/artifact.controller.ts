@@ -1,7 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import semver, { SemVer } from "semver";
-import { adminAuthentication, userAuthentication } from "#/common/auth";
+import { adminAuthentication, adminOrUserAuthentication } from "#/common/auth";
 import {
   OpenApiSpecCommonErrorResponses,
   OpenApiSpecEmptySuccessResponses,
@@ -71,7 +71,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    userAuthentication(bindings),
+    adminOrUserAuthentication(bindings),
     async (c) => {
       const accounts = await bindings.services.artifact.list(bindings);
       const makeSortable = (artifact: ArtifactEntity): number | SemVer => {

@@ -1,6 +1,6 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
-import { adminAuthentication, userAuthentication } from "#/common/auth";
+import { adminAuthentication, adminOrUserAuthentication } from "#/common/auth";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -65,7 +65,7 @@ export function list(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    userAuthentication(bindings),
+    adminOrUserAuthentication(bindings),
     async (c) => {
       const tiers = await bindings.services.workloadTier.list(bindings);
       tiers.sort((a, b) => a.cost - b.cost);
