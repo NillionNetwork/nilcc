@@ -13,7 +13,7 @@ struct Cli {
     url: String,
 
     /// The API key to use.
-    #[clap(long, env = "NILCC_API_KEY")]
+    #[clap(long, env = "NILCC_API_KEY", hide_env_values = true)]
     api_key: String,
 
     /// The command to execute.
