@@ -5,6 +5,9 @@ on:
       - 'nilcc-agent-*'
     branches:
       - main
+    paths:
+      - 'nilcc-agent/**'
+      - 'Cargo.lock'
 
 permissions:
   id-token: write

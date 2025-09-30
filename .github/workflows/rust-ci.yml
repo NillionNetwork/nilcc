@@ -1,4 +1,4 @@
-name: Merge checks
+name: Rust merge checks
 on:
   pull_request:
   push:
