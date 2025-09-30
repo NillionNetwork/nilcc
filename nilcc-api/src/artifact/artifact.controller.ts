@@ -105,16 +105,16 @@ export function list(options: ControllerOptions) {
   );
 }
 
-export function remove(options: ControllerOptions): void {
+export function disable(options: ControllerOptions): void {
   const { app, bindings } = options;
 
   app.post(
-    PathsV1.artifacts.delete,
+    PathsV1.artifacts.disable,
     describeRoute({
       tags: ["artifacts"],
-      summary: "Delete a supported artifact version",
+      summary: "Disable a supported artifact version",
       description:
-        "This will delete a supported artifact version. Any workload that is already running using the deleted version will continue to do so.",
+        "This will disable a supported artifact version. Any workload that is already running using the disable version will continue to do so.",
       responses: {
         200: OpenApiSpecEmptySuccessResponses[200],
         ...OpenApiSpecCommonErrorResponses,
