@@ -6,6 +6,9 @@ on:
       - 'nilcc-agent-cli-*'
     branches:
       - main
+    paths:
+      - 'nilcc-agent-cli/**'
+      - 'Cargo.lock'
 
 jobs:
   docker-build-nilcc-agent-cli:

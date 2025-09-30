@@ -6,6 +6,9 @@ on:
       - 'nilcc-verifier-*'
     branches:
       - main
+    paths:
+      - 'nilcc-verifier/**'
+      - 'Cargo.lock'
 
 jobs:
   docker-build-nilcc-verifier:
