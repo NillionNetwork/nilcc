@@ -4,7 +4,25 @@ import type { AppBindings } from "#/env";
 import type { ApiErrorResponse } from "./handler";
 
 export function adminOrUserAuthentication(bindings: AppBindings) {
-  return requireApiKey(bindings.config.adminApiKey);
+  return async (c: Context, next: Next) => {
+    const apiToken = c.req.header("x-api-key");
+    if (!apiToken) {
+      return c.json(authError("unauthorized"), 401);
+    }
+    let isAuthenticated = apiToken === bindings.config.adminApiKey;
+    if (!isAuthenticated) {
+      const account = await bindings.services.account.findByApiToken(
+        bindings,
+        apiToken,
+      );
+      isAuthenticated = account !== null;
+    }
+    if (isAuthenticated) {
+      await next();
+      return;
+    }
+    return c.json(authError("unauthorized"), 401);
+  };
 }
 
 export function adminAuthentication(bindings: AppBindings) {

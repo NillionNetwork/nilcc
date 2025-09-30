@@ -178,6 +178,13 @@ export class AdminClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
+  listTiers(): RequestPromise<WorkloadTier[]> {
+    const promise = this.request(PathsV1.workloadTiers.list, {
+      method: "GET",
+    });
+    return new RequestPromise(promise, WorkloadTier.array());
+  }
+
   enableArtifactVersion(version: string): RequestPromise<Artifact> {
     const promise = this.request(PathsV1.artifacts.enable, {
       method: "POST",
