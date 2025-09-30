@@ -1,6 +1,6 @@
 use crate::{
     clients::nilcc_api::NilccApiClient,
-    repositories::sqlite::RepositoryProvider,
+    repositories::{sqlite::RepositoryProvider, workload::Workload},
     services::upgrade::{UpgradeError, UpgradeService},
 };
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
@@ -45,7 +45,7 @@ impl HeartbeatWorker {
         match self.load_available_artifact_versions().await {
             Ok(available_versions) => match self.api_client.heartbeat(available_versions.clone()).await {
                 Ok(response) => {
-                    self.install_missing_versions(available_versions, response.expected_artifact_versions).await;
+                    self.handle_versions(available_versions, response.expected_artifact_versions).await;
                     Ok(())
                 }
                 Err(e) => {
@@ -63,11 +63,26 @@ impl HeartbeatWorker {
         Ok(artifacts.into_iter().map(|a| a.version).collect())
     }
 
-    async fn install_missing_versions(&self, available_versions: Vec<String>, expected_versions: Vec<String>) {
+    async fn load_workloads(&self) -> anyhow::Result<Vec<Workload>> {
+        let mut repo = self.provider.workloads(Default::default()).await?;
+        let workloads = repo.list().await?;
+        Ok(workloads)
+    }
+
+    async fn handle_versions(&self, available_versions: Vec<String>, expected_versions: Vec<String>) {
         let available_versions: BTreeSet<_> = available_versions.into_iter().collect();
         let expected_versions: BTreeSet<_> = expected_versions.into_iter().collect();
-        let mut missing_versions: Vec<_> = expected_versions.difference(&available_versions).collect();
-        if let Some(version) = missing_versions.pop() {
+        self.install_missing_versions(&available_versions, &expected_versions).await;
+        self.uninstall_unused_versions(&available_versions, &expected_versions).await;
+    }
+
+    async fn install_missing_versions(
+        &self,
+        available_versions: &BTreeSet<String>,
+        expected_versions: &BTreeSet<String>,
+    ) {
+        let mut missing_versions = expected_versions.difference(available_versions);
+        if let Some(version) = missing_versions.next() {
             info!("Installing artifacts version {version}");
             match self.upgrader.install_artifacts(version.clone()).await {
                 Ok(_) => info!("Installation of artifact version {version} started"),
@@ -82,6 +97,34 @@ impl HeartbeatWorker {
             }
         }
     }
+
+    async fn uninstall_unused_versions(
+        &self,
+        available_versions: &BTreeSet<String>,
+        expected_versions: &BTreeSet<String>,
+    ) {
+        let redundant_versions: Vec<_> = available_versions.difference(expected_versions).collect();
+        if redundant_versions.is_empty() {
+            return;
+        }
+        let workloads = match self.load_workloads().await {
+            Ok(workloads) => workloads,
+            Err(e) => {
+                error!("Failed to load workloads: {e:#}");
+                return;
+            }
+        };
+        let versions_in_use: BTreeSet<_> = workloads.into_iter().map(|w| w.artifacts_version).collect();
+        info!("Artifact versions {redundant_versions:?} are no longer required, {versions_in_use:?} are in use");
+        for version in redundant_versions {
+            if versions_in_use.contains(version) {
+                continue;
+            }
+            if let Err(e) = self.upgrader.uninstall_artifact_version(version).await {
+                error!("Failed to uninstall artifact version: {e:#}");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -92,6 +135,7 @@ mod tests {
         repositories::{
             artifacts::{Artifacts, MockArtifactsRepository},
             sqlite::MockRepositoryProvider,
+            workload::MockWorkloadRepository,
         },
         services::upgrade::MockUpgradeService,
     };
@@ -114,7 +158,7 @@ mod tests {
             }
         }
 
-        async fn set_versions(&mut self, versions: &[&str]) {
+        async fn set_existing_artifact_versions(&mut self, versions: &[&str]) {
             let artifacts = versions
                 .into_iter()
                 .map(|version| Artifacts { version: version.to_string(), metadata: None })
@@ -129,16 +173,27 @@ mod tests {
 
     #[tokio::test]
     async fn install_versions() {
-        let existing = &["a", "b", "c"];
-        let expected = vec!["a".to_string(), "b".to_string()];
+        let existing = &["a", "b", "d"];
+        let expected = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let mut builder = Builder::default();
-        builder.set_versions(existing).await;
+        builder.set_existing_artifact_versions(existing).await;
+        builder.provider.expect_workloads().return_once(move |_| {
+            let mut repo = MockWorkloadRepository::default();
+            repo.expect_list().return_once(move || Ok(vec![]));
+            Ok(Box::new(repo))
+        });
         builder
             .api_client
             .expect_heartbeat()
             .with(eq(existing.into_iter().map(ToString::to_string).collect::<Vec<_>>()))
             .return_once(move |_| Ok(HeartbeatResponse { expected_artifact_versions: expected }));
-        builder.upgrader.expect_install_artifacts().with(eq("c".to_string())).return_once(move |_| Ok(()));
+        builder.upgrader.expect_install_artifacts().with(eq("c".to_string())).once().return_once(move |_| Ok(()));
+        builder
+            .upgrader
+            .expect_uninstall_artifact_version()
+            .with(eq("d".to_string()))
+            .once()
+            .return_once(move |_| Ok(()));
 
         let worker = builder.build();
         worker.run_once().await.expect("failed to run");
