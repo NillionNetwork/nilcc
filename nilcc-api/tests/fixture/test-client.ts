@@ -193,8 +193,8 @@ export class AdminClient extends TestClient {
     return new RequestPromise(promise, Artifact);
   }
 
-  deleteArtifactVersion(version: string): RequestPromise<unknown> {
-    const promise = this.request(PathsV1.artifacts.delete, {
+  disableArtifactVersion(version: string): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.artifacts.disable, {
       method: "POST",
       body: { version },
     });

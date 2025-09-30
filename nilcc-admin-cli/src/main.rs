@@ -211,7 +211,7 @@ impl Runner {
 
     fn disable_artifact_version(&self, version: String) -> Result<serde_json::Value, RequestError> {
         let request = models::artifacts::DisableArtifactVersionRequest { version };
-        self.client.post("/api/v1/artifacts/delete", &request)
+        self.client.post("/api/v1/artifacts/disable", &request)
     }
 
     fn list_metal_instances(&self) -> Result<serde_json::Value, RequestError> {

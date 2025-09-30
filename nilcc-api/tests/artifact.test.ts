@@ -22,7 +22,7 @@ describe("Artifact", () => {
     expect(artifacts[0].builtAt).toEqual(new Date(1758561580000).toISOString());
 
     // Now delete one and expect there to be 2
-    await clients.admin.deleteArtifactVersion("0.1.0").submit();
+    await clients.admin.disableArtifactVersion("0.1.0").submit();
     expect(await clients.user.listArtifacts().submit()).toHaveLength(2);
   });
 });

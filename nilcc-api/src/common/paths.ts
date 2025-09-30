@@ -23,7 +23,7 @@ export const PathsV1 = {
   artifacts: {
     enable: PathSchema.parse("/api/v1/artifacts/enable"),
     list: PathSchema.parse("/api/v1/artifacts/list"),
-    delete: PathSchema.parse("/api/v1/artifacts/delete"),
+    disable: PathSchema.parse("/api/v1/artifacts/disable"),
   },
   workload: {
     create: PathSchema.parse("/api/v1/workloads/create"),
