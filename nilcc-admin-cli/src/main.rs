@@ -61,7 +61,7 @@ struct CreateAccountArgs {
     name: String,
 
     /// The initial number of credits for this account.
-    #[clap(default_value_t = 0)]
+    #[clap(long, default_value_t = 0)]
     credits: u64,
 }
 
@@ -87,6 +87,9 @@ struct RenameAccountArgs {
 enum TiersCommand {
     /// Create a tier.
     Create(CreateTierArgs),
+
+    /// List tiers.
+    List,
 
     /// Delete a tier.
     Delete {
@@ -128,6 +131,9 @@ enum ArtifactsCommand {
         /// The version to enable.
         version: String,
     },
+
+    /// List artifact versions.
+    List,
 
     /// Disable an artifact version.
     Disable {
@@ -185,6 +191,10 @@ impl Runner {
         self.client.post("/api/v1/workload-tiers/create", &request)
     }
 
+    fn list_tiers(&self) -> Result<serde_json::Value, RequestError> {
+        self.client.get("/api/v1/workload-tiers/list")
+    }
+
     fn delete_tier(&self, tier_id: Uuid) -> Result<serde_json::Value, RequestError> {
         let request = models::tiers::DeleteTierRequest { tier_id };
         self.client.post("/api/v1/workload-tiers/delete", &request)
@@ -193,6 +203,10 @@ impl Runner {
     fn enable_artifact_version(&self, version: String) -> Result<serde_json::Value, RequestError> {
         let request = models::artifacts::EnableArtifactVersionRequest { version };
         self.client.post("/api/v1/artifacts/enable", &request)
+    }
+
+    fn list_artifact_versions(&self) -> Result<serde_json::Value, RequestError> {
+        self.client.get("/api/v1/artifacts/list")
     }
 
     fn disable_artifact_version(&self, version: String) -> Result<serde_json::Value, RequestError> {
@@ -219,8 +233,10 @@ fn main() {
         Command::Accounts(AccountsCommand::AddCredits(args)) => runner.add_credits(args),
         Command::Accounts(AccountsCommand::Rename(args)) => runner.rename(args),
         Command::Tiers(TiersCommand::Create(args)) => runner.create_tier(args),
+        Command::Tiers(TiersCommand::List) => runner.list_tiers(),
         Command::Tiers(TiersCommand::Delete { id }) => runner.delete_tier(id),
         Command::Artifacts(ArtifactsCommand::Enable { version }) => runner.enable_artifact_version(version),
+        Command::Artifacts(ArtifactsCommand::List) => runner.list_artifact_versions(),
         Command::Artifacts(ArtifactsCommand::Disable { version }) => runner.disable_artifact_version(version),
         Command::MetalInstances(MetalInstancesCommand::List) => runner.list_metal_instances(),
         Command::MetalInstances(MetalInstancesCommand::Delete { id }) => runner.delete_metal_instance(id),
