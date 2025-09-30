@@ -33,6 +33,7 @@ const UPDATER_SCRIPT: &[u8] = include_bytes!("../../resources/update.sh");
 #[async_trait]
 pub trait UpgradeService: Send + Sync {
     async fn install_artifacts(&self, version: String) -> Result<(), UpgradeError>;
+    async fn uninstall_artifact_version(&self, version: &str) -> Result<(), CleanupError>;
     async fn upgrade_agent(&self, version: String) -> Result<(), UpgradeError>;
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError>;
     async fn artifacts_upgrade_state(&self) -> UpgradeState;
@@ -159,6 +160,26 @@ impl UpgradeService for DefaultUpgradeService {
         Ok(())
     }
 
+    async fn uninstall_artifact_version(&self, version: &str) -> Result<(), CleanupError> {
+        let mut repo = self.repository_provider.artifacts(Default::default()).await.map_err(|e| {
+            error!("Failed to get repository: {e}");
+            CleanupError::Internal
+        })?;
+
+        info!("Deleting artifacts for version {version}");
+        let path = self.cvm_artifacts_path.join(version);
+        fs::remove_dir_all(&path).await.map_err(|e| {
+            error!("Failed to delete artifacts for version {version}: {e}");
+            CleanupError::Internal
+        })?;
+
+        repo.delete(version).await.map_err(|e| {
+            error!("Failed to delete version {version} from database: {e}");
+            CleanupError::Internal
+        })?;
+        Ok(())
+    }
+
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError> {
         let used_versions: HashSet<_> = {
             let mut repo = self.repository_provider.workloads(Default::default()).await.map_err(|e| {
@@ -189,19 +210,7 @@ impl UpgradeService for DefaultUpgradeService {
                 info!("Not deleting version {version} because there's workloads using it");
                 continue;
             }
-
-            info!("Deleting version {version} in database");
-            repo.delete(&version).await.map_err(|e| {
-                error!("Failed to delete version {version} from database: {e}");
-                CleanupError::Internal
-            })?;
-
-            let path = self.cvm_artifacts_path.join(&version);
-            fs::remove_dir_all(&path).await.map_err(|e| {
-                error!("Failed to delete artifacts for version {version}: {e}");
-                CleanupError::Internal
-            })?;
-            info!("Deleted artifacts for version {version}");
+            self.uninstall_artifact_version(&version).await?;
             deleted_versions.push(version);
         }
         Ok(deleted_versions)
