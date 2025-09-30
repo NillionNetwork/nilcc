@@ -38,14 +38,18 @@ use uuid::Uuid;
 
 mod api;
 
+/// The nilcc-agent CLI.
 #[derive(Parser)]
 struct Cli {
+    /// The endpoint where the nilcc-agent instance is reachable at.
     #[clap(long, env = "NILCC_AGENT_URL")]
     url: String,
 
+    /// The API key to use.
     #[clap(long, env = "NILCC_AGENT_API_KEY")]
     api_key: String,
 
+    /// The command to execute.
     #[clap(subcommand)]
     command: Command,
 }
