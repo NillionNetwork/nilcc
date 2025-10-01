@@ -57,8 +57,8 @@ impl ArtifactsDownloader {
     pub async fn download(&self, target_dir: &Path) -> Result<Artifacts, DownloadError> {
         info!("Downloading artifacts to {}", target_dir.display());
         let (metadata, metadata_hash) = self.fetch_metadata().await?;
-        let ovmf_path = self.download_artifact(&metadata.ovmf.path, target_dir).await?;
-        let initrd_path = self.download_artifact(&metadata.initrd.path, target_dir).await?;
+        self.download_artifact(&metadata.ovmf.path, target_dir).await?;
+        self.download_artifact(&metadata.initrd.path, target_dir).await?;
         for vm_type in &self.vm_types {
             let metadata = metadata.cvm.images.resolve(*vm_type);
             self.download_artifact(&metadata.kernel.path, target_dir).await?;
@@ -67,7 +67,7 @@ impl ArtifactsDownloader {
                 self.download_artifact(&metadata.verity.disk.path, target_dir).await?;
             }
         }
-        Ok(Artifacts { metadata, metadata_hash, ovmf_path, initrd_path })
+        Ok(Artifacts { metadata, metadata_hash })
     }
 
     async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> Result<PathBuf, DownloadError> {

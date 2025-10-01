@@ -239,9 +239,11 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
     let artifacts = runtime.block_on(downloader.download(&download_path))?;
-    let Artifacts { ovmf_path, initrd_path, metadata, .. } = artifacts;
+    let Artifacts { metadata, .. } = artifacts;
     let vm_type_metadata = metadata.cvm.images.resolve(vm_type.into());
     let filesystem_root_hash = vm_type_metadata.verity.root_hash;
+    let ovmf_path = download_path.join(&metadata.ovmf.path);
+    let initrd_path = download_path.join(&metadata.initrd.path);
     let kernel_path = download_path.join(&vm_type_metadata.kernel.path);
     let measurement = MeasurementGenerator {
         vcpus: cpus,
