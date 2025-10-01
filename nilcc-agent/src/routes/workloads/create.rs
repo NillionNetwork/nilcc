@@ -79,7 +79,7 @@ pub(crate) enum HandlerError {
     #[error("cannot use agent's domain for workload")]
     AgentDomain,
 
-    #[error("cannot use reserved environment variable: {0}")]
+    #[error("cannot set reserved environment variable '{0}'")]
     ReservedEnvironmentVariable(String),
 }
 
