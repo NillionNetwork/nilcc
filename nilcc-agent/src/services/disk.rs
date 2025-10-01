@@ -1,6 +1,5 @@
 use anyhow::{Context, bail};
 use async_trait::async_trait;
-use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use nilcc_artifacts::metadata::DiskFormat;
 use serde::Serialize;
 use std::{
@@ -14,17 +13,6 @@ use tokio::{
     process::Command,
 };
 use tracing::info;
-
-/// The list of reserved environment variable names.
-static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &[
-    "NILCC_VERSION",
-    "NILCC_VM_TYPE",
-    "NILCC_DOMAIN",
-    "FILES",
-    "CADDY_INPUT_FILE",
-    CADDY_ACME_EAB_KEY_ID,
-    CADDY_ACME_EAB_MAC_KEY,
-];
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -109,13 +97,6 @@ impl DiskService for DefaultDiskService {
     async fn create_application_iso(&self, path: &Path, spec: IsoSpec) -> Result<(), CreateIsoError> {
         use CreateIsoError::*;
         let IsoSpec { docker_compose_yaml, metadata, environment_variables, files } = spec;
-
-        // Make sure no reserved environment variable names are used.
-        if let Some(var) =
-            environment_variables.iter().find(|e| RESERVED_ENVIRONMENT_VARIABLES.contains(&e.name.as_str()))
-        {
-            return Err(ReservedEnvironmentVariable(var.name.clone()));
-        }
 
         let tempdir = tempfile::TempDir::with_prefix("nilcc-agent").map_err(Tempdir)?;
         let input_path = tempdir.path().join("contents");

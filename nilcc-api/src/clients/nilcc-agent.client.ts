@@ -10,6 +10,7 @@ const ALLOWED_CREATE_WORKLOAD_ERRORS: string[] = [
   "DOMAIN_EXISTS",
   "AGENT_DOMAIN",
   "RESOURCE_LIMIT",
+  "RESERVED_ENVIRONMENT_VARIABLE",
 ];
 
 export interface NilccAgentClient {

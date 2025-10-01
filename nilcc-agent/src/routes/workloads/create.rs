@@ -8,9 +8,21 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use cvm_agent_models::bootstrap::{CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY};
 use nilcc_agent_models::workloads::create::{CreateWorkloadRequest, CreateWorkloadResponse};
 use strum::EnumDiscriminants;
 use tracing::error;
+
+/// The list of reserved environment variable names.
+static RESERVED_ENVIRONMENT_VARIABLES: &[&str] = &[
+    "NILCC_VERSION",
+    "NILCC_VM_TYPE",
+    "NILCC_DOMAIN",
+    "FILES",
+    "CADDY_INPUT_FILE",
+    CADDY_ACME_EAB_KEY_ID,
+    CADDY_ACME_EAB_MAC_KEY,
+];
 
 pub(crate) async fn handler(
     state: State<AppState>,
@@ -29,6 +41,10 @@ pub(crate) async fn handler(
     }
     if request.domain == state.agent_domain {
         return Err(HandlerError::AgentDomain);
+    }
+    // Make sure no reserved environment variable names are used.
+    if let Some(name) = request.env_vars.keys().find(|var| RESERVED_ENVIRONMENT_VARIABLES.contains(&var.as_str())) {
+        return Err(HandlerError::ReservedEnvironmentVariable(name.clone()));
     }
     validate_docker_compose(&request.docker_compose, &request.public_container_name)?;
 
@@ -62,6 +78,9 @@ pub(crate) enum HandlerError {
 
     #[error("cannot use agent's domain for workload")]
     AgentDomain,
+
+    #[error("cannot use reserved environment variable: {0}")]
+    ReservedEnvironmentVariable(String),
 }
 
 impl From<CreateWorkloadError> for HandlerError {
@@ -87,6 +106,7 @@ impl IntoResponse for HandlerError {
             | Self::DomainExists
             | Self::DockerCompose(_)
             | Self::AgentDomain
+            | Self::ReservedEnvironmentVariable(_)
             | Self::ResourceLimit(..) => (StatusCode::BAD_REQUEST, self.to_string()),
             Self::Internal(e) => {
                 error!("Failed to create workload: {e}");
