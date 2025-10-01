@@ -1,18 +1,17 @@
-name: nilcc-agent-cli docker
+name: nilcc-attester docker
 
 on:
   push:
     tags:
-      - 'nilcc-agent-cli-*'
+      - 'nilcc-attester-*'
     branches:
       - main
     paths:
-      - 'nilcc-agent-cli/**'
+      - 'nilcc-attester/**'
       - 'Cargo.lock'
-      - 'docker/nilcc-agent-cli.dockerfile'
 
 jobs:
-  docker-build-nilcc-agent-cli:
+  docker-build-nilcc-attester:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,20 +21,20 @@ jobs:
 
       - name: Generate docker tag
         run: |
-          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-agent-cli-.* ]]; then
-            # Remove the 'refs/tags/nilcc-agent-cli-' prefix for tags
-            tag=${GITHUB_REF:26}
+          if [[ "$GITHUB_REF" =~ ^refs/tags/nilcc-attester-.* ]]; then
+            # Remove the 'refs/tags/nilcc-attester-' prefix for tags
+            tag=${GITHUB_REF:25}
           else
             # Or use `latest` tag otherwise
             tag=latest
           fi
-          echo "DOCKER_TAG=ghcr.io/nillionnetwork/nilcc-agent-cli:${tag}" >> $GITHUB_ENV
+          echo "DOCKER_TAG=ghcr.io/nillionnetwork/nilcc-attester:${tag}" >> $GITHUB_ENV
 
       - name: Build Docker image
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: docker/nilcc-agent-cli.dockerfile
+          file: nilcc-attester/Dockerfile
           tags: ${{ env.DOCKER_TAG }}
 
       - name: Log in to the container registry
@@ -49,10 +48,8 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: docker/nilcc-agent-cli.dockerfile
+          file: nilcc-attester/Dockerfile
           push: true
           tags: ${{ env.DOCKER_TAG }}
           build-args: |
             VERSION=${{ env.PACKAGE_VERSION }}
-
-

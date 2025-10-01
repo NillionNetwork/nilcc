@@ -9,7 +9,6 @@ on:
     paths:
       - 'nilcc-verifier/**'
       - 'Cargo.lock'
-      - 'docker/nilcc-verifier.dockerfile'
 
 jobs:
   docker-build-nilcc-verifier:
@@ -35,7 +34,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: docker/nilcc-verifier.dockerfile
+          file: nilcc-verifier/Dockerfile
           tags: ${{ env.DOCKER_TAG }}
 
       - name: Log in to the container registry
@@ -49,7 +48,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          file: docker/nilcc-verifier.dockerfile
+          file: nilcc-verifier/Dockerfile
           push: true
           tags: ${{ env.DOCKER_TAG }}
           build-args: |
