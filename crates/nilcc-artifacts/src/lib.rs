@@ -1,5 +1,5 @@
 use crate::metadata::ArtifactsMetadata;
-use std::{fmt, path::PathBuf};
+use std::fmt;
 
 pub mod downloader;
 pub mod metadata;
@@ -19,11 +19,8 @@ impl fmt::Display for VmType {
     }
 }
 
-// TODO: remove this and use metadata instead
 #[derive(Clone, Debug)]
 pub struct Artifacts {
     pub metadata: ArtifactsMetadata,
     pub metadata_hash: [u8; 32],
-    pub ovmf_path: PathBuf,
-    pub initrd_path: PathBuf,
 }
