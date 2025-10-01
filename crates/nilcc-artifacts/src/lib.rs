@@ -23,6 +23,7 @@ impl fmt::Display for VmType {
 #[derive(Clone, Debug)]
 pub struct Artifacts {
     pub metadata: ArtifactsMetadata,
+    pub metadata_hash: [u8; 32],
     pub ovmf_path: PathBuf,
     pub initrd_path: PathBuf,
 }

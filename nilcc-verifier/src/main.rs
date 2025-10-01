@@ -1,12 +1,12 @@
 use crate::{
     certs::FetcherError,
     measurement::MeasurementHashError,
-    report::{ReportBundle, ReportBundleError, VmType},
+    report::{ReportBundle, ReportBundleError, ReportResponse, VmType},
     verify::VerificationError,
 };
 use anyhow::Context;
 use certs::DefaultCertificateFetcher;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use measurement::MeasurementGenerator;
 use nilcc_artifacts::{
     Artifacts,
@@ -15,7 +15,11 @@ use nilcc_artifacts::{
 };
 use report::ReportFetcher;
 use serde::Serialize;
-use std::{io, path::PathBuf, process::exit};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    process::exit,
+};
 use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
 
@@ -40,6 +44,9 @@ enum Command {
 
     /// Generate the measurement hash for the given compose hash and artifacts version.
     MeasurementHash(MeasurementHashArgs),
+
+    /// Download the artifacts for a nilcc release version.
+    DownloadArtifacts(DownloadArtifactsArgs),
 }
 
 #[derive(Args)]
@@ -121,6 +128,25 @@ struct MeasurementHashArgs {
 
     /// The nilcc artifacts version that's being used.
     nilcc_version: String,
+}
+
+#[derive(Args)]
+struct DownloadArtifactsArgs {
+    /// The workload to use as a base to extract the artifacts version to download.
+    #[clap(short, long, group = "version-source")]
+    workload_url: Option<String>,
+
+    /// The artifacts version to download.
+    #[clap(short, long, group = "version-source")]
+    artifacts_version: Option<String>,
+
+    /// The directory where to artifacts are to be downloaded.
+    #[clap(short, long)]
+    output_directory: Option<String>,
+
+    /// The base url from which artifacts should be fetched.
+    #[clap(long, default_value = default_artifacts_url())]
+    artifacts_url: String,
 }
 
 fn default_cache_path() -> PathBuf {
@@ -233,6 +259,41 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn download_artifacts(args: DownloadArtifactsArgs) -> anyhow::Result<()> {
+    let DownloadArtifactsArgs { workload_url, artifacts_version, output_directory, artifacts_url } = args;
+    let version = match (workload_url, artifacts_version) {
+        (Some(workload_url), None) => {
+            let report_url = format!("{workload_url}/nilcc/api/v2/report");
+            let report: ReportResponse = reqwest::blocking::get(report_url)
+                .context("Failed to fetch artifacts version")?
+                .json()
+                .context("Malformed attestation report")?;
+            report.environment.nilcc_version
+        }
+        (None, Some(version)) => version,
+        (None, None) => {
+            Cli::command()
+                .error(ErrorKind::MissingRequiredArgument, "need either a workload URL or an artifact version")
+                .exit();
+        }
+        _ => unreachable!(),
+    };
+    let output_directory = match output_directory {
+        Some(path) => path,
+        None => format!("nilcc-{version}"),
+    };
+    fs::create_dir_all(&output_directory).context("Failed to create output directory")?;
+    let downloader = ArtifactsDownloader::new(version, vec![VmType::Cpu.into(), VmType::Gpu.into()])
+        .with_artifacts_url(artifacts_url);
+    println!("Downloading artifacts...");
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
+    let artifacts = runtime.block_on(downloader.download(Path::new(&output_directory)))?;
+    let metadata_hash = hex::encode(artifacts.metadata_hash);
+    println!("Artifacts downloaded at {output_directory}, metadata hash = {metadata_hash}");
+    Ok(())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum ErrorCode {
@@ -318,7 +379,7 @@ fn main() {
 
     let default_log_level = match cli.verbose {
         true => LevelFilter::INFO,
-        false => LevelFilter::OFF,
+        false => LevelFilter::ERROR,
     };
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -343,6 +404,12 @@ fn main() {
         Command::MeasurementHash(args) => {
             if let Err(e) = compute_measurement_hash(args) {
                 error!("Failed to compute measurement hash: {e:#}");
+                exit(1);
+            }
+        }
+        Command::DownloadArtifacts(args) => {
+            if let Err(e) = download_artifacts(args) {
+                error!("Failed to download artifacts: {e:#}");
                 exit(1);
             }
         }

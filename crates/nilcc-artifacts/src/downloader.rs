@@ -3,6 +3,8 @@ use crate::VmType;
 use crate::metadata::ArtifactsMetadata;
 use crate::metadata::LegacyMetadata;
 use futures_util::StreamExt;
+use sha2::Digest;
+use sha2::Sha256;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -54,7 +56,7 @@ impl ArtifactsDownloader {
 
     pub async fn download(&self, target_dir: &Path) -> Result<Artifacts, DownloadError> {
         info!("Downloading artifacts to {}", target_dir.display());
-        let metadata = self.fetch_metadata().await?;
+        let (metadata, metadata_hash) = self.fetch_metadata().await?;
         let ovmf_path = self.download_artifact(&metadata.ovmf.path, target_dir).await?;
         let initrd_path = self.download_artifact(&metadata.initrd.path, target_dir).await?;
         for vm_type in &self.vm_types {
@@ -65,7 +67,7 @@ impl ArtifactsDownloader {
                 self.download_artifact(&metadata.verity.disk.path, target_dir).await?;
             }
         }
-        Ok(Artifacts { metadata, ovmf_path, initrd_path })
+        Ok(Artifacts { metadata, metadata_hash, ovmf_path, initrd_path })
     }
 
     async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> Result<PathBuf, DownloadError> {
@@ -88,23 +90,24 @@ impl ArtifactsDownloader {
         Ok(local_path)
     }
 
-    async fn fetch_metadata(&self) -> Result<ArtifactsMetadata, DownloadError> {
+    async fn fetch_metadata(&self) -> Result<(ArtifactsMetadata, [u8; 32]), DownloadError> {
         let version = &self.version;
         let url = format!("{}/{version}/metadata.json", self.artifacts_url);
         let response = reqwest::get(url).await?.error_for_status()?;
-        match response.json().await {
-            Ok(meta) => return Ok(meta),
-            Err(e) if e.is_decode() => {
+        let raw_metadata = response.text().await?;
+        let meta_hash = Sha256::digest(&raw_metadata).into();
+        match serde_json::from_str(&raw_metadata) {
+            Ok(meta) => return Ok((meta, meta_hash)),
+            Err(_) => {
                 warn!("Failed to decode artifact metadata, assuming this is an old version");
             }
-            Err(e) => return Err(e.into()),
         };
 
         let legacy_meta = LegacyMetadata {
             cpu_verity_root_hash: self.fetch_legacy_root_hash(VmType::Cpu).await?,
             gpu_verity_root_hash: self.fetch_legacy_root_hash(VmType::Gpu).await?,
         };
-        Ok(ArtifactsMetadata::legacy(legacy_meta))
+        Ok((ArtifactsMetadata::legacy(legacy_meta), meta_hash))
     }
 
     async fn fetch_legacy_root_hash(&self, vm_type: VmType) -> Result<[u8; 32], DownloadError> {

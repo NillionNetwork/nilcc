@@ -15,9 +15,9 @@ use x509_parser::parse_x509_certificate;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Deserialize)]
-struct ReportResponse {
-    report: attestation_report::v2::AttestationReport,
-    environment: EnvironmentSpec,
+pub struct ReportResponse {
+    pub report: attestation_report::v2::AttestationReport,
+    pub environment: EnvironmentSpec,
 }
 
 #[derive(Deserialize)]
