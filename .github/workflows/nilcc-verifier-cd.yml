@@ -9,6 +9,7 @@ on:
     paths:
       - 'nilcc-verifier/**'
       - 'Cargo.lock'
+      - 'docker/nilcc-verifier.dockerfile'
 
 jobs:
   docker-build-nilcc-verifier:

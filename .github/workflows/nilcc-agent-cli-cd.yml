@@ -9,6 +9,7 @@ on:
     paths:
       - 'nilcc-agent-cli/**'
       - 'Cargo.lock'
+      - 'docker/nilcc-agent-cli.dockerfile'
 
 jobs:
   docker-build-nilcc-agent-cli:

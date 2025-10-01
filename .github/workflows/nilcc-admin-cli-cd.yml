@@ -9,6 +9,7 @@ on:
     paths:
       - 'nilcc-admin-cli/**'
       - 'Cargo.lock'
+      - 'docker/nilcc-admin-cli.dockerfile'
 
 jobs:
   docker-build-nilcc-admin-cli:
