@@ -18,7 +18,7 @@ use serde::Serialize;
 use std::ops::Deref;
 use std::sync::Arc;
 use tower::ServiceBuilder;
-use validator::Validate;
+use validator::{Validate, ValidationErrors, ValidationErrorsKind};
 
 pub(crate) mod system;
 pub(crate) mod workloads;
@@ -105,7 +105,7 @@ where
         match inner.validate() {
             Ok(_) => Ok(Self(inner)),
             Err(e) => {
-                let payload = RequestHandlerError::new(e.to_string(), "MALFORMED_REQUEST");
+                let payload = RequestHandlerError::new(e.to_string_pretty(), "MALFORMED_REQUEST");
                 Err((StatusCode::BAD_REQUEST, axum::Json(payload)))
             }
         }
@@ -152,7 +152,7 @@ where
         match inner.validate() {
             Ok(_) => Ok(Self(inner)),
             Err(e) => {
-                let payload = RequestHandlerError::new(e.to_string(), "MALFORMED_REQUEST");
+                let payload = RequestHandlerError::new(e.to_string_pretty(), "MALFORMED_REQUEST");
                 Err((StatusCode::BAD_REQUEST, axum::Json(payload)))
             }
         }
@@ -173,5 +173,114 @@ where
 {
     fn into_response(self) -> axum::response::Response {
         axum::Json(self.0).into_response()
+    }
+}
+
+trait PrettyPrintError {
+    fn to_string_pretty(&self) -> String {
+        self.to_string_pretty_with_fields(vec![])
+    }
+
+    fn to_string_pretty_with_fields(&self, fields: Vec<&str>) -> String;
+}
+
+impl PrettyPrintError for ValidationErrors {
+    fn to_string_pretty_with_fields(&self, fields: Vec<&str>) -> String {
+        let mut output_errors = Vec::new();
+        for (field, errors) in &self.0 {
+            let mut fields = fields.clone();
+            fields.push(field);
+            output_errors.push(errors.to_string_pretty_with_fields(fields));
+        }
+        output_errors.join(", ")
+    }
+}
+
+impl PrettyPrintError for ValidationErrorsKind {
+    fn to_string_pretty_with_fields(&self, fields: Vec<&str>) -> String {
+        match self {
+            ValidationErrorsKind::Struct(errors) => errors.to_string_pretty_with_fields(fields),
+            ValidationErrorsKind::List(errors) => {
+                let mut output_errors = Vec::new();
+                for (index, errors) in errors {
+                    let mut fields = fields.clone();
+                    let last = match fields.last() {
+                        Some(last) => format!("{last}[{index}]"),
+                        None => format!("[{index}]"),
+                    };
+                    fields.pop();
+                    fields.push(&last);
+                    output_errors.push(errors.to_string_pretty_with_fields(fields));
+                }
+                output_errors.join(", ")
+            }
+            ValidationErrorsKind::Field(errors) => {
+                let field = fields.join(".");
+                let errors = errors
+                    .iter()
+                    .map(|e| match e.code.as_ref() {
+                        "range" => "value outside of expected range",
+                        "regex" => "does not match expected format",
+                        _ => e.code.as_ref(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("'{field}' {errors}")
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use validator::ValidationError;
+
+    fn no_dots(value: &str) -> Result<(), ValidationError> {
+        if value.contains(".") { Err(ValidationError::new("can't contain '.'")) } else { Ok(()) }
+    }
+
+    #[derive(Validate)]
+    struct OuterModel {
+        #[validate(range(min = 1))]
+        number: u32,
+
+        #[validate(nested)]
+        list: Vec<InnerModel>,
+
+        #[validate(nested)]
+        inner: InnerModel,
+
+        #[validate(custom(function = "no_dots"))]
+        string: &'static str,
+    }
+
+    #[derive(Validate)]
+    struct InnerModel {
+        #[validate(range(min = 1))]
+        number: u32,
+    }
+
+    #[rstest]
+    #[case::number(
+        OuterModel{ number: 0, list: vec![], inner: InnerModel { number: 1 }, string: "" },
+        "'number' value outside of expected range"
+    )]
+    #[case::list(
+        OuterModel{ number: 1, list: vec![InnerModel{ number: 0 }], inner: InnerModel { number: 1 }, string: "" },
+        "'list[0].number' value outside of expected range"
+    )]
+    #[case::inner(
+        OuterModel{ number: 1, list: vec![], inner: InnerModel { number: 0 }, string: "" },
+        "'inner.number' value outside of expected range"
+    )]
+    #[case::custom(
+        OuterModel{ number: 1, list: vec![], inner: InnerModel { number: 1 }, string: "a dot ." },
+        "'string' can't contain '.'"
+    )]
+    fn validate_error_format(#[case] model: OuterModel, #[case] expected: &str) {
+        let err = model.validate().expect_err("not an error");
+        assert_eq!(err.to_string_pretty(), expected);
     }
 }
