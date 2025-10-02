@@ -70,5 +70,4 @@ popd >/dev/null
 INITRD_SIZE=$(du -h $OUT | cut -f1)
 echo "initrd image generated at ${OUT}, size: ${INITRD_SIZE}"
 
-[[ ! -d $SCRIPT_PATH/../dist/initramfs ]] && mkdir -p $SCRIPT_PATH/../dist/initramfs
-cp "$OUT" "$SCRIPT_PATH/../dist/initramfs"
+cp "$OUT" "$SCRIPT_PATH/../dist/initramfs.cpio.gz"
