@@ -10,7 +10,7 @@ QEMU_PATH=$SCRIPT_PATH/build/qemu/usr/local/bin
 NBD_DEVICE=/dev/nbd1
 NBD_MAIN_PARTITION="${NBD_DEVICE}p1"
 NBD_BOOT_PARTITION="${NBD_DEVICE}p16"
-OUTPUT_PATH=$SCRIPT_PATH/../dist/vm_images/
+OUTPUT_PATH=$SCRIPT_PATH/../dist/
 
 [[ "$1" != "cpu" && "$1" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
 [[ ! -f "$CVM_AGENT_PATH" ]] && echo "cvm-agent binary not found, run 'cargo build --release -p cvm-agent'" && exit 1
@@ -43,12 +43,12 @@ mkdir -p "$ISO_SOURCES_PATH/packages"
 mkdir -p "$ISO_SOURCES_PATH/nillion"
 
 # Copy all kernel packages over
-KERNEL_FILES=($SCRIPT_PATH/../dist/kernel/guest/linux-*.deb)
+KERNEL_FILES=($OUTPUT_PATH/kernel/guest/linux-*.deb)
 [[ ${#KERNEL_FILES[@]} == 0 ]] && echo "guest kernel not found, run 'download-core-artifacts.sh' first" && exit 1
 
-cp $SCRIPT_PATH/../dist/kernel/guest/linux-headers.deb "$ISO_SOURCES_PATH/packages"
-cp $SCRIPT_PATH/../dist/kernel/guest/linux-image.deb "$ISO_SOURCES_PATH/packages"
-cp $SCRIPT_PATH/../dist/kernel/guest/linux-libc-dev.deb "$ISO_SOURCES_PATH/packages"
+cp $OUTPUT_PATH/kernel/guest/linux-headers.deb "$ISO_SOURCES_PATH/packages"
+cp $OUTPUT_PATH/kernel/guest/linux-image.deb "$ISO_SOURCES_PATH/packages"
+cp $OUTPUT_PATH/kernel/guest/linux-libc-dev.deb "$ISO_SOURCES_PATH/packages"
 
 # Copy cvm-agent script and dependencies.
 cp "$CVM_AGENT_PATH" "$ISO_SOURCES_PATH/nillion/"
@@ -150,19 +150,17 @@ sudo mount "$NBD_BOOT_PARTITION" "$MOUNT_POINT"
 sudo chown -R $(whoami) $SCRIPT_PATH/build/
 
 # Copy VM image.
-mkdir -p "$SCRIPT_PATH/../dist/vm_images"
-cp "$SQUASHFS_PATH" "$SCRIPT_PATH/../dist/vm_images/cvm-${VM_TYPE}.squashfs"
+mkdir -p "$OUTPUT_PATH/$VM_TYPE"
+cp "$SQUASHFS_PATH" "$OUTPUT_PATH/$VM_TYPE/disk.squashfs"
+
+# Copy the verity output.
+cp "${VERITY_ROOT_HASH_PATH}" "$OUTPUT_PATH/$VM_TYPE/root-hash"
+cp "${VERITY_HASHES_PATH}" "$OUTPUT_PATH/$VM_TYPE/disk.verity"
 
 # Copy kernel.
 mkdir -p "$OUTPUT_PATH/kernel/"
-sudo cp $MOUNT_POINT/vmlinuz-*snp* "$OUTPUT_PATH/kernel/${VM_TYPE}-vmlinuz"
-sudo chown $(whoami) "$OUTPUT_PATH/kernel/${VM_TYPE}-vmlinuz"
+sudo cp $MOUNT_POINT/vmlinuz-*snp* "$OUTPUT_PATH/$VM_TYPE/kernel"
+sudo chown $(whoami) "$OUTPUT_PATH/$VM_TYPE/kernel"
 
 # Copy OVMF.
-mkdir -p "$SCRIPT_PATH/../dist/vm_images/ovmf/"
-cp "$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF.fd" "$SCRIPT_PATH/../dist/vm_images/ovmf"
-
-# Copy the verity output.
-mkdir -p "$SCRIPT_PATH/../dist/vm_images/cvm-${VM_TYPE}-verity"
-cp "${VERITY_ROOT_HASH_PATH}" "$SCRIPT_PATH/../dist/vm_images/cvm-${VM_TYPE}-verity/"
-cp "${VERITY_HASHES_PATH}" "$SCRIPT_PATH/../dist/vm_images/cvm-${VM_TYPE}-verity/"
+cp "$SCRIPT_PATH/build/qemu/usr/local/share/qemu/OVMF.fd" "$OUTPUT_PATH/OVMF.fd"
