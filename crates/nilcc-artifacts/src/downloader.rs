@@ -54,7 +54,10 @@ impl ArtifactsDownloader {
 
     pub async fn download(&self, target_dir: &Path) -> Result<Artifacts, DownloadError> {
         info!("Downloading artifacts to {}", target_dir.display());
-        let (metadata, metadata_hash) = self.fetch_metadata().await?;
+        let artifact_metadata = self.fetch_metadata().await?;
+        let metadata = &artifact_metadata.decoded;
+        let metadata_path = target_dir.join("metadata.json");
+        fs::write(&metadata_path, artifact_metadata.raw).await.map_err(DownloadError::TargetFile)?;
         self.download_artifact(&metadata.ovmf.path, target_dir).await?;
         self.download_artifact(&metadata.initrd.path, target_dir).await?;
         for vm_type in &self.vm_types {
@@ -65,7 +68,7 @@ impl ArtifactsDownloader {
                 self.download_artifact(&metadata.verity.disk.path, target_dir).await?;
             }
         }
-        Ok(Artifacts { metadata, metadata_hash })
+        Ok(Artifacts { metadata: artifact_metadata.decoded, metadata_hash: artifact_metadata.hash })
     }
 
     async fn download_artifact(&self, artifact_name: &str, target_dir: &Path) -> Result<PathBuf, DownloadError> {
@@ -88,19 +91,25 @@ impl ArtifactsDownloader {
         Ok(local_path)
     }
 
-    async fn fetch_metadata(&self) -> Result<(ArtifactsMetadata, [u8; 32]), DownloadError> {
+    async fn fetch_metadata(&self) -> Result<Metadata, DownloadError> {
         let version = &self.version;
         let url = format!("{}/{version}/metadata.json", self.artifacts_url);
         let response = reqwest::get(url).await?.error_for_status()?;
         let raw_metadata = response.text().await?;
         let metadata_hash = Sha256::digest(&raw_metadata).into();
         let metadata = serde_json::from_str(&raw_metadata).map_err(DownloadError::DecodeMetadata)?;
-        Ok((metadata, metadata_hash))
+        Ok(Metadata { raw: raw_metadata, decoded: metadata, hash: metadata_hash })
     }
 
     async fn download_object(&self, url_path: &str, target_path: &Path) -> Result<(), DownloadError> {
         FileDownloader { artifacts_url: &self.artifacts_url }.download(url_path, target_path).await
     }
+}
+
+struct Metadata {
+    raw: String,
+    decoded: ArtifactsMetadata,
+    hash: [u8; 32],
 }
 
 #[derive(thiserror::Error, Debug)]
