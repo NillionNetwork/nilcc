@@ -16,6 +16,10 @@ struct Cli {
     #[clap(long, env = "NILCC_API_KEY", hide_env_values = true)]
     api_key: String,
 
+    /// Print pretty JSON output.
+    #[clap(short, long, global = true, env = "NILCC_PRETTY_PRINT")]
+    pretty: bool,
+
     /// The command to execute.
     #[clap(subcommand)]
     command: Command,
@@ -245,6 +249,10 @@ fn main() {
         Ok(response) => response,
         Err(e) => json!({"error": e.to_string()}),
     };
-    let output = serde_json::to_string(&result).expect("failed to serialize");
+    let output = match cli.pretty {
+        true => serde_json::to_string_pretty(&result),
+        false => serde_json::to_string(&result),
+    }
+    .expect("failed to serialize");
     println!("{output}");
 }
