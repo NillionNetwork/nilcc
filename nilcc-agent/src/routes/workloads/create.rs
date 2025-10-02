@@ -46,7 +46,7 @@ pub(crate) async fn handler(
     if let Some(name) = request.env_vars.keys().find(|var| RESERVED_ENVIRONMENT_VARIABLES.contains(&var.as_str())) {
         return Err(HandlerError::ReservedEnvironmentVariable(name.clone()));
     }
-    validate_docker_compose(&request.docker_compose, &request.public_container_name)?;
+    validate_docker_compose(&request.docker_compose, &request.public_container_name, &request.files)?;
 
     let id = request.id;
     state.services.workload.create_workload(request.0).await?;

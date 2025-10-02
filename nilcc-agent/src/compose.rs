@@ -14,6 +14,7 @@ const RESERVED_PORTS: &[u16] = &[80, 443];
 pub(crate) fn validate_docker_compose(
     docker_compose: &str,
     public_container_name: &str,
+    files: &HashMap<String, Vec<u8>>,
 ) -> Result<(), DockerComposeValidationError> {
     use DockerComposeValidationError as Error;
     for env in &[CADDY_ACME_EAB_KEY_ID, CADDY_ACME_EAB_MAC_KEY] {
@@ -42,7 +43,7 @@ pub(crate) fn validate_docker_compose(
                 found_public_container = true;
             }
         }
-        validate_service(service, &top_level_volumes)
+        validate_service(service, &top_level_volumes, files)
             .map_err(|e| Error::InvalidService(service_name.to_string(), e))?;
     }
     if compose.includes.is_some() {
@@ -55,7 +56,11 @@ pub(crate) fn validate_docker_compose(
     if found_public_container { Ok(()) } else { Err(Error::PublicContainer(public_container_name.to_string())) }
 }
 
-fn validate_service(service: &Service, top_level_volumes: &HashSet<&str>) -> Result<(), ServiceValidationError> {
+fn validate_service(
+    service: &Service,
+    top_level_volumes: &HashSet<&str>,
+    files: &HashMap<String, Vec<u8>>,
+) -> Result<(), ServiceValidationError> {
     use ServiceValidationError as Error;
     validate_ports(&service.ports)?;
     if !service.cap_add.is_empty() {
@@ -80,10 +85,10 @@ fn validate_service(service: &Service, top_level_volumes: &HashSet<&str>) -> Res
         return Err(Error::NetworkMode);
     }
     for volume in &service.volumes {
-        validate_volumes(volume, top_level_volumes)?;
+        validate_volumes(volume, top_level_volumes, files)?;
     }
     if let Some(env) = &service.env_file {
-        validate_env_file(env)?;
+        validate_env_file(env, files)?;
     }
     validate_extends(&service.extends)?;
     if service.cgroup_parent.is_some() {
@@ -179,7 +184,11 @@ impl PublishedPortExt for PublishedPort {
     }
 }
 
-fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Result<(), ServiceValidationError> {
+fn validate_volumes(
+    volume: &Volumes,
+    top_level_volumes: &HashSet<&str>,
+    files: &HashMap<String, Vec<u8>>,
+) -> Result<(), ServiceValidationError> {
     use ServiceValidationError as Error;
     let Volumes::Simple(spec) = volume else {
         return Err(Error::LongFormVolumes);
@@ -191,23 +200,40 @@ fn validate_volumes(volume: &Volumes, top_level_volumes: &HashSet<&str>) -> Resu
     if top_level_volumes.contains(source) {
         return Ok(());
     }
-    validate_volume_path(source)
+    validate_volume_path(source, files)
 }
 
-fn validate_volume_path(path: &str) -> Result<(), ServiceValidationError> {
+fn validate_volume_path(path: &str, files: &HashMap<String, Vec<u8>>) -> Result<(), ServiceValidationError> {
     use ServiceValidationError as Error;
-    if !path.starts_with("$FILES") && !path.starts_with("${FILES}") {
-        return Err(Error::FilesEnvVar);
+    if path.contains("../") {
+        return Err(Error::MountDotDot);
     }
-    if path.contains("../") { Err(Error::MountDotDot) } else { Ok(()) }
+
+    // Make sure whatever we're trying to mount is at `$FILES`.
+    let path = path.strip_prefix("$FILES").or_else(|| path.strip_prefix("${FILES}")).ok_or(Error::FilesEnvVar)?;
+
+    // We're okay with mounting _all_ files under `$FILES`.
+    if path.is_empty() || path == "/" {
+        return Ok(());
+    }
+
+    // Make sure whatever is left starts with "/"
+    let path = path.strip_prefix('/').ok_or_else(|| ServiceValidationError::NoSourceMount(path.to_string()))?;
+
+    // Otherwise make sure the referenced files are mounted.
+    if !files.contains_key(path) {
+        return Err(ServiceValidationError::MissingMount(path.to_string()));
+    }
+
+    Ok(())
 }
 
-fn validate_env_file(env: &StringOrList) -> Result<(), ServiceValidationError> {
+fn validate_env_file(env: &StringOrList, files: &HashMap<String, Vec<u8>>) -> Result<(), ServiceValidationError> {
     match env {
-        StringOrList::Simple(path) => validate_volume_path(path),
+        StringOrList::Simple(path) => validate_volume_path(path, files),
         StringOrList::List(paths) => {
             for path in paths {
-                validate_volume_path(path)?;
+                validate_volume_path(path, files)?;
             }
             Ok(())
         }
@@ -306,6 +332,12 @@ pub(crate) enum ServiceValidationError {
     #[error("mounts cannot use '../'")]
     MountDotDot,
 
+    #[error("mount '{0}' does not exist")]
+    MissingMount(String),
+
+    #[error("volume '{0}' must mount either '/' or a specific file")]
+    NoSourceMount(String),
+
     #[error("privileged services are not allowed")]
     PrivilegedService,
 
@@ -347,7 +379,7 @@ mod tests {
     }
 
     fn validate_success(compose: &str, public_container_name: &str) {
-        validate_docker_compose(compose, public_container_name).expect("validation failed");
+        validate_docker_compose(compose, public_container_name, &Default::default()).expect("validation failed");
     }
 
     fn validate_failure<E>(compose: &str, public_container_name: &str, expected: E)
@@ -355,7 +387,8 @@ mod tests {
         DockerComposeValidationError: Into<E>,
         E: fmt::Display,
     {
-        let err = validate_docker_compose(compose, public_container_name).expect_err("validation succeeded");
+        let err = validate_docker_compose(compose, public_container_name, &Default::default())
+            .expect_err("validation succeeded");
         assert_eq!(err.into().to_string(), expected.to_string());
     }
 
@@ -403,6 +436,7 @@ services:
       - $FILES/foo:/tmp/bar
       - ${FILES}/foo:/tmp/tar
       - ${FILES}/foo:/tmp/tar2:rw
+      - ${FILES}/bar:/tmp/jar
       - other:/tmp/other
     env_file:
       - $FILES/dotenv1
@@ -417,7 +451,8 @@ services:
 volumes:
   other:
 "#;
-        validate_success(compose, "api");
+        let files = ["foo", "bar", "dotenv1", "dotenv2"].into_iter().map(|file| (file.to_string(), vec![])).collect();
+        validate_docker_compose(compose, "api", &files).expect("validation failed");
     }
 
     #[test]
@@ -646,7 +681,7 @@ services:
         // Note: this option is currently unsupported by `docker-compose-types` but we want to make
         // sure this test keeps failing if they ever add support. Once they do, we should
         // explicitly check for this option and prevent it from being set.
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_docker_compose(compose, "api", &Default::default()).expect_err("success");
     }
 
     #[test]
@@ -660,7 +695,7 @@ services:
       - foo
 "#;
         // same as `use_api_socket` this is unsupported but we don't want it once it is
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_docker_compose(compose, "api", &Default::default()).expect_err("success");
     }
 
     #[test]
@@ -673,7 +708,7 @@ services:
     cgroup: host
 "#;
         // same as above
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_docker_compose(compose, "api", &Default::default()).expect_err("success");
     }
 
     #[test]
@@ -687,7 +722,7 @@ services:
       - foo
 "#;
         // same as above
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_docker_compose(compose, "api", &Default::default()).expect_err("success");
     }
 
     #[test]
@@ -702,7 +737,7 @@ configs:
     file: ./my_config.txt
 "#;
         // same as above
-        validate_docker_compose(compose, "api").expect_err("success");
+        validate_docker_compose(compose, "api", &Default::default()).expect_err("success");
     }
 
     #[rstest]
@@ -797,7 +832,9 @@ services:
     #[rstest]
     #[case::no_colom("/tmp/hello", ServiceValidationError::VolumeColon)]
     #[case::no_files("/tmp/hello:", ServiceValidationError::FilesEnvVar)]
-    #[case::dotdot("$FILES/../proc/foo:", ServiceValidationError::MountDotDot)]
+    #[case::files_dotdot("$FILES/../proc/foo:", ServiceValidationError::MountDotDot)]
+    #[case::dotdot("../proc/foo:", ServiceValidationError::MountDotDot)]
+    #[case::no_slash("$FILESfoo:/tmp", ServiceValidationError::NoSourceMount("foo".into()))]
     fn invalid_volume_source(#[case] source: &'static str, #[case] error: ServiceValidationError) {
         let compose = format!(
             r#"
@@ -811,9 +848,22 @@ services:
         validate_failure(&compose, "api", error);
     }
 
+    #[test]
+    fn missing_file() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    volumes:
+      - $FILES/foo/bar:/tmp/foo
+"#;
+        validate_failure(&compose, "api", ServiceValidationError::MissingMount("foo/bar".into()));
+    }
+
     #[rstest]
     #[case::no_files("/tmp/hello", ServiceValidationError::FilesEnvVar)]
-    #[case::dotdot("$FILES/../proc/foo", ServiceValidationError::MountDotDot)]
+    #[case::files_dotdot("$FILES/../proc/foo", ServiceValidationError::MountDotDot)]
+    #[case::dotdot("../proc/foo", ServiceValidationError::MountDotDot)]
     fn invalid_env_file(#[case] env_file: &'static str, #[case] error: ServiceValidationError) {
         let compose = format!(
             r#"
@@ -824,5 +874,16 @@ services:
 "#
         );
         validate_failure(&compose, "api", error);
+    }
+
+    #[test]
+    fn missing_env_file() {
+        let compose = r#"
+services:
+  api:
+    image: caddy:2
+    env_file: $FILES/foo/bar
+"#;
+        validate_failure(&compose, "api", ServiceValidationError::MissingMount("foo/bar".into()));
     }
 }
