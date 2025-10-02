@@ -387,7 +387,7 @@ mod tests {
     use super::*;
     use crate::{
         repositories::{
-            artifacts::{Artifacts, MockArtifactsRepository},
+            artifacts::{Artifacts, MockArtifactsRepository, utils::make_artifacts_metadata},
             sqlite::MockRepositoryProvider,
             workload::MockWorkloadRepository,
         },
@@ -398,7 +398,6 @@ mod tests {
         },
     };
     use mockall::predicate::eq;
-    use nilcc_artifacts::metadata::{ArtifactsMetadata, LegacyMetadata};
     use rstest::rstest;
     use uuid::Uuid;
 
@@ -618,10 +617,7 @@ mod tests {
         let expected_cpus = builder.resources.available_cpus() - request.cpus as u32;
         let expected_memory = builder.resources.available_memory_mb() - request.memory_mb;
         let expected_disk_space = builder.resources.available_disk_space_gb() - request.disk_space_gb;
-        let metadata = ArtifactsMetadata::legacy(LegacyMetadata {
-            cpu_verity_root_hash: Default::default(),
-            gpu_verity_root_hash: Default::default(),
-        });
+        let metadata = make_artifacts_metadata();
 
         builder.open_ports = 100..200;
         builder.resources.gpus = Some(Gpus::new("H100", ["addr1".into()]));
@@ -629,7 +625,7 @@ mod tests {
             .artifacts_repository
             .expect_find()
             .with(eq("default"))
-            .return_once(|_| Ok(Some(Artifacts { metadata: Some(metadata), version: "default".into() })));
+            .return_once(|_| Ok(Some(Artifacts { metadata, version: "default".into() })));
         builder.workloads_repository.expect_create().with(eq(workload.clone())).once().return_once(|_| Ok(()));
         builder.workloads_repository.expect_commit().once().return_once(|| Ok(()));
         builder.vm_service.expect_create_vm().with(eq(workload)).once().return_once(|_| Ok(()));

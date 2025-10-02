@@ -1,7 +1,6 @@
 use crate::Artifacts;
 use crate::VmType;
 use crate::metadata::ArtifactsMetadata;
-use crate::metadata::LegacyMetadata;
 use futures_util::StreamExt;
 use sha2::Digest;
 use sha2::Sha256;
@@ -14,7 +13,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
 use tracing::debug;
 use tracing::info;
-use tracing::warn;
 
 pub const S3_BUCKET_URL: &str = "https://nilcc.s3-accelerate.amazonaws.com";
 
@@ -95,28 +93,9 @@ impl ArtifactsDownloader {
         let url = format!("{}/{version}/metadata.json", self.artifacts_url);
         let response = reqwest::get(url).await?.error_for_status()?;
         let raw_metadata = response.text().await?;
-        let meta_hash = Sha256::digest(&raw_metadata).into();
-        match serde_json::from_str(&raw_metadata) {
-            Ok(meta) => return Ok((meta, meta_hash)),
-            Err(_) => {
-                warn!("Failed to decode artifact metadata, assuming this is an old version");
-            }
-        };
-
-        let legacy_meta = LegacyMetadata {
-            cpu_verity_root_hash: self.fetch_legacy_root_hash(VmType::Cpu).await?,
-            gpu_verity_root_hash: self.fetch_legacy_root_hash(VmType::Gpu).await?,
-        };
-        Ok((ArtifactsMetadata::legacy(legacy_meta), meta_hash))
-    }
-
-    async fn fetch_legacy_root_hash(&self, vm_type: VmType) -> Result<[u8; 32], DownloadError> {
-        let version = &self.version;
-        let url = format!("{}/{version}/vm_images/cvm-{vm_type}-verity/root-hash", self.artifacts_url);
-        let hash_hex = reqwest::get(url).await?.error_for_status()?.text().await?;
-        let mut hash: [u8; 32] = [0; 32];
-        hex::decode_to_slice(hash_hex.trim(), &mut hash).map_err(DownloadError::DecodeRootHash)?;
-        Ok(hash)
+        let metadata_hash = Sha256::digest(&raw_metadata).into();
+        let metadata = serde_json::from_str(&raw_metadata).map_err(DownloadError::DecodeMetadata)?;
+        Ok((metadata, metadata_hash))
     }
 
     async fn download_object(&self, url_path: &str, target_path: &Path) -> Result<(), DownloadError> {
@@ -135,14 +114,11 @@ pub enum DownloadError {
     #[error("could not write target file: {0}")]
     TargetFile(io::Error),
 
-    #[error("could not read root hash: {0}")]
-    ReadRootHash(io::Error),
-
-    #[error("malformed root hash: {0}")]
-    DecodeRootHash(hex::FromHexError),
-
     #[error("could not download file: {0}")]
     Download(#[from] reqwest::Error),
+
+    #[error("failed to decode metadata: {0}")]
+    DecodeMetadata(serde_json::Error),
 }
 
 pub struct FileDownloader<'a> {

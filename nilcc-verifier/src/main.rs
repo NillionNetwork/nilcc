@@ -326,10 +326,8 @@ impl From<ValidateError> for ErrorCode {
                 | ReportBundleError::MalformedPayload(_) => Request,
                 ReportBundleError::DownloadArtifacts(e) => match e {
                     DownloadError::NoParent => Internal,
-                    DownloadError::TargetDirectory(_)
-                    | DownloadError::TargetFile(_)
-                    | DownloadError::ReadRootHash(_) => Filesystem,
-                    DownloadError::DecodeRootHash(_) => InvalidArtifacts,
+                    DownloadError::TargetDirectory(_) | DownloadError::TargetFile(_) => Filesystem,
+                    DownloadError::DecodeMetadata(_) => InvalidArtifacts,
                     DownloadError::Download(_) => Request,
                 },
             },

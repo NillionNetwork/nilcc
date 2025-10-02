@@ -253,8 +253,7 @@ impl VmService for DefaultVmService {
             .await
             .map_err(|e| StartVmError(format!("failed tto artifact metadata: {e}")))?
             .ok_or_else(|| StartVmError("artifact not found".into()))?
-            .metadata
-            .ok_or_else(|| StartVmError("artifact has no metadata".into()))?;
+            .metadata;
         let vm_type = if workload.gpus.is_empty() { VmType::Cpu } else { VmType::Gpu };
         let config_path = self.cvm_artifacts_path.join(&workload.artifacts_version);
         let mut cvm_config = CvmConfig::from_metadata(&config_path, &metadata, vm_type);
@@ -352,13 +351,12 @@ mod tests {
     use crate::{
         clients::{cvm_agent::MockCvmAgentClient, qemu::MockVmClient},
         repositories::{
-            artifacts::{Artifacts, MockArtifactsRepository},
+            artifacts::{Artifacts, MockArtifactsRepository, utils::make_artifacts_metadata},
             sqlite::MockRepositoryProvider,
         },
         services::disk::MockDiskService,
     };
     use mockall::predicate::eq;
-    use nilcc_artifacts::metadata::LegacyMetadata;
     use tempfile::{TempDir, tempdir};
     use tokio::sync::mpsc::channel;
 
@@ -477,11 +475,7 @@ mod tests {
         builder.repository_provider.expect_artifacts().return_once(|_| {
             let mut repo = MockArtifactsRepository::default();
             repo.expect_find().with(eq("default")).return_once(|_| {
-                let legacy_meta = LegacyMetadata {
-                    cpu_verity_root_hash: Default::default(),
-                    gpu_verity_root_hash: Default::default(),
-                };
-                let metadata = Some(ArtifactsMetadata::legacy(legacy_meta));
+                let metadata = make_artifacts_metadata();
                 Ok(Some(Artifacts { version: "default".into(), metadata }))
             });
             Ok(Box::new(repo))

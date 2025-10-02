@@ -133,7 +133,7 @@ mod tests {
     use crate::{
         clients::nilcc_api::{HeartbeatResponse, MockNilccApiClient},
         repositories::{
-            artifacts::{Artifacts, MockArtifactsRepository},
+            artifacts::{Artifacts, MockArtifactsRepository, utils::make_artifacts_metadata},
             sqlite::MockRepositoryProvider,
             workload::MockWorkloadRepository,
         },
@@ -161,7 +161,7 @@ mod tests {
         async fn set_existing_artifact_versions(&mut self, versions: &[&str]) {
             let artifacts = versions
                 .into_iter()
-                .map(|version| Artifacts { version: version.to_string(), metadata: None })
+                .map(|version| Artifacts { version: version.to_string(), metadata: make_artifacts_metadata() })
                 .collect();
             self.provider.expect_artifacts().return_once(move |_| {
                 let mut repo = MockArtifactsRepository::default();

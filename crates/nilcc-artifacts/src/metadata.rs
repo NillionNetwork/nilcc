@@ -23,59 +23,6 @@ pub struct ArtifactsMetadata {
     pub cvm: Cvm,
 }
 
-impl ArtifactsMetadata {
-    pub fn legacy(meta: LegacyMetadata) -> Self {
-        Self {
-            kernel: PackageMetadata { commit: "".into() },
-            qemu: PackageMetadata { commit: "".into() },
-            ovmf: Artifact { path: "vm_images/ovmf/OVMF.fd".into(), sha256: [0; 32] },
-            initrd: Artifact { path: "initramfs/initramfs.cpio.gz".into(), sha256: [0; 32] },
-            cvm: Cvm {
-                cmdline: KernelCommandLine("panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH}".into()),
-                images: CvmImages {
-                    cpu: CvmImage {
-                        disk: CvmDisk {
-                            artifact: Artifact { path: "vm_images/cvm-cpu.qcow2".into(), sha256: [0; 32] },
-                            format: DiskFormat::Qcow2,
-                        },
-                        verity: Verity {
-                            disk: VerityDisk {
-                                path: "vm_images/cvm-cpu-verity/verity-hash-dev".into(),
-                                format: DiskFormat::Raw,
-                            },
-                            root_hash: meta.cpu_verity_root_hash,
-                        },
-                        kernel: Artifact { path: "vm_images/kernel/cpu-vmlinuz".into(), sha256: [0; 32] },
-                    },
-                    gpu: CvmImage {
-                        disk: CvmDisk {
-                            artifact: Artifact { path: "vm_images/cvm-gpu.qcow2".into(), sha256: [0; 32] },
-                            format: DiskFormat::Qcow2,
-                        },
-                        verity: Verity {
-                            disk: VerityDisk {
-                                path: "vm_images/cvm-gpu-verity/verity-hash-dev".into(),
-                                format: DiskFormat::Raw,
-                            },
-                            root_hash: meta.gpu_verity_root_hash,
-                        },
-                        kernel: Artifact { path: "vm_images/kernel/gpu-vmlinuz".into(), sha256: [0; 32] },
-                    },
-                },
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LegacyMetadata {
-    /// The CPU verity root hash.
-    pub cpu_verity_root_hash: [u8; 32],
-
-    /// The GPU verity root hash.
-    pub gpu_verity_root_hash: [u8; 32],
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PackageMetadata {
     /// The git commit that this package was built from.
@@ -108,7 +55,7 @@ pub struct KernelArgs<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KernelCommandLine(String);
+pub struct KernelCommandLine(pub String);
 
 impl KernelCommandLine {
     /// Render these command line arguments.
