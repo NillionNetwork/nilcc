@@ -26,7 +26,7 @@ defaults:
 jobs:
   build:
     name: Build
-    runs-on: [ "nilcc-ci" ]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +44,10 @@ jobs:
           fi
           echo "Building version ${version}"
           echo "NILCC_VERSION=${version}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          sudo apt install -y jq squashfs-tools cloud-image-utils
 
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@1.85.0
