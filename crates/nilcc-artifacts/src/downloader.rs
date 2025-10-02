@@ -57,7 +57,6 @@ impl ArtifactsDownloader {
         let artifact_metadata = self.fetch_metadata().await?;
         let metadata = &artifact_metadata.decoded;
         let metadata_path = target_dir.join("metadata.json");
-        fs::write(&metadata_path, artifact_metadata.raw).await.map_err(DownloadError::TargetFile)?;
         self.download_artifact(&metadata.ovmf.path, target_dir).await?;
         self.download_artifact(&metadata.initrd.path, target_dir).await?;
         for vm_type in &self.vm_types {
@@ -68,6 +67,7 @@ impl ArtifactsDownloader {
                 self.download_artifact(&metadata.verity.disk.path, target_dir).await?;
             }
         }
+        fs::write(&metadata_path, artifact_metadata.raw).await.map_err(DownloadError::TargetFile)?;
         Ok(Artifacts { metadata: artifact_metadata.decoded, metadata_hash: artifact_metadata.hash })
     }
 
