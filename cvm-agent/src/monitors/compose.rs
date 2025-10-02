@@ -149,6 +149,7 @@ impl ComposeMonitor {
     fn base_docker_command(&self) -> Command {
         let mut command = Command::new("docker");
         command
+            .env_clear()
             .current_dir(&self.ctx.iso_mount)
             // pass in `FILES` which points to `<iso>/files`
             .env("FILES", self.ctx.external_files.as_os_str())
