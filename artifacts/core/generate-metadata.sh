@@ -28,9 +28,16 @@ HOST_LIBC_DEV=core/kernel/host/linux-libc-dev.deb
 HOST_LIBC_DEV_HASH=$(sha256sum "$BASE_ARTIFACTS_PATH/$HOST_LIBC_DEV" | cut -d " " -f 1)
 QEMU=core/qemu-static.tar.gz
 QEMU_HASH=$(sha256sum "$BASE_ARTIFACTS_PATH/$QEMU" | cut -d " " -f 1)
+GITHUB_RUN_ID=${GITHUB_RUN_ID:-null}
+
 METADATA=$(
   cat <<EOF
 {
+  "build": {
+    "timestamp": ${BUILD_TIMESTAMP},
+    "git_hash": "${GIT_HASH}",
+    "github_action_run_id": $GITHUB_RUN_ID
+  },
   "built_at": ${BUILD_TIMESTAMP},
   "git_hash": "${GIT_HASH}",
   "kernel": {
