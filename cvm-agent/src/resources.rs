@@ -50,12 +50,11 @@ mod tests {
     use regex::bytes::Regex;
     use std::sync::LazyLock;
 
-    static VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new("\n    image: ghcr.io/nillionnetwork/nilcc-attester@[^\n]+").expect("invalid regex")
-    });
+    static VERSION_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new("\n    image: ([^@]+)@[^\n]+").expect("invalid regex"));
 
     fn replace_version(compose: &[u8]) -> Vec<u8> {
-        VERSION_REGEX.replace(compose, b"\n    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION").to_vec()
+        VERSION_REGEX.replace_all(compose, b"\n    image: $1:VERSION").to_vec()
     }
 
     #[test]
@@ -101,7 +100,7 @@ https://foo.com {
         let compose = replace_version(&compose);
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION
+    image: ghcr.io/nillionnetwork/nilcc-attester:VERSION
     restart: unless-stopped
     privileged: true
     volumes:
@@ -119,7 +118,7 @@ https://foo.com {
     
 
   nilcc-proxy:
-    image: caddy:2.10.2
+    image: caddy:VERSION
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
@@ -145,7 +144,7 @@ https://foo.com {
         let compose = replace_version(&compose);
         let expected = r#"services:
   nilcc-attester:
-    image: ghcr.io/nillionnetwork/nilcc-attester:ATTESTER_VERSION
+    image: ghcr.io/nillionnetwork/nilcc-attester:VERSION
     restart: unless-stopped
     privileged: true
     volumes:
@@ -169,7 +168,7 @@ https://foo.com {
               capabilities: [gpu]
 
   nilcc-proxy:
-    image: caddy:2.10.2
+    image: caddy:VERSION
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
