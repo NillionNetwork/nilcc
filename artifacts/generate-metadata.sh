@@ -27,12 +27,18 @@ GPU_VERITY_HASHES_DISK=gpu/disk.verity
 GPU_KERNEL=gpu/kernel
 GPU_KERNEL_HASH=$(sha256sum "$SCRIPT_PATH/dist/$GPU_KERNEL" | cut -d " " -f 1)
 KERNEL_CMDLINE="root=/dev/sda verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH} panic=-1 random.trust_cpu=on random.trust_bootloader=off"
+GITHUB_RUN_ID=${GITHUB_RUN_ID:-null}
 
 METADATA=$(
   cat <<EOF
 {
-  "built_at": ${BUILD_TIMESTAMP},
+  "build": {
+    "timestamp": ${BUILD_TIMESTAMP},
+    "git_hash": "${GIT_HASH}",
+    "github_action_run_id": $GITHUB_RUN_ID
+  },
   "git_hash": "${GIT_HASH}",
+  "built_at": ${BUILD_TIMESTAMP},
   "kernel": {
     "commit": "${KERNEL_COMMIT}"
   },
