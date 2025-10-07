@@ -22,7 +22,7 @@ apt update
 dpkg -i $CDROM/packages/*.deb
 
 # Install docker compose
-apt install -y --no-install-recommends docker-compose-v2 netplan.io gpg
+apt install -y --no-install-recommends docker-compose-v2 docker.io netplan.io gpg
 
 # Copy over cvm-agent.
 mkdir /opt/nillion
@@ -66,7 +66,7 @@ if [ "$VM_TYPE" == "gpu" ]; then
   apt -y install initramfs-tools
 
   # Install the nvidia driver, container toolkit, and zstd since it otherwise errors.
-  apt -y install nvidia-driver-550-server-open nvidia-container-toolkit zstd gpg
+  apt -y install nvidia-driver-550-server-open nvidia-fabricmanager-550 nvidia-container-toolkit zstd gpg
 
   # Configure the nvidia docker runtime.
   nvidia-ctk runtime configure --runtime=docker

@@ -121,6 +121,39 @@ async fn shutdown_signal() {
     }
 }
 
+fn count_gpus() -> usize {
+    let mut id = 0;
+    loop {
+        let path = format!("/dev/nvidia{id}");
+        if !fs::exists(&path).unwrap_or_default() {
+            break;
+        }
+        id += 1;
+    }
+    id
+}
+
+fn setup_gpus() {
+    let gpu_count = count_gpus();
+    match gpu_count {
+        0 => info!("No GPUs detected"),
+        1 => {
+            info!("Detected a single GPU, setting confidential compute ready state");
+            std::process::Command::new("nvidia-smi")
+                .args(["conf-compute", "-srs", "1"])
+                .status()
+                .expect("failed to run nvidia-smi");
+        }
+        _ => {
+            info!("Detected {gpu_count} GPUs, setting multiple GPU mode");
+            std::process::Command::new("nvidia-smi")
+                .args(["conf-compute", "-mgm"])
+                .status()
+                .expect("failed to run nvidia-smi");
+        }
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let cli = Cli::parse();
@@ -142,11 +175,7 @@ async fn main() {
     let docker = Docker::connect_with_local_defaults().expect("failed to connect to docker daemon");
     let (_state_dir, context) = build_bootstrap_context(&cli);
     if matches!(context.vm_type, VmType::Gpu) {
-        // Set nvidia confidential compute ready state
-        std::process::Command::new("nvidia-smi")
-            .args(["conf-compute", "-srs", "1"])
-            .status()
-            .expect("failed to run nvidia-smi");
+        setup_gpus();
     }
     let state =
         Arc::new(AppState { docker, context, system_state: Default::default(), log_path: cli.log_file.clone() });
