@@ -14,12 +14,6 @@ pub mod bootstrap {
     /// A request to bootstrap the CVM.
     #[derive(Deserialize, Serialize)]
     pub struct BootstrapRequest {
-        /// Deprecated: The ACME EAB key id.
-        pub acme_eab_key_id: Option<String>,
-
-        /// Deprecated: The ACME EAB MAC key.
-        pub acme_eab_mac_key: Option<String>,
-
         /// The ACME credentials.
         pub acme: AcmeCredentials,
 
