@@ -309,15 +309,19 @@ impl VmClient for QemuClient {
         }
 
         // --- GPU passthrough ---
-        for (index, gpu) in spec.gpus.iter().enumerate() {
-            let gpu = &gpu.0;
-            let id = format!("gpu{}", index + 1);
-            args.extend([
-                "-device".into(),
-                format!("pcie-root-port,id={id},bus=pcie.0"),
-                "-device".into(),
-                format!("vfio-pci,host={gpu},bus={id}"),
-            ]);
+        if !spec.gpus.is_empty() {
+            args.extend(["-object".into(), "iommufd,id=iommufd0".into()]);
+            for (index, gpu) in spec.gpus.iter().enumerate() {
+                let gpu = &gpu.0;
+                let id = format!("gpu{}", index + 1);
+                let chassis = index + 1;
+                args.extend([
+                    "-device".into(),
+                    format!("pcie-root-port,id={id},bus=pcie.0,chassis={chassis}"),
+                    "-device".into(),
+                    format!("vfio-pci,host={gpu},bus={id},iommufd=iommufd0"),
+                ]);
+            }
         }
 
         Ok(args)
@@ -467,14 +471,16 @@ mod tests {
             "-netdev",
             "user,id=vmnic,hostfwd=tcp:127.0.0.1:8080-:80",
             // GPUs
+            "-object",
+            "iommufd,id=iommufd0",
             "-device",
-            "pcie-root-port,id=gpu1,bus=pcie.0",
+            "pcie-root-port,id=gpu1,bus=pcie.0,chassis=1",
             "-device",
-            "vfio-pci,host=A,bus=gpu1",
+            "vfio-pci,host=A,bus=gpu1,iommufd=iommufd0",
             "-device",
-            "pcie-root-port,id=gpu2,bus=pcie.0",
+            "pcie-root-port,id=gpu2,bus=pcie.0,chassis=2",
             "-device",
-            "vfio-pci,host=B,bus=gpu2",
+            "vfio-pci,host=B,bus=gpu2,iommufd=iommufd0",
         ];
         assert_eq!(args, expected);
     }
