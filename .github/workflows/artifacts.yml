@@ -47,7 +47,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt install -y jq squashfs-tools cloud-image-utils
+          sudo apt install -y --no-install-recommends jq squashfs-tools cloud-image-utils qemu-system-x86
 
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@1.85.0

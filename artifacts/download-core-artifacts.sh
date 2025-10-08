@@ -7,13 +7,6 @@ ARTIFACTS_VERSION=0.1.0
 BASE_URL=https://nilcc.s3.eu-west-1.amazonaws.com/${ARTIFACTS_VERSION}/core
 BASE_ARTIFACTS_PATH=$SCRIPT_PATH/dist/
 
-for type in guest host; do
-  mkdir -p "$BASE_ARTIFACTS_PATH/kernel/${type}"
-
-  for file in linux-headers.deb linux-image.deb linux-image-dbg.deb linux-libc-dev.deb; do
-    curl -o "${BASE_ARTIFACTS_PATH}/kernel/${type}/${file}" "${BASE_URL}/kernel/${type}/${file}"
-  done
-done
-
+mkdir -p "$BASE_ARTIFACTS_PATH"
 curl -o "${BASE_ARTIFACTS_PATH}/qemu-static.tar.gz" "${BASE_URL}/qemu-static.tar.gz"
 curl -o "${BASE_ARTIFACTS_PATH}/core-metadata.json" "${BASE_URL}/metadata.json"

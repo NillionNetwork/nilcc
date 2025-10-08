@@ -3,21 +3,16 @@
 set -e
 
 SCRIPT_PATH=$(dirname $(realpath $0))
-
 BUILD_DIR="${SCRIPT_PATH}/build"
 OUT="$BUILD_DIR/initramfs.cpio.gz"
+
+source "$SCRIPT_PATH/../versions.sh"
 
 echo "Preparing directories.."
 rm -rf "$BUILD_DIR"
 INITRD_DIR=$BUILD_DIR/initramfs
-KERNEL_DIR=$BUILD_DIR/kernel
 
-mkdir -p $INITRD_DIR $KERNEL_DIR
-
-KERNEL_DEB=$SCRIPT_PATH/../dist/kernel/guest/linux-image.deb
-[[ ! -f "$KERNEL_DEB" ]] && echo "Kernel not found, run 'download-core-artifacts.sh' first" && exit 1
-
-cp "$KERNEL_DEB" $KERNEL_DIR/kernel.deb
+mkdir -p $INITRD_DIR
 
 echo "Building Docker image"
 DOCKER_IMG="nilcc-initramfs"
@@ -31,7 +26,11 @@ cleanup() {
 }
 
 # Build our docker image.
-docker build -t $DOCKER_IMG -f $SCRIPT_PATH/Dockerfile $SCRIPT_PATH/../../
+docker build \
+  -t $DOCKER_IMG \
+  -f $SCRIPT_PATH/Dockerfile \
+  --build-arg KERNEL_VERSION=${KERNEL_VERSION} \
+  $SCRIPT_PATH/../../
 
 # Run the container. This will run and stop it immediately since it does nothing by default.
 echo "Running container ${DOCKER_CONTAINER}"
@@ -70,4 +69,5 @@ popd >/dev/null
 INITRD_SIZE=$(du -h $OUT | cut -f1)
 echo "initrd image generated at ${OUT}, size: ${INITRD_SIZE}"
 
+mkdir -p "$SCRIPT_PATH/../dist"
 cp "$OUT" "$SCRIPT_PATH/../dist/initramfs.cpio.gz"
