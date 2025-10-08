@@ -25,7 +25,7 @@ GPU_VERITY_ROOT_HASH=$(cat "$SCRIPT_PATH/dist/gpu/root-hash")
 GPU_VERITY_HASHES_DISK=gpu/disk.verity
 GPU_KERNEL=gpu/kernel
 GPU_KERNEL_HASH=$(sha256sum "$SCRIPT_PATH/dist/$GPU_KERNEL" | cut -d " " -f 1)
-KERNEL_CMDLINE="root=/dev/sda verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH} panic=-1 random.trust_cpu=on random.trust_bootloader=off"
+KERNEL_CMDLINE="root=/dev/sda verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH} panic=-1 random.trust_cpu=on random.trust_bootloader=off pci=realloc,nocrs"
 GITHUB_RUN_ID=${GITHUB_RUN_ID:-null}
 
 METADATA=$(
