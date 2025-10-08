@@ -21,7 +21,7 @@ write_files:
 
 runcmd:
   # Setup the system up.
-  - VM_TYPE={VM_TYPE} bash /tmp/setup.sh
+  - VM_TYPE={VM_TYPE} KERNEL_VERSION={KERNEL_VERSION} bash /tmp/setup.sh
 
   # THIS MUST BE THE LAST COMMAND EXECUTED.
   - shutdown -P now

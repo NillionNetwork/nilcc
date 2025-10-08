@@ -8,7 +8,6 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 BUILD_TIMESTAMP=$(date +%s)
 GIT_HASH=$(git rev-parse --short HEAD)
 
-KERNEL_COMMIT=$(cat "$SCRIPT_PATH/dist/core-metadata.json" | jq -r .kernel.commit)
 QEMU_COMMIT=$(cat "$SCRIPT_PATH/dist/core-metadata.json" | jq -r .qemu.commit)
 INITRD=initramfs.cpio.gz
 INITRD_HASH=$(sha256sum "$SCRIPT_PATH/dist/$INITRD" | cut -d " " -f 1)
@@ -40,7 +39,7 @@ METADATA=$(
   "git_hash": "${GIT_HASH}",
   "built_at": ${BUILD_TIMESTAMP},
   "kernel": {
-    "commit": "${KERNEL_COMMIT}"
+    "commit": "<unused>"
   },
   "qemu": {
     "commit": "${QEMU_COMMIT}"

@@ -18,11 +18,22 @@ mount -o loop /dev/sr0 "$CDROM"
 
 apt update
 
-# Install all packages we have built externally.
-dpkg -i $CDROM/packages/*.deb
+# Install the dependencies we need
+apt install -y --no-install-recommends \
+  docker-compose-v2 \
+  docker.io \
+  netplan.io \
+  gpg
+journalctl -xeu docker.service
 
-# Install docker compose
-apt install -y --no-install-recommends docker-compose-v2 docker.io netplan.io gpg
+# Uninstall the existing kernel
+apt purge -y linux-image-6.8* linux-modules-6.8*
+
+# Install the specific kernel version we want
+apt install -y --no-install-recommends \
+  linux-headers-${KERNEL_VERSION}-generic \
+  linux-image-${KERNEL_VERSION}-generic \
+  linux-modules-extra-${KERNEL_VERSION}-generic
 
 # Copy over cvm-agent.
 mkdir /opt/nillion
@@ -43,8 +54,6 @@ rm -rf /etc/ssh/sshd_config.d
 apt purge -y \
   apport \
   keyboard-configuration \
-  linux-image-6.8* \
-  linux-modules-6.8* \
   openssh-client \
   openssh-server \
   snapd \

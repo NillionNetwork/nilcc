@@ -42,12 +42,6 @@ jobs:
         run: |
           sudo apt install -y jq squashfs-tools cloud-image-utils
 
-      - name: Build guest kernel
-        run: artifacts/core/kernel/build.sh guest
-
-      - name: Build host kernel
-        run: artifacts/core/kernel/build.sh host
-
       - name: Build QEMU
         run: artifacts/core/qemu/build.sh
 

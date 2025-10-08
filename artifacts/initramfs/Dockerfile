@@ -1,13 +1,14 @@
 FROM ubuntu:24.04
 
-COPY artifacts/initramfs/build/kernel/kernel.deb /tmp/
+ARG KERNEL_VERSION
 
 RUN apt update \
   && apt upgrade -y \
-  && apt install -y kmod cryptsetup-bin \
-  && apt install -y /tmp/kernel.deb \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm /tmp/kernel.deb
+  && apt install -y --no-install-recommends \
+    kmod \
+    cryptsetup-bin \
+    linux-modules-${KERNEL_VERSION}-generic \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY artifacts/initramfs/init.sh /init
 
