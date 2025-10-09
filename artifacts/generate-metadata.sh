@@ -8,7 +8,6 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 BUILD_TIMESTAMP=$(date +%s)
 GIT_HASH=$(git rev-parse --short HEAD)
 
-QEMU_COMMIT=$(cat "$SCRIPT_PATH/dist/core-metadata.json" | jq -r .qemu.commit)
 INITRD=initramfs.cpio.gz
 INITRD_HASH=$(sha256sum "$SCRIPT_PATH/dist/$INITRD" | cut -d " " -f 1)
 OVMF=OVMF.fd
@@ -42,7 +41,7 @@ METADATA=$(
     "commit": "<unused>"
   },
   "qemu": {
-    "commit": "${QEMU_COMMIT}"
+    "commit": "<unused>"
   },
   "ovmf": {
     "path": "${OVMF}",
