@@ -7,12 +7,6 @@ use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ArtifactsMetadata {
-    /// Information about the kernel build.
-    pub kernel: PackageMetadata,
-
-    /// Information about the qemu build.
-    pub qemu: PackageMetadata,
-
     /// Information about the OVMF.
     pub ovmf: Artifact,
 
@@ -21,12 +15,6 @@ pub struct ArtifactsMetadata {
 
     /// Information about the CVM images.
     pub cvm: Cvm,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PackageMetadata {
-    /// The git commit that this package was built from.
-    pub commit: String,
 }
 
 #[serde_as]
@@ -167,7 +155,7 @@ mod tests {
 
     #[test]
     fn serde() {
-        let input = r#"{ "kernel": { "commit": "e8b814d629a0c2073239828e63d50b125c013570" }, "qemu": { "commit": "e8b814d629a0c2073239828e63d50b125c013570" }, "ovmf": { "path": "vm_images/ovmf/OVMF.fd", "sha256": "e842c3c58a54172592f6345ae7f44b1c7fe7c76af9578765932a77674e4475bb" }, "initrd": { "path": "initramfs/initramfs.cpio.gz", "sha256": "115c25046d4f357edae4506be45c5c6a79543a15db1b4ef2ec94bcfe70bd66ec" }, "cvm": { "cmdline": "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH}", "images": { "cpu": { "disk": { "path": "vm_images/cvm-cpu.qcow2", "format": "qcow2", "sha256": "1287785f6a6a2cb08f0c25b864f8976a76e7e0d2a7c906738e2bc374266b3708" }, "verity": { "disk": { "path": "vm_images/cvm-cpu-verity/verity-hash-dev", "format": "raw" }, "root_hash": "4324eabc4d0d9aa2aed99f7ac16bd118473f455ab97841674afd3bc318d755cb" }, "kernel": { "path": "vm_images/kernel/cpu-vmlinuz", "sha256": "92cefd4d94338ad808d3c1a1be3b1d166d92a654fcb52aecdbe8905e7970817e" } }, "gpu": { "disk": { "path": "vm_images/cvm-gpu.qcow2", "format": "qcow2", "sha256": "1287785f6a6a2cb08f0c25b864f8976a76e7e0d2a7c906738e2bc374266b3708" }, "verity": { "disk": { "path": "vm_images/cvm-gpu-verity/verity-hash-dev", "format": "raw" }, "root_hash": "4324eabc4d0d9aa2aed99f7ac16bd118473f455ab97841674afd3bc318d755cb" }, "kernel": { "path": "vm_images/kernel/gpu-vmlinuz", "sha256": "92cefd4d94338ad808d3c1a1be3b1d166d92a654fcb52aecdbe8905e7970817e" } } } } }"#;
+        let input = r#"{ "ovmf": { "path": "vm_images/ovmf/OVMF.fd", "sha256": "e842c3c58a54172592f6345ae7f44b1c7fe7c76af9578765932a77674e4475bb" }, "initrd": { "path": "initramfs/initramfs.cpio.gz", "sha256": "115c25046d4f357edae4506be45c5c6a79543a15db1b4ef2ec94bcfe70bd66ec" }, "cvm": { "cmdline": "panic=-1 root=/dev/sda2 verity_disk=/dev/sdb verity_roothash={VERITY_ROOT_HASH} state_disk=/dev/sdc docker_compose_disk=/dev/sr0 docker_compose_hash={DOCKER_COMPOSE_HASH}", "images": { "cpu": { "disk": { "path": "vm_images/cvm-cpu.qcow2", "format": "qcow2", "sha256": "1287785f6a6a2cb08f0c25b864f8976a76e7e0d2a7c906738e2bc374266b3708" }, "verity": { "disk": { "path": "vm_images/cvm-cpu-verity/verity-hash-dev", "format": "raw" }, "root_hash": "4324eabc4d0d9aa2aed99f7ac16bd118473f455ab97841674afd3bc318d755cb" }, "kernel": { "path": "vm_images/kernel/cpu-vmlinuz", "sha256": "92cefd4d94338ad808d3c1a1be3b1d166d92a654fcb52aecdbe8905e7970817e" } }, "gpu": { "disk": { "path": "vm_images/cvm-gpu.qcow2", "format": "qcow2", "sha256": "1287785f6a6a2cb08f0c25b864f8976a76e7e0d2a7c906738e2bc374266b3708" }, "verity": { "disk": { "path": "vm_images/cvm-gpu-verity/verity-hash-dev", "format": "raw" }, "root_hash": "4324eabc4d0d9aa2aed99f7ac16bd118473f455ab97841674afd3bc318d755cb" }, "kernel": { "path": "vm_images/kernel/gpu-vmlinuz", "sha256": "92cefd4d94338ad808d3c1a1be3b1d166d92a654fcb52aecdbe8905e7970817e" } } } } }"#;
         let meta: ArtifactsMetadata = serde_json::from_str(input).expect("failed to deserialize");
         let serialized = serde_json::to_string(&meta).expect("failed to serialize");
         assert_eq!(serde_json::from_str::<ArtifactsMetadata>(&serialized).expect("failed ot parse"), meta);
