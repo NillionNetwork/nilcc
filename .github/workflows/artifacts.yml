@@ -55,9 +55,6 @@ jobs:
       - name: Build cvm-agent
         run: cargo build --release -p cvm-agent
 
-      - name: Download core artifacts
-        run: artifacts/download-core-artifacts.sh
-
       - name: Build initrd
         run: artifacts/initramfs/build.sh
 
