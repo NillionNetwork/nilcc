@@ -77,18 +77,14 @@ echo "$STATE_PASSWORD" | cryptsetup luksOpen "$STATE_DISK" state
 mkfs.ext4 /dev/mapper/state
 unset STATE_PASSWORD
 
-# Mount the now encrypted and formatted state disk on /var and clear it up.
-mount /dev/mapper/state "${MNT_DIR}/var"
+# Mount the now encrypted and formatted state disk
+mount /dev/mapper/state "${MNT_DIR}/media/state"
+
+# Create the directory for /tmp
+mkdir -p "${MNT_DIR}/media/state/tmp"
 
 # Now copy over the original /var into the new one.
-cp -r "${MNT_DIR}/ro/var" "${MNT_DIR}/"
-
-# Create a tmpfs for /etc and copy over the /ro contents to it
-mount -t tmpfs -o size=1024M tmpfs "$MNT_DIR/etc"
-cp -r "${MNT_DIR}/ro/etc" "${MNT_DIR}/"
-
-# Create a tmpfs for /tmp.
-mount -t tmpfs -o size=1024M tmpfs "$MNT_DIR/tmp"
+cp -r "${MNT_DIR}/ro/var" "${MNT_DIR}/media/state/"
 
 # Mount the ISO that contains the docker compose file into the path where cvm-agent will look it up.
 log "Validating docker compose file"
@@ -111,6 +107,13 @@ fi
 log "Docker compose hash matches expected one: ${ACTUAL_HASH}"
 
 if [ "${DEBUG_MODE}" = "1" ]; then
+  tmp_dir="${MNT_DIR}/media/state/tmp"
+  mkdir "${tmp_dir}/etc"
+  cp -r "${MNT_DIR}/etc" "${tmp_dir}"
+  mount -t tmpfs -o size=1024M tmpfs "$MNT_DIR/etc"
+  cp -r "${tmp_dir}/etc" "${MNT_DIR}/"
+  rm -rf "${tmp_dir}/etc"
+
   # Create a user nillion:nillion
   useradd --root "$MNT_DIR" \
     -g sudo \
