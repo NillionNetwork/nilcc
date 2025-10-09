@@ -118,14 +118,18 @@ echo "Setting up filesystem"
 RO_PATH="$MOUNT_POINT/ro"
 sudo mkdir -p "$RO_PATH"
 
-# Move /var and /etc to the read only directory
-sudo mv "${MOUNT_POINT}/var" "${MOUNT_POINT}/etc" "${RO_PATH}"
-
-# Create directories that initrd will populate on start.
-sudo mkdir "${MOUNT_POINT}/var" "${MOUNT_POINT}/etc" "${MOUNT_POINT}/media/cvm-agent-entrypoint"
+# Move /var to the read only directory
+sudo mv "${MOUNT_POINT}/var" "${RO_PATH}"
 
 # Delete /tmp
-sudo rm -rf "${MOUNT_POINT}/tmp/*"
+sudo rm -rf "${MOUNT_POINT}/tmp"
+
+# Create directories that initrd will populate on start.
+sudo mkdir -p "${MOUNT_POINT}/media/cvm-agent-entrypoint"
+sudo mkdir -p "${MOUNT_POINT}/media/state"
+for dir in var tmp; do
+  sudo ln -s "/media/state/${dir}" "${MOUNT_POINT}/${dir}"
+done
 
 echo "Repackaging filesystem as squashfs"
 rm -f "$SQUASHFS_PATH"
