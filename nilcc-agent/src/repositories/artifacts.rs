@@ -106,14 +106,12 @@ impl<'a> ArtifactsRepository for SqliteArtifactsRepository<'a> {
 #[cfg(test)]
 pub(crate) mod utils {
     use nilcc_artifacts::metadata::{
-        Artifact, ArtifactsMetadata, Cvm, CvmDisk, CvmImage, CvmImages, DiskFormat, KernelCommandLine, PackageMetadata,
-        Verity, VerityDisk,
+        Artifact, ArtifactsMetadata, Cvm, CvmDisk, CvmImage, CvmImages, DiskFormat, KernelCommandLine, Verity,
+        VerityDisk,
     };
 
     pub(crate) fn make_artifacts_metadata() -> ArtifactsMetadata {
         ArtifactsMetadata {
-            kernel: PackageMetadata { commit: "".into() },
-            qemu: PackageMetadata { commit: "".into() },
             ovmf: Artifact { path: "".into(), sha256: [0; 32] },
             initrd: Artifact { path: "".into(), sha256: [0; 32] },
             cvm: Cvm {
