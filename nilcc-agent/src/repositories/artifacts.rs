@@ -112,6 +112,7 @@ pub(crate) mod utils {
 
     pub(crate) fn make_artifacts_metadata() -> ArtifactsMetadata {
         ArtifactsMetadata {
+            build: None,
             ovmf: Artifact { path: "".into(), sha256: [0; 32] },
             initrd: Artifact { path: "".into(), sha256: [0; 32] },
             cvm: Cvm {

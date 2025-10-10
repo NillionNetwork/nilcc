@@ -1,4 +1,5 @@
 use crate::VmType;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
@@ -7,6 +8,11 @@ use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ArtifactsMetadata {
+    /// Metadata about the build.
+    // Note: this can be marked as required after everything artifacts < 0.2.0 are no longer used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<BuildMetadata>,
+
     /// Information about the OVMF.
     pub ovmf: Artifact,
 
@@ -15,6 +21,19 @@ pub struct ArtifactsMetadata {
 
     /// Information about the CVM images.
     pub cvm: Cvm,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BuildMetadata {
+    /// The timestamp when the artifacts were built.
+    #[serde(deserialize_with = "chrono::serde::ts_seconds::deserialize")]
+    pub timestamp: DateTime<Utc>,
+
+    /// The git hash the artifacts were built from.
+    pub git_hash: String,
+
+    /// The github action run ID that generated the artifacts.
+    pub github_action_run_id: u64,
 }
 
 #[serde_as]

@@ -200,6 +200,7 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
         initrd_path,
         kernel_path,
         filesystem_root_hash,
+        metadata_hash,
         tls_fingerprint,
         nilcc_version,
         metadata,
@@ -220,8 +221,15 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let verifier = ReportVerifier::new(Box::new(fetcher));
     verifier.verify_report(bundle.report, &measurement)?;
 
+    let github_actions_build_url = metadata.build.as_ref().map(|b| {
+        let id = b.github_action_run_id;
+        format!("https://github.com/NillionNetwork/nilcc/actions/runs/{id}")
+    });
+    let metadata_hash = hex::encode(metadata_hash);
     let meta = ReportMetadata {
+        github_actions_build_url,
         measurement_hash: hex::encode(measurement),
+        metadata_hash,
         tls_fingerprint,
         artifacts: ReportArtifacts { version: nilcc_version, metadata },
     };
@@ -355,6 +363,9 @@ impl From<ValidateError> for ErrorCode {
 
 #[derive(Serialize)]
 struct ReportMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    github_actions_build_url: Option<String>,
+    metadata_hash: String,
     measurement_hash: String,
     tls_fingerprint: String,
     artifacts: ReportArtifacts,
