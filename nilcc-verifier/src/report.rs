@@ -99,7 +99,7 @@ impl ReportFetcher {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(ReportBundleError::Tokio)?;
         let artifacts = runtime.block_on(downloader.download(&download_path))?;
-        let Artifacts { metadata, .. } = artifacts;
+        let Artifacts { metadata, metadata_hash } = artifacts;
         let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
         let filesystem_root_hash = vm_type_metadata.verity.root_hash;
         let ovmf_path = download_path.join(&metadata.ovmf.path);
@@ -108,6 +108,7 @@ impl ReportFetcher {
         Ok(ReportBundle {
             report,
             metadata,
+            metadata_hash,
             cpu_count,
             ovmf_path,
             initrd_path,
@@ -161,6 +162,7 @@ pub struct ReportBundle {
     pub initrd_path: PathBuf,
     pub kernel_path: PathBuf,
     pub filesystem_root_hash: [u8; 32],
+    pub metadata_hash: [u8; 32],
     pub tls_fingerprint: String,
     pub nilcc_version: String,
 }
