@@ -26,7 +26,7 @@ pub struct ArtifactsMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BuildMetadata {
     /// The timestamp when the artifacts were built.
-    #[serde(deserialize_with = "chrono::serde::ts_seconds::deserialize")]
+    #[serde(with = "chrono::serde::ts_seconds")]
     pub timestamp: DateTime<Utc>,
 
     /// The git hash the artifacts were built from.
