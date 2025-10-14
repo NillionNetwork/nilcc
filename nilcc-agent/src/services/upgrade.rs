@@ -1,4 +1,8 @@
 use crate::repositories::artifacts::Artifacts;
+use crate::repositories::changelog::ChangelogEntry;
+use crate::repositories::changelog::ChangelogEntryOperation;
+use crate::repositories::changelog::ChangelogEntryState;
+use crate::repositories::changelog::ChangelogRepository;
 use crate::repositories::sqlite::ProviderMode;
 use crate::repositories::sqlite::RepositoryProvider;
 use crate::routes::Json;
@@ -15,6 +19,7 @@ use reqwest::StatusCode;
 use std::collections::HashSet;
 use std::env;
 use std::fs::Permissions;
+use std::mem;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Output;
 use std::process::Stdio;
@@ -26,6 +31,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::warn;
 use tracing::{error, info};
+use uuid::Uuid;
 
 const UPDATER_SCRIPT: &[u8] = include_bytes!("../../resources/update.sh");
 
@@ -161,23 +167,46 @@ impl UpgradeService for DefaultUpgradeService {
     }
 
     async fn uninstall_artifact_version(&self, version: &str) -> Result<(), CleanupError> {
-        let mut repo = self.repository_provider.artifacts(Default::default()).await.map_err(|e| {
+        let mut artifacts_repo = self.repository_provider.artifacts(Default::default()).await.map_err(|e| {
             error!("Failed to get repository: {e}");
+            CleanupError::Internal
+        })?;
+        let changelog = ChangelogAppender::new(
+            self.repository_provider.as_ref(),
+            version.to_string(),
+            ChangelogEntryOperation::Uninstall,
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to initialize changelog entry: {e}");
             CleanupError::Internal
         })?;
 
         info!("Deleting artifacts for version {version}");
         let path = self.cvm_artifacts_path.join(version);
-        fs::remove_dir_all(&path).await.map_err(|e| {
-            error!("Failed to delete artifacts for version {version}: {e}");
-            CleanupError::Internal
-        })?;
 
-        repo.delete(version).await.map_err(|e| {
-            error!("Failed to delete version {version} from database: {e}");
-            CleanupError::Internal
-        })?;
-        Ok(())
+        let mut handler = async || -> Result<(), CleanupError> {
+            fs::remove_dir_all(&path).await.map_err(|e| {
+                error!("Failed to delete artifacts for version {version}: {e}");
+                CleanupError::Internal
+            })?;
+
+            artifacts_repo.delete(version).await.map_err(|e| {
+                error!("Failed to delete version {version} from database: {e}");
+                CleanupError::Internal
+            })?;
+            Ok(())
+        };
+        match handler().await {
+            Ok(_) => {
+                changelog.success().await;
+                Ok(())
+            }
+            Err(e) => {
+                changelog.failure(e.to_string()).await;
+                Err(e)
+            }
+        }
     }
 
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError> {
@@ -322,11 +351,31 @@ struct ArtifactInstallWorker {
 impl ArtifactInstallWorker {
     async fn run(self) {
         let version = &self.version;
+        let Some(metadata) = self.load_metadata().await else { return };
+        let changelog = match ChangelogAppender::new(
+            self.repository_provider.as_ref(),
+            version.clone(),
+            ChangelogEntryOperation::Install,
+        )
+        .await
+        {
+            Ok(changelog) => changelog,
+            Err(e) => {
+                let mut state = self.state.lock().await;
+                *state = UpgradeState::Done { metadata, finished_at: Utc::now(), error: Some(e.to_string()) };
+                return;
+            }
+        };
         let error = match self.perform_upgrade().await {
-            Ok(_) => None,
+            Ok(_) => {
+                changelog.success().await;
+                None
+            }
             Err(e) => {
                 error!("Failed to upgrade to version {version}: {e}");
-                Some(format!("{e:#}"))
+                let error = format!("{e:#}");
+                changelog.failure(error.clone()).await;
+                Some(error)
             }
         };
         let mut state = self.state.lock().await;
@@ -338,9 +387,24 @@ impl ArtifactInstallWorker {
                 error!("Upgrade is marked as completed already");
             }
             UpgradeState::Upgrading { metadata } => {
-                *state = UpgradeState::Done { metadata: metadata.clone(), finished_at: Utc::now(), error }
+                *state = UpgradeState::Done { metadata: metadata.clone(), finished_at: Utc::now(), error };
             }
         };
+    }
+
+    async fn load_metadata(&self) -> Option<UpgradeMetadata> {
+        let mut state = self.state.lock().await;
+        match mem::take(&mut *state) {
+            UpgradeState::None => {
+                error!("Not running any upgrades");
+                None
+            }
+            UpgradeState::Done { .. } => {
+                error!("Upgrade is marked as completed already");
+                None
+            }
+            UpgradeState::Upgrading { metadata } => Some(metadata),
+        }
     }
 
     async fn perform_upgrade(&self) -> anyhow::Result<()> {
@@ -424,4 +488,35 @@ impl AgentUpgradeWorker {
 
 fn agent_url(version: &str) -> String {
     format!("/{version}/nilcc-agent/x86-64/nilcc-agent")
+}
+
+struct ChangelogAppender {
+    repo: Box<dyn ChangelogRepository>,
+    id: Uuid,
+}
+
+impl ChangelogAppender {
+    async fn new(
+        provider: &dyn RepositoryProvider,
+        version: String,
+        operation: ChangelogEntryOperation,
+    ) -> anyhow::Result<Self> {
+        let mut repo = provider.changelog(Default::default()).await?;
+        let id = Uuid::new_v4();
+        repo.insert(&ChangelogEntry { id, operation, version, state: ChangelogEntryState::Pending, details: None })
+            .await?;
+        Ok(Self { repo, id })
+    }
+
+    async fn success(mut self) {
+        if let Err(e) = self.repo.update_state(self.id, ChangelogEntryState::Success, None).await {
+            error!("Failed to update changelog state: {e}");
+        }
+    }
+
+    async fn failure(mut self, error: String) {
+        if let Err(e) = self.repo.update_state(self.id, ChangelogEntryState::Failure, Some(error)).await {
+            error!("Failed to update changelog state: {e}");
+        }
+    }
 }

@@ -1,0 +1,13 @@
+-- Create a artifacts changelog table.
+
+CREATE TABLE artifacts_changelog (
+  id VARCHAR(36) PRIMARY KEY,
+  operation VARCHAR(32) NOT NULL,
+  version VARCHAR(32) NOT NULL,
+  state VARCHAR(32) NOT NULL,
+  details TEXT,
+  created_at DATETIME WITH TIMEZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME WITH TIMEZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
