@@ -51,6 +51,7 @@ pub fn build_router(state: AppState, token: String) -> Router {
                 Router::new()
                     .route("/artifacts/install", post(system::artifacts::install::handler))
                     .route("/artifacts/versions", get(system::artifacts::versions::handler))
+                    .route("/artifacts/changelog", get(system::artifacts::changelog::handler))
                     .route("/artifacts/cleanup", post(system::artifacts::cleanup::handler))
                     .route("/agent/upgrade", post(system::agent::upgrade::handler))
                     .route("/agent/version", get(system::agent::version::handler)),

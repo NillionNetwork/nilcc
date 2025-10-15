@@ -16,6 +16,10 @@ use cvm_agent_models::{
     logs::{ContainerLogsRequest, ContainerLogsResponse, OutputStream},
 };
 use nilcc_agent_models::system::AgentVersionResponse;
+use nilcc_agent_models::system::ArtifactChangelogEntry;
+use nilcc_agent_models::system::ArtifactChangelogEntryOperation;
+use nilcc_agent_models::system::ArtifactChangelogEntryState;
+use nilcc_agent_models::system::ArtifactChangelogResponse;
 use nilcc_agent_models::system::ArtifactVersionsResponse;
 use nilcc_agent_models::system::ArtifactsCleanupResponse;
 use nilcc_agent_models::system::InstallArtifactVersionRequest;
@@ -126,6 +130,9 @@ enum AdminArtifactsCommand {
 
     /// Get the current artifacts versions.
     Versions,
+
+    /// Get the artifacts changelog.
+    Changelog,
 
     /// Cleanup unused artifact versions.
     Cleanup,
@@ -550,6 +557,30 @@ fn artifacts_versions(client: ApiClient) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn artifacts_changelog(client: ApiClient) -> anyhow::Result<()> {
+    let response: ArtifactChangelogResponse = client.get("/api/v1/system/artifacts/changelog")?;
+    let ArtifactChangelogResponse { entries } = response;
+    if entries.is_empty() {
+        println!("No entries in changelog");
+        return Ok(());
+    }
+
+    for entry in entries {
+        let ArtifactChangelogEntry { version, operation, state, created_at, updated_at } = entry;
+        let operation = match operation {
+            ArtifactChangelogEntryOperation::Install => "installation",
+            ArtifactChangelogEntryOperation::Uninstall => "removal",
+        };
+        let state = match state {
+            ArtifactChangelogEntryState::Pending => Color::Yellow.paint("is still pending"),
+            ArtifactChangelogEntryState::Success => Color::Green.paint("was completed successfully"),
+            ArtifactChangelogEntryState::Failure { error } => Color::Red.paint(format!("failed: {error}")),
+        };
+        println!("- {version} {operation} {state} (started at {created_at}, last updated at {updated_at})");
+    }
+    Ok(())
+}
+
 fn cleanup_artifacts(client: ApiClient) -> anyhow::Result<()> {
     let ArtifactsCleanupResponse { versions_deleted } = client.post("/api/v1/system/artifacts/cleanup", &())?;
     if versions_deleted.is_empty() {
@@ -648,6 +679,7 @@ fn main() {
             install_artifacts(client, args)
         }
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Versions)) => artifacts_versions(client),
+        Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Changelog)) => artifacts_changelog(client),
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Cleanup)) => cleanup_artifacts(client),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Upgrade(args))) => upgrade_agent(client, args),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Version)) => agent_version(client),
