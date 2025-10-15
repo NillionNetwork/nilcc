@@ -83,6 +83,48 @@ pub mod system {
         /// The versions that were deleted.
         pub versions_deleted: Vec<String>,
     }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactChangelogResponse {
+        /// The changelog entries.
+        pub entries: Vec<ArtifactChangelogEntry>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ArtifactChangelogEntry {
+        /// The version that was installed/uninstalled.
+        pub version: String,
+
+        /// The operation that was performed.
+        pub operation: ArtifactChangelogEntryOperation,
+
+        /// The state of this changelog operation.
+        #[serde(flatten)]
+        pub state: ArtifactChangelogEntryState,
+
+        /// The date when this operation was created.
+        pub created_at: DateTime<Utc>,
+
+        /// The date when this operation was last updated.
+        pub updated_at: DateTime<Utc>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum ArtifactChangelogEntryOperation {
+        Install,
+        Uninstall,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "kebab-case", tag = "state")]
+    pub enum ArtifactChangelogEntryState {
+        Pending,
+        Success,
+        Failure { error: String },
+    }
 }
 
 pub mod workloads {
@@ -239,6 +281,10 @@ pub mod errors {
         pub fn new(message: impl Into<String>, error_code: impl AsRef<str>) -> Self {
             let error_code = error_code.as_ref().to_case(Case::UpperSnake);
             Self { message: message.into(), error_code }
+        }
+
+        pub fn internal() -> Self {
+            Self::new("internal server error", "INTERNAL")
         }
     }
 }

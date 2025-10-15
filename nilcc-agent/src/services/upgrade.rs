@@ -1,5 +1,6 @@
 use crate::repositories::artifacts::Artifacts;
 use crate::repositories::changelog::ChangelogEntry;
+use crate::repositories::changelog::ChangelogEntryDetails;
 use crate::repositories::changelog::ChangelogEntryOperation;
 use crate::repositories::changelog::ChangelogEntryState;
 use crate::repositories::changelog::ChangelogRepository;
@@ -44,6 +45,7 @@ pub trait UpgradeService: Send + Sync {
     async fn cleanup_artifacts(&self) -> Result<Vec<String>, CleanupError>;
     async fn artifacts_upgrade_state(&self) -> UpgradeState;
     async fn artifacts_versions(&self) -> anyhow::Result<Vec<String>>;
+    async fn artifacts_changelog(&self) -> anyhow::Result<Vec<ChangelogEntryDetails>>;
     async fn agent_upgrade_state(&self) -> UpgradeState;
     fn agent_version(&self) -> String;
 }
@@ -308,6 +310,12 @@ impl UpgradeService for DefaultUpgradeService {
         let mut repo = self.repository_provider.artifacts(Default::default()).await?;
         let versions = repo.list().await?.into_iter().map(|v| v.version).collect();
         Ok(versions)
+    }
+
+    async fn artifacts_changelog(&self) -> anyhow::Result<Vec<ChangelogEntryDetails>> {
+        let mut repo = self.repository_provider.changelog(Default::default()).await?;
+        let entries = repo.list().await?;
+        Ok(entries)
     }
 
     async fn agent_upgrade_state(&self) -> UpgradeState {
