@@ -107,7 +107,7 @@ export class MetalInstanceService {
         );
         try {
           for (const workload of offendingWorkloads) {
-            bindings.services.workload.stop(
+            bindings.services.workload.remove(
               bindings,
               workload.id,
               workload.account,
