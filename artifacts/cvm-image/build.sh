@@ -118,6 +118,9 @@ echo "Setting up filesystem"
 RO_PATH="$MOUNT_POINT/ro"
 sudo mkdir -p "$RO_PATH"
 
+# Delete the random seed to avoid seeding known entropy.
+sudo rm "${MOUNT_POINT}/var/lib/systemd/random-seed"
+
 # Move /var to the read only directory
 sudo mv "${MOUNT_POINT}/var" "${RO_PATH}"
 
