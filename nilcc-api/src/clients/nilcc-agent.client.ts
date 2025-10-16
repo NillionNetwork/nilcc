@@ -31,16 +31,6 @@ export interface NilccAgentClient {
     workloadId: string,
   ): Promise<void>;
 
-  stopWorkload(
-    metalInstance: MetalInstanceEntity,
-    workloadId: string,
-  ): Promise<void>;
-
-  startWorkload(
-    metalInstance: MetalInstanceEntity,
-    workloadId: string,
-  ): Promise<void>;
-
   containers(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
@@ -142,20 +132,6 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     workloadId: string,
   ): Promise<void> {
     await this.sendWorkloadAction(metalInstance, workloadId, "restart");
-  }
-
-  async stopWorkload(
-    metalInstance: MetalInstanceEntity,
-    workloadId: string,
-  ): Promise<void> {
-    await this.sendWorkloadAction(metalInstance, workloadId, "stop");
-  }
-
-  async startWorkload(
-    metalInstance: MetalInstanceEntity,
-    workloadId: string,
-  ): Promise<void> {
-    await this.sendWorkloadAction(metalInstance, workloadId, "start");
   }
 
   async containers(

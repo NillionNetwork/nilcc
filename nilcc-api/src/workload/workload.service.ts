@@ -222,50 +222,6 @@ export class WorkloadService {
     );
   }
 
-  async start(
-    bindings: AppBindings,
-    workloadId: string,
-    account: AccountEntity,
-    tx: QueryRunner,
-  ): Promise<void> {
-    const repository = this.getRepository(bindings, tx);
-    const workload = await this.findWorkload(repository, workloadId, account, [
-      "metalInstance",
-    ]);
-    if (workload === null) {
-      throw new EntityNotFound("workload");
-    }
-    // Don't allow starting if we don't have enough credits
-    if (account.credits === 0) {
-      throw new NotEnoughCredits();
-    }
-
-    await bindings.services.nilccAgentClient.startWorkload(
-      workload.metalInstance,
-      workloadId,
-    );
-  }
-
-  async stop(
-    bindings: AppBindings,
-    workloadId: string,
-    account: AccountEntity,
-    tx: QueryRunner,
-  ): Promise<void> {
-    const repository = this.getRepository(bindings, tx);
-    const workload = await this.findWorkload(repository, workloadId, account, [
-      "metalInstance",
-    ]);
-    if (workload === null) {
-      throw new EntityNotFound("workload");
-    }
-
-    await bindings.services.nilccAgentClient.stopWorkload(
-      workload.metalInstance,
-      workloadId,
-    );
-  }
-
   async submitEvent(
     bindings: AppBindings,
     request: SubmitEventRequest,
