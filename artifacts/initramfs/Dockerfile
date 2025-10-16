@@ -8,7 +8,8 @@ RUN apt update \
     kmod \
     cryptsetup-bin \
     linux-modules-${KERNEL_VERSION}-generic \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && apt clean
 
 COPY artifacts/initramfs/init.sh /init
 

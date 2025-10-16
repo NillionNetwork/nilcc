@@ -51,7 +51,7 @@ cp "$CDROM/nillion/nilcc-vm-type" /opt/nillion
 
 # Remove any packages we no longer need.
 rm -rf /etc/ssh/sshd_config.d
-apt purge -y \
+apt purge -y --allow-remove-essential \
   apport \
   keyboard-configuration \
   openssh-client \
@@ -60,7 +60,14 @@ apt purge -y \
   ubuntu-pro-client \
   ubuntu-release-upgrader-core \
   unattended-upgrades \
-  valgrind
+  valgrind \
+  grub-efi-amd64 \
+  grub-efi-amd64-signed \
+  grub-common \
+  grub-efi-amd64-bin \
+  grub2-common \
+  grub-pc-bin \
+  shim-signed
 apt -y autoremove --purge
 
 # Perform any GPU specific configs. Note that this is here because the autoremove above otherwise removes the nvidia
@@ -87,6 +94,9 @@ if [ "$VM_TYPE" == "gpu" ]; then
   sed -i "/^ExecStart=/d" /usr/lib/systemd/system/nvidia-persistenced.service
   echo "ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --uvm-persistence-mode --verbose" >>/usr/lib/systemd/system/nvidia-persistenced.service
 fi
+
+# We no longer need linux headers
+apt purge -y linux-headers-*
 
 # Cleanup apt itself
 apt -y clean
