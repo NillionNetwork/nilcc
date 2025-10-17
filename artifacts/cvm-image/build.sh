@@ -10,6 +10,9 @@ NBD_MAIN_PARTITION="${NBD_DEVICE}p1"
 NBD_BOOT_PARTITION="${NBD_DEVICE}p16"
 OUTPUT_PATH=$SCRIPT_PATH/../dist/
 
+# The timestamp to set for all files in the resulting filesystem. This is here for reproducibility.
+FILESYSTEM_TIME=1760633853
+
 source "$SCRIPT_PATH/../versions.sh"
 
 [[ "$1" != "cpu" && "$1" != "gpu" ]] && echo "Invalid argument, use 'cpu' or 'gpu'" && exit 1
@@ -114,12 +117,26 @@ sudo mount "$NBD_MAIN_PARTITION" "$MOUNT_POINT"
 [[ ! -f "$MOUNT_POINT/var/lib/cvm-success" ]] && echo "cvm setup failed" && exit 1
 
 echo "Setting up filesystem"
-# Create a directory where we'll keep read only copies of mutable directories.
-RO_PATH="$MOUNT_POINT/ro"
-sudo mkdir -p "$RO_PATH"
 
 # Delete the random seed to avoid seeding known entropy.
 sudo rm "${MOUNT_POINT}/var/lib/systemd/random-seed"
+
+# Remove anything cloud init related since we don't use it anymore.
+sudo rm -rf "${MOUNT_POINT}/var/lib/cloud"
+
+# Remove caches and logs
+sudo rm -rf "${MOUNT_POINT}/var/cache/*" "${MOUNT_POINT}/var/log/*"
+
+# Remove /etc/machine-id so it's regenerated on start
+sudo rm "${MOUNT_POINT}/etc/machine-id"
+
+# Remove anything docker specific that can be regenerated on next boot automatically.
+sudo rm "${MOUNT_POINT}/var/lib/docker/engine-id"
+sudo rm "${MOUNT_POINT}/var/lib/docker/network/files/local-kv.db"
+
+# Create a directory where we'll keep read only copies of mutable directories.
+RO_PATH="$MOUNT_POINT/ro"
+sudo mkdir -p "$RO_PATH"
 
 # Move /var to the read only directory
 sudo mv "${MOUNT_POINT}/var" "${RO_PATH}"
@@ -134,9 +151,12 @@ for dir in var tmp; do
   sudo ln -s "/media/state/${dir}" "${MOUNT_POINT}/${dir}"
 done
 
+# Link /etc/machine-id so it gets written into the state mount.
+sudo ln -s "/media/state/machine-id" "${MOUNT_POINT}/etc/machine-id"
+
 echo "Repackaging filesystem as squashfs"
 rm -f "$SQUASHFS_PATH"
-sudo mksquashfs "$MOUNT_POINT" "$SQUASHFS_PATH"
+sudo mksquashfs "$MOUNT_POINT" "$SQUASHFS_PATH" -mkfs-time $FILESYSTEM_TIME -all-time $FILESYSTEM_TIME
 
 echo "Unmounting $MOUNT_POINT"
 sudo umount "$MOUNT_POINT"

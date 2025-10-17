@@ -82,6 +82,7 @@ mount /dev/mapper/state "${MNT_DIR}/media/state"
 
 # Create the directory for /tmp
 mkdir -p "${MNT_DIR}/media/state/tmp"
+chmod 777 "${MNT_DIR}/media/state/tmp"
 
 # Now copy over the original /var into the new one.
 cp -r "${MNT_DIR}/ro/var" "${MNT_DIR}/media/state/"
