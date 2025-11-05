@@ -51,7 +51,9 @@
     "uuid": "^11.1.0",
     "zod": "^3.25.13",
     "zod-openapi": "^4.2.4",
-    "zod-validation-error": "^3.4.1"
+    "zod-validation-error": "^3.4.1",
+    "@peculiar/x509": "^1.11.0",
+    "@peculiar/asn1-schema": "^2.5.0"
   },
   "packageManager": "pnpm@10.10.0"
 }

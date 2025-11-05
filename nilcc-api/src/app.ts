@@ -21,6 +21,7 @@ import { buildWorkloadRouter } from "./workload/workload.router";
 import { buildWorkloadContainerRouter } from "./workload-container/workload-container.router";
 import { buildWorkloadEventRouter } from "./workload-event/workload-event.router";
 import { buildWorkloadTierRouter } from "./workload-tier/workload-tier.router";
+import { buildAttestationRouter } from "./attestation/attestation.router";
 
 export type App = Hono<AppEnv>;
 
@@ -53,6 +54,7 @@ export async function buildApp(
   buildWorkloadContainerRouter({ app, bindings });
   buildWorkloadEventRouter({ app, bindings });
   buildWorkloadTierRouter({ app, bindings });
+  buildAttestationRouter({ app, bindings });
   buildMetalInstanceRouter({ app, bindings });
   buildSystemRouter({ app, bindings });
 

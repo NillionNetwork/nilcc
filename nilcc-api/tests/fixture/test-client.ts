@@ -37,6 +37,10 @@ import {
   type CreateWorkloadTierRequest,
   WorkloadTier,
 } from "#/workload-tier/workload-tier.dto";
+import {
+  VerifySnpAttestationRequest,
+  VerifySnpAttestationResponse,
+} from "#/attestation/attestation.dto";
 
 export type TestClientOptions = {
   app: App;
@@ -203,6 +207,16 @@ export class AdminClient extends TestClient {
 }
 
 export class UserClient extends TestClient {
+  verifyAttestation(
+    body: VerifySnpAttestationRequest,
+  ): RequestPromise<VerifySnpAttestationResponse> {
+    const promise = this.request(PathsV1.attestation.verify, {
+      method: "POST",
+      body,
+    });
+    return new RequestPromise(promise, VerifySnpAttestationResponse);
+  }
+
   createWorkload(
     body: CreateWorkloadRequest,
   ): RequestPromise<CreateWorkloadResponse> {

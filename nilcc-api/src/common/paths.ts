@@ -12,6 +12,9 @@ export type Path = z.infer<typeof PathSchema>;
 
 export const PathsV1 = {
   docs: PathSchema.parse("/openapi.json"),
+  attestation: {
+    verify: PathSchema.parse("/api/v1/attestation/verify"),
+  },
   account: {
     create: PathSchema.parse("/api/v1/accounts/create"),
     update: PathSchema.parse("/api/v1/accounts/update"),
