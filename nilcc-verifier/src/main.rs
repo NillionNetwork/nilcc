@@ -1,31 +1,34 @@
 use crate::{
-    certs::FetcherError,
-    measurement::MeasurementHashError,
-    report::{ReportBundle, ReportBundleError, ReportResponse, VmType},
-    verify::VerificationError,
+    error::{ErrorCode, ValidateError},
+    report::{ReportBundle, ReportResponse, VmType},
+    routes::build_router,
 };
 use anyhow::Context;
 use certs::DefaultCertificateFetcher;
 use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use measurement::MeasurementGenerator;
-use nilcc_artifacts::{
-    Artifacts,
-    downloader::{ArtifactsDownloader, DownloadError},
-    metadata::ArtifactsMetadata,
-};
+use nilcc_artifacts::{Artifacts, downloader::ArtifactsDownloader, metadata::ArtifactsMetadata};
 use report::ReportFetcher;
 use serde::Serialize;
 use std::{
-    fs, io,
+    fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
     process::exit,
+    sync::Arc,
+};
+use tokio::{
+    net::TcpListener,
+    signal::{self, unix::SignalKind},
 };
 use tracing::{error, info, level_filters::LevelFilter};
 use verify::ReportVerifier;
 
 mod certs;
+mod error;
 mod measurement;
 mod report;
+mod routes;
 mod verify;
 
 #[derive(Parser)]
@@ -47,6 +50,9 @@ enum Command {
 
     /// Download the artifacts for a nilcc release version.
     DownloadArtifacts(DownloadArtifactsArgs),
+
+    /// Start an HTTP API that allows validating attestations.
+    Serve(ServeArgs),
 }
 
 #[derive(Args)]
@@ -149,6 +155,21 @@ struct DownloadArtifactsArgs {
     artifacts_url: String,
 }
 
+#[derive(Args)]
+struct ServeArgs {
+    /// The endpoint to bind to.
+    #[clap(short, long, default_value = "0.0.0.0:8080")]
+    bind_endpoint: SocketAddr,
+
+    /// The path where artifacts will be cached.
+    #[clap(short, long, default_value = default_artifact_cache_path().into_os_string())]
+    artifact_cache: PathBuf,
+
+    /// The path where certificates will be cached.
+    #[clap(short, long, default_value = default_cert_cache_path().into_os_string())]
+    cert_cache: PathBuf,
+}
+
 fn default_cache_path() -> PathBuf {
     std::env::temp_dir().join("nilcc-verifier-cache")
 }
@@ -165,35 +186,17 @@ fn default_artifacts_url() -> String {
     "https://nilcc.s3.eu-west-1.amazonaws.com".into()
 }
 
-#[derive(Debug, thiserror::Error)]
-enum ValidateError {
-    #[error("invalid hex docker compose hash")]
-    DockerComposeHash,
-
-    #[error("creating cert cache directories: {0}")]
-    CertCacheDirectories(io::Error),
-
-    #[error("fetching report bundle: {0}")]
-    ReportBundle(#[from] ReportBundleError),
-
-    #[error(transparent)]
-    MeasurementHash(#[from] MeasurementHashError),
-
-    #[error("verifying report: {0}")]
-    VerifyReports(#[from] VerificationError),
-}
-
 fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
     let mut hash: [u8; 32] = [0; 32];
     hex::decode_to_slice(input, &mut hash).map_err(|_| ValidateError::DockerComposeHash)?;
     Ok(hash)
 }
 
-fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
+async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, artifacts_url } = args;
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
     let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
-    let bundle = fetcher.fetch_report(&endpoint)?;
+    let bundle = fetcher.fetch_report(&endpoint).await?;
     let ReportBundle {
         cpu_count,
         ovmf_path,
@@ -218,8 +221,8 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     }
     .generate()?;
     let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
-    let verifier = ReportVerifier::new(Box::new(fetcher));
-    verifier.verify_report(bundle.report, &measurement)?;
+    let verifier = ReportVerifier::new(Arc::new(fetcher));
+    verifier.verify_report(&bundle.report, &measurement).await?;
 
     let github_actions_build_url = metadata.build.as_ref().map(|b| {
         let id = b.github_action_run_id;
@@ -236,7 +239,7 @@ fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     Ok(meta)
 }
 
-fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
+async fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     let MeasurementHashArgs { artifact_cache, artifacts_url, vm_type, cpus, docker_compose_hash, nilcc_version } = args;
     let download_path = artifact_cache.join(&nilcc_version);
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
@@ -244,9 +247,7 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
         .without_disk_images()
         .without_artifact_overwrite()
         .with_artifacts_url(artifacts_url);
-    let runtime =
-        tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
-    let artifacts = runtime.block_on(downloader.download(&download_path))?;
+    let artifacts = downloader.download(&download_path).await?;
     let Artifacts { metadata, .. } = artifacts;
     let vm_type_metadata = metadata.cvm.images.resolve(vm_type.into());
     let filesystem_root_hash = vm_type_metadata.verity.root_hash;
@@ -269,14 +270,16 @@ fn compute_measurement_hash(args: MeasurementHashArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn download_artifacts(args: DownloadArtifactsArgs) -> anyhow::Result<()> {
+async fn download_artifacts(args: DownloadArtifactsArgs) -> anyhow::Result<()> {
     let DownloadArtifactsArgs { workload_url, artifacts_version, output_directory, artifacts_url } = args;
     let version = match (workload_url, artifacts_version) {
         (Some(workload_url), None) => {
             let report_url = format!("{workload_url}/nilcc/api/v2/report");
-            let report: ReportResponse = reqwest::blocking::get(report_url)
+            let report: ReportResponse = reqwest::get(report_url)
+                .await
                 .context("Failed to fetch artifacts version")?
                 .json()
+                .await
                 .context("Malformed attestation report")?;
             report.environment.nilcc_version
         }
@@ -296,68 +299,37 @@ fn download_artifacts(args: DownloadArtifactsArgs) -> anyhow::Result<()> {
     let downloader = ArtifactsDownloader::new(version, vec![VmType::Cpu.into(), VmType::Gpu.into()])
         .with_artifacts_url(artifacts_url);
     println!("Downloading artifacts...");
-    let runtime =
-        tokio::runtime::Builder::new_current_thread().enable_all().build().context("building tokio runtime")?;
-    let artifacts = runtime.block_on(downloader.download(Path::new(&output_directory)))?;
+    let artifacts = downloader.download(Path::new(&output_directory)).await?;
     let metadata_hash = hex::encode(artifacts.metadata_hash);
     println!("Artifacts downloaded at {output_directory}, metadata hash = {metadata_hash}");
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum ErrorCode {
-    InvalidDockerComposeHash,
-    InvalidTlsFingerprint,
-    InvalidArtifacts,
-    InvalidReport,
-    InvalidAmdCerts,
-    Filesystem,
-    Request,
-    Internal,
+async fn serve(args: ServeArgs) -> anyhow::Result<()> {
+    let ServeArgs { bind_endpoint, artifact_cache, cert_cache } = args;
+    let router = build_router(cert_cache, artifact_cache).context("building HTTP router")?;
+    let listener = TcpListener::bind(bind_endpoint).await.expect("failed to bind");
+    info!("Launching server in {bind_endpoint}");
+    axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await?;
+    Ok(())
 }
 
-impl From<ValidateError> for ErrorCode {
-    fn from(e: ValidateError) -> Self {
-        use ErrorCode::*;
-        match e {
-            ValidateError::DockerComposeHash => InvalidDockerComposeHash,
-            ValidateError::CertCacheDirectories(_) => Filesystem,
-            ValidateError::ReportBundle(e) => match e {
-                ReportBundleError::TlsFingerprint { .. } => InvalidTlsFingerprint,
-                ReportBundleError::HttpClient(_) | ReportBundleError::Tokio(_) => Internal,
-                ReportBundleError::FetchAttestation(_)
-                | ReportBundleError::NoTlsInfo
-                | ReportBundleError::TlsCertificate(_)
-                | ReportBundleError::NotHttpsScheme
-                | ReportBundleError::InvalidUrl(_)
-                | ReportBundleError::MalformedPayload(_) => Request,
-                ReportBundleError::DownloadArtifacts(e) => match e {
-                    DownloadError::NoParent => Internal,
-                    DownloadError::TargetDirectory(_) | DownloadError::TargetFile(_) => Filesystem,
-                    DownloadError::DecodeMetadata(_) => InvalidArtifacts,
-                    DownloadError::Download(_) => Request,
-                },
-            },
-            ValidateError::MeasurementHash(_) => Internal,
-            ValidateError::VerifyReports(e) => match e {
-                VerificationError::FetchCerts(e) => match e {
-                    FetcherError::TurinFmc | FetcherError::ZeroHardwareId => InvalidReport,
-                    FetcherError::ReadCachedCert(_) | FetcherError::WriteCachedCert(_) => Filesystem,
-                    FetcherError::FetchingVcek(_) | FetcherError::FetchingCertChain(_) => Request,
-                    FetcherError::ParsingVcek(_) | FetcherError::ParsingCertChain(_) => InvalidAmdCerts,
-                },
-                VerificationError::CertVerification(_)
-                | VerificationError::MalformedCertificate(_)
-                | VerificationError::InvalidCertificate(_) => InvalidAmdCerts,
-                VerificationError::DetectProcessor(_)
-                | VerificationError::InvalidMeasurement { .. }
-                | VerificationError::InvalidVcekPubKey
-                | VerificationError::MalformedReportSignature
-                | VerificationError::InvalidSignature => InvalidReport,
-                VerificationError::SerializeReport(_) => Internal,
-            },
-        }
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("failed to install ctrl-c handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(SignalKind::terminate()).expect("failed to install signal handler").recv().await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {
+            info!("Received ctrl-c");
+        },
+        _ = terminate => {
+            info!("Received SIGTERM");
+        },
     }
 }
 
@@ -385,7 +357,8 @@ enum ValidateResult {
     Failure { error_code: ErrorCode, message: String },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     let default_log_level = match cli.verbose {
@@ -402,7 +375,7 @@ fn main() {
 
     match cli.command {
         Command::Validate(args) => {
-            let (exit_code, result) = match validate(args) {
+            let (exit_code, result) = match validate(args).await {
                 Ok(metadata) => (0, ValidateResult::Success { metadata: metadata.into() }),
                 Err(e) => {
                     let message = e.to_string();
@@ -413,14 +386,20 @@ fn main() {
             exit(exit_code);
         }
         Command::MeasurementHash(args) => {
-            if let Err(e) = compute_measurement_hash(args) {
+            if let Err(e) = compute_measurement_hash(args).await {
                 error!("Failed to compute measurement hash: {e:#}");
                 exit(1);
             }
         }
         Command::DownloadArtifacts(args) => {
-            if let Err(e) = download_artifacts(args) {
+            if let Err(e) = download_artifacts(args).await {
                 error!("Failed to download artifacts: {e:#}");
+                exit(1);
+            }
+        }
+        Command::Serve(args) => {
+            if let Err(e) = serve(args).await {
+                error!("Failed to serve API: {e:#}");
                 exit(1);
             }
         }
