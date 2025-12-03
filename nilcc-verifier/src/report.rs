@@ -4,11 +4,11 @@ use nilcc_artifacts::{
     downloader::{ArtifactsDownloader, DownloadError},
     metadata::ArtifactsMetadata,
 };
-use reqwest::{Url, blocking::ClientBuilder, tls::TlsInfo};
+use reqwest::{ClientBuilder, Url, tls::TlsInfo};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
 use sha2::{Digest, Sha256};
-use std::{io, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use tracing::info;
 use x509_parser::parse_x509_certificate;
 
@@ -53,7 +53,7 @@ impl ReportFetcher {
         Self { cache_path, artifacts_url }
     }
 
-    pub fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
+    pub async fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
         let http_client = ClientBuilder::default().tls_info(true).build().map_err(ReportBundleError::HttpClient)?;
         let mut url: Url = base_url.parse()?;
         if url.scheme() != "https" {
@@ -64,7 +64,7 @@ impl ReportFetcher {
 
         info!("Fetching report from {url}");
         let response =
-            http_client.get(url).timeout(REQUEST_TIMEOUT).send().map_err(ReportBundleError::FetchAttestation)?;
+            http_client.get(url).timeout(REQUEST_TIMEOUT).send().await.map_err(ReportBundleError::FetchAttestation)?;
 
         let info = response.extensions().get::<TlsInfo>().ok_or(ReportBundleError::NoTlsInfo)?;
         let cert = info.peer_certificate().ok_or(ReportBundleError::NoTlsInfo)?;
@@ -74,7 +74,8 @@ impl ReportFetcher {
         let mut expected_report_data: [u8; 64] = [0; 64];
         expected_report_data[1..33].copy_from_slice(&cert_fingerprint);
 
-        let ReportResponse { report, environment } = response.json().map_err(ReportBundleError::MalformedPayload)?;
+        let ReportResponse { report, environment } =
+            response.json().await.map_err(ReportBundleError::MalformedPayload)?;
         let report = AttestationReport::from(report);
         if report.report_data.as_slice() != expected_report_data {
             return Err(ReportBundleError::TlsFingerprint {
@@ -96,9 +97,7 @@ impl ReportFetcher {
             .without_disk_images()
             .without_artifact_overwrite()
             .with_artifacts_url(self.artifacts_url.clone());
-        let runtime =
-            tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(ReportBundleError::Tokio)?;
-        let artifacts = runtime.block_on(downloader.download(&download_path))?;
+        let artifacts = downloader.download(&download_path).await?;
         let Artifacts { metadata, metadata_hash } = artifacts;
         let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
         let filesystem_root_hash = vm_type_metadata.verity.root_hash;
@@ -145,9 +144,6 @@ pub enum ReportBundleError {
 
     #[error("malformed JSON payload: {0}")]
     MalformedPayload(reqwest::Error),
-
-    #[error("failed to create tokio runtime: {0}")]
-    Tokio(io::Error),
 
     #[error("failed to download artifacts: {0}")]
     DownloadArtifacts(#[from] DownloadError),

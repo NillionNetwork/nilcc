@@ -7,7 +7,7 @@ use sev::{
     firmware::{guest::AttestationReport, host::CertType},
     parser::ByteParser,
 };
-use std::io;
+use std::{io, sync::Arc};
 use tracing::{info, warn};
 use x509_parser::{
     asn1_rs::Oid,
@@ -16,20 +16,21 @@ use x509_parser::{
     x509::X509Name,
 };
 
+#[derive(Clone)]
 pub struct ReportVerifier {
-    fetcher: Box<dyn CertificateFetcher>,
+    fetcher: Arc<dyn CertificateFetcher>,
 }
 
 impl ReportVerifier {
-    pub fn new(fetcher: Box<dyn CertificateFetcher>) -> Self {
+    pub fn new(fetcher: Arc<dyn CertificateFetcher>) -> Self {
         Self { fetcher }
     }
 
-    pub fn verify_report(&self, report: AttestationReport, measurement: &[u8]) -> Result<(), VerificationError> {
-        let processor = Self::detect_processor(&report)?;
+    pub async fn verify_report(&self, report: &AttestationReport, measurement: &[u8]) -> Result<(), VerificationError> {
+        let processor = Self::detect_processor(report)?;
         info!("Using processor model {processor:?} for verification");
 
-        let certs = self.fetcher.fetch_certs(&processor, &report)?;
+        let certs = self.fetcher.fetch_certs(&processor, report).await?;
         Self::verify_certs(&certs)?;
 
         if report.measurement.as_slice() != measurement {
@@ -40,8 +41,8 @@ impl ReportVerifier {
         }
         info!("Measurement matches expected: {}", hex::encode(measurement));
 
-        Self::verify_report_signature(&certs.vcek, &report)?;
-        Self::verify_attestation_tcb(&certs.vcek, &report, &processor)?;
+        Self::verify_report_signature(&certs.vcek, report)?;
+        Self::verify_attestation_tcb(&certs.vcek, report, &processor)?;
         info!("Verification successful");
         Ok(())
     }

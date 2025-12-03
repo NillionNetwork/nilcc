@@ -1,5 +1,6 @@
 use crate::verify::Processor;
-use reqwest::blocking::get;
+use async_trait::async_trait;
+use reqwest::get;
 use sev::{
     certs::snp::{Certificate, ca::Chain},
     firmware::guest::AttestationReport,
@@ -23,9 +24,10 @@ pub struct Certs {
 }
 
 /// An interface to fetch certificates.
+#[async_trait]
 pub trait CertificateFetcher: Send + Sync + 'static {
     /// Fetch certificates.
-    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError>;
+    async fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError>;
 }
 
 /// A default implementation of the certificate fetcher.
@@ -39,7 +41,7 @@ impl DefaultCertificateFetcher {
         Ok(Self { cache_path })
     }
 
-    fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> Result<Certificate, FetcherError> {
+    async fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> Result<Certificate, FetcherError> {
         let identifier = ProcessorVcekIdentifier::new(processor.clone(), report)?;
         let cache_file_name = self.cache_path.join(identifier.cache_file_name());
         match self.load_cache_file(&cache_file_name)? {
@@ -60,14 +62,14 @@ impl DefaultCertificateFetcher {
         let url = identifier.kds_url();
         info!("Fetching VCEK from {url}");
 
-        let response = get(url).and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingVcek)?;
-        let bytes = response.bytes().map_err(FetcherError::FetchingVcek)?.to_vec();
+        let response = get(url).await.and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingVcek)?;
+        let bytes = response.bytes().await.map_err(FetcherError::FetchingVcek)?.to_vec();
         let cert = Certificate::from_bytes(&bytes).map_err(FetcherError::ParsingVcek)?;
         self.cache_file(&cache_file_name, &bytes)?;
         Ok(cert)
     }
 
-    fn fetch_cert_chain(&self, processor: &Processor) -> Result<Chain, FetcherError> {
+    async fn fetch_cert_chain(&self, processor: &Processor) -> Result<Chain, FetcherError> {
         let cache_file_name = self.cache_path.join(format!("{processor:?}.cert"));
         match self.load_cache_file(&cache_file_name)? {
             Some(chain) => match Chain::from_pem_bytes(&chain) {
@@ -90,8 +92,8 @@ impl DefaultCertificateFetcher {
         let url = format!("{KDS_CERT_SITE}/vcek/v1/{}/cert_chain", processor.to_kds_url());
         info!("Fetching CA chain from {url}");
 
-        let response = get(url).and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingCertChain)?;
-        let bytes = response.bytes().map_err(FetcherError::FetchingCertChain)?.to_vec();
+        let response = get(url).await.and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingCertChain)?;
+        let bytes = response.bytes().await.map_err(FetcherError::FetchingCertChain)?.to_vec();
         let certificates = Chain::from_pem_bytes(&bytes).map_err(FetcherError::ParsingCertChain)?;
         self.cache_file(&cache_file_name, &bytes)?;
         Ok(certificates)
@@ -115,10 +117,11 @@ impl DefaultCertificateFetcher {
     }
 }
 
+#[async_trait]
 impl CertificateFetcher for DefaultCertificateFetcher {
-    fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError> {
-        let chain = self.fetch_cert_chain(processor)?;
-        let vcek = self.fetch_vcek(processor, report)?;
+    async fn fetch_certs(&self, processor: &Processor, report: &AttestationReport) -> Result<Certs, FetcherError> {
+        let chain = self.fetch_cert_chain(processor).await?;
+        let vcek = self.fetch_vcek(processor, report).await?;
         Ok(Certs { chain, vcek })
     }
 }
