@@ -14,6 +14,7 @@ const CERT_FINGERPRINT_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct Reports {
     pub attestation: Arc<attestation_report::v2::AttestationReport>,
+    pub raw_attestation: Vec<u8>,
     pub gpu_token: Option<String>,
 }
 
@@ -24,9 +25,11 @@ pub struct HardwareReporter {
 impl HardwareReporter {
     pub async fn new(gpu: GpuReportConfig, cert_fetcher: CertFetcher) -> anyhow::Result<Self> {
         let fingerprint = cert_fetcher.fetch_fingerprint().await.context("Failed to fetch cert fingerpring")?;
-        let hardware = Self::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?;
+        let hardware_report = Self::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?;
+        let raw_attestation = hardware_report.to_bytes()?.into();
         let reports = Reports {
-            attestation: Arc::new(hardware.into()),
+            attestation: Arc::new(hardware_report.into()),
+            raw_attestation,
             gpu_token: Self::fetch_gpu_report(&fingerprint, &gpu).await.context("Failed to fetch GPU report")?,
         };
         let reports = Arc::new(Mutex::new(reports));
@@ -123,12 +126,14 @@ impl Worker {
             hex::encode(self.fingerprint),
             hex::encode(fingerprint)
         );
-        let hardware =
+        let hardware_report =
             HardwareReporter::fetch_hardware_report(&fingerprint).context("Failed to fetch hardware report")?;
+        let raw_attestation = hardware_report.to_bytes()?.into();
         let gpu_token =
             HardwareReporter::fetch_gpu_report(&fingerprint, &self.gpu).await.context("Failed to fetch GPU report")?;
         self.fingerprint = fingerprint;
-        *self.reports.lock().await = Reports { attestation: Arc::new(hardware.into()), gpu_token };
+        *self.reports.lock().await =
+            Reports { attestation: Arc::new(hardware_report.into()), raw_attestation, gpu_token };
         Ok(())
     }
 }
