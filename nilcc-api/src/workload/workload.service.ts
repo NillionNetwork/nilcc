@@ -27,6 +27,7 @@ import type {
 import { WorkloadTierEntity } from "#/workload-tier/workload-tier.entity";
 import type {
   CreateWorkloadRequest,
+  RestartWorkloadRequest,
   StatsRequest,
   WorkloadSystemLogsRequest,
 } from "./workload.dto";
@@ -200,11 +201,12 @@ export class WorkloadService {
 
   async restart(
     bindings: AppBindings,
-    workloadId: string,
+    request: RestartWorkloadRequest,
     account: AccountEntity,
     tx: QueryRunner,
   ): Promise<void> {
     const repository = this.getRepository(bindings, tx);
+    const workloadId = request.workloadId;
     const workload = await this.findWorkload(repository, workloadId, account, [
       "metalInstance",
     ]);
@@ -216,9 +218,14 @@ export class WorkloadService {
       throw new NotEnoughCredits();
     }
 
+    if (request.envVars !== undefined) {
+      workload.envVars = request.envVars;
+      await repository.save(workload);
+    }
     await bindings.services.nilccAgentClient.restartWorkload(
       workload.metalInstance,
       workloadId,
+      request.envVars,
     );
   }
 

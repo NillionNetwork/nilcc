@@ -237,11 +237,15 @@ export class UserClient extends TestClient {
     return new RequestPromise(promise, z.unknown());
   }
 
-  restartWorkload(id: string): RequestPromise<unknown> {
+  restartWorkload(
+    id: string,
+    envVars?: Record<string, string>,
+  ): RequestPromise<unknown> {
     const promise = this.request(PathsV1.workload.restart, {
       method: "POST",
       body: {
         workloadId: id,
+        envVars,
       },
     });
     return new RequestPromise(promise, z.unknown());

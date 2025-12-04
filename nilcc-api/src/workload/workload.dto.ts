@@ -182,6 +182,14 @@ export const RestartWorkloadRequest = z
     workloadId: Uuid.openapi({
       description: "The identifier for the workload to be restarted.",
     }),
+    envVars: z
+      .record(z.string(), z.string())
+      .optional()
+      .openapi({
+        description:
+          "The optional environment variables to be used when the workload restarts. Setting this field to be any non-null value will permanently modify environment variables on any subsequent restart.",
+        examples: [{ FOO: "42" }],
+      }),
   })
   .openapi({ ref: "RestartWorkloadRequest" });
 export type RestartWorkloadRequest = z.infer<typeof RestartWorkloadRequest>;
