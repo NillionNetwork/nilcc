@@ -121,6 +121,13 @@ pub trait WorkloadRepository: Send + Sync {
     /// Set the `gpus` column for a workload.
     async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError>;
 
+    /// Update environment variables for a workload.
+    async fn set_env_vars(
+        &mut self,
+        id: Uuid,
+        env_vars: HashMap<String, String>,
+    ) -> Result<(), WorkloadRepositoryError>;
+
     /// Set the `last_reported_event` column for a workload.
     async fn set_last_reported_event(&mut self, id: Uuid, event: String) -> Result<(), WorkloadRepositoryError>;
 
@@ -272,6 +279,16 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
         Ok(())
     }
 
+    async fn set_env_vars(
+        &mut self,
+        id: Uuid,
+        env_vars: HashMap<String, String>,
+    ) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET env_vars = ? WHERE id = ?";
+        sqlx::query(query).bind(sqlx::types::Json(env_vars)).bind(id).execute(&mut *self.ctx).await?;
+        Ok(())
+    }
+
     async fn set_last_reported_event(&mut self, id: Uuid, event: String) -> Result<(), WorkloadRepositoryError> {
         let query = "UPDATE workloads SET last_reported_event = ? WHERE id = ?";
         sqlx::query(query).bind(event).bind(id).execute(&mut *self.ctx).await?;
@@ -333,6 +350,12 @@ mod tests {
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);
+
+        repo.set_env_vars(workload.id, [("BAR".into(), "42".into())].into()).await.expect("failed to update");
+        assert_eq!(
+            repo.find(workload.id).await.expect("failed to find").env_vars,
+            [("BAR".into(), "42".into())].into()
+        );
 
         repo.set_last_reported_event(workload.id, "SOMETHING".into()).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").last_reported_event, Some("SOMETHING".into()));

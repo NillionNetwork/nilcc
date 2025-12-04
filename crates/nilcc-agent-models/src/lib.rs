@@ -259,6 +259,9 @@ pub mod workloads {
         #[serde(rename_all = "camelCase")]
         pub struct RestartWorkloadRequest {
             pub id: Uuid,
+
+            #[serde(default)]
+            pub env_vars: Option<HashMap<String, String>>,
         }
     }
 }
