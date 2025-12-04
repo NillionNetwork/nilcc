@@ -25,6 +25,9 @@ use nilcc_agent_models::system::ArtifactsCleanupResponse;
 use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeState;
+use nilcc_agent_models::workloads::restart::RestartWorkloadRequest;
+use nilcc_agent_models::workloads::start::StartWorkloadRequest;
+use nilcc_agent_models::workloads::stop::StopWorkloadRequest;
 use nilcc_agent_models::workloads::{
     create::{CreateWorkloadRequest, CreateWorkloadResponse},
     delete::DeleteWorkloadRequest,
@@ -224,6 +227,14 @@ struct StartArgs {
 struct RestartArgs {
     /// The identifier of the workload to be restarted.
     id: Uuid,
+
+    /// Override environment variables used in the deployment, in the format `<name>=<value>`.
+    #[clap(short, long = "env-var", group = "env-vars")]
+    env_vars: Option<Vec<KeyValue>>,
+
+    /// Whether to clear all environment variables.
+    #[clap(short, long, group = "env-vars")]
+    clear_env_vars: bool,
 }
 
 #[derive(Args)]
@@ -436,7 +447,7 @@ fn delete(client: ApiClient, args: DeleteArgs) -> anyhow::Result<()> {
 
 fn start(client: ApiClient, args: StartArgs) -> anyhow::Result<()> {
     let StartArgs { id } = args;
-    let request = DeleteWorkloadRequest { id };
+    let request = StartWorkloadRequest { id };
     let _: () = client.post("/api/v1/workloads/start", &request)?;
     println!("Workload {id} started");
     Ok(())
@@ -444,15 +455,19 @@ fn start(client: ApiClient, args: StartArgs) -> anyhow::Result<()> {
 
 fn stop(client: ApiClient, args: StopArgs) -> anyhow::Result<()> {
     let StopArgs { id } = args;
-    let request = DeleteWorkloadRequest { id };
+    let request = StopWorkloadRequest { id };
     let _: () = client.post("/api/v1/workloads/stop", &request)?;
     println!("Workload {id} stopped");
     Ok(())
 }
 
 fn restart(client: ApiClient, args: RestartArgs) -> anyhow::Result<()> {
-    let RestartArgs { id } = args;
-    let request = DeleteWorkloadRequest { id };
+    let RestartArgs { id, env_vars, clear_env_vars } = args;
+    let env_vars = match clear_env_vars {
+        true => Some(Default::default()),
+        false => env_vars.map(|env_vars| env_vars.into_iter().map(|kv| (kv.key, kv.value)).collect()),
+    };
+    let request = RestartWorkloadRequest { id, env_vars };
     let _: () = client.post("/api/v1/workloads/restart", &request)?;
     println!("Workload {id} restarted");
     Ok(())

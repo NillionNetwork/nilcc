@@ -12,7 +12,12 @@ use crate::{
 };
 use async_trait::async_trait;
 use nilcc_agent_models::workloads::create::CreateWorkloadRequest;
-use std::{collections::BTreeSet, io, ops::Range, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io,
+    ops::Range,
+    sync::Arc,
+};
 use strum::EnumDiscriminants;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -27,7 +32,11 @@ pub trait WorkloadService: Send + Sync {
     async fn create_workload(&self, request: CreateWorkloadRequest) -> Result<(), CreateWorkloadError>;
     async fn list_workloads(&self) -> Result<Vec<Workload>, WorkloadLookupError>;
     async fn delete_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
-    async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
+    async fn restart_workload(
+        &self,
+        id: Uuid,
+        env_vars: Option<HashMap<String, String>>,
+    ) -> Result<(), WorkloadLookupError>;
     async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError>;
     async fn cvm_agent_port(&self, workload_id: Uuid) -> Result<u16, WorkloadLookupError>;
@@ -334,10 +343,17 @@ impl WorkloadService for DefaultWorkloadService {
         Ok(())
     }
 
-    async fn restart_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
+    async fn restart_workload(
+        &self,
+        id: Uuid,
+        env_vars: Option<HashMap<String, String>>,
+    ) -> Result<(), WorkloadLookupError> {
         // Make sure it exists first
-        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         let workload = repo.find(id).await?;
+        if let Some(env_vars) = env_vars {
+            repo.set_env_vars(id, env_vars).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        }
         if workload.enabled {
             info!("Restarting workload {id}");
             self.vm_service.restart_vm(id).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
@@ -346,6 +362,7 @@ impl WorkloadService for DefaultWorkloadService {
             self.vm_service.create_vm(workload).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
             repo.set_enabled(id, true).await?;
         }
+        repo.commit().await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         Ok(())
     }
 
