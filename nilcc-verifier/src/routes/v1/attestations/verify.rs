@@ -1,7 +1,5 @@
-use crate::error::{ErrorCode, ValidateError};
-use crate::measurement::MeasurementGenerator;
-use crate::report::VmType;
 use crate::routes::{RequestHandlerError, VerifyState};
+use attestation_verification::{ErrorCode, MeasurementGenerator, ValidateError, VmType};
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;

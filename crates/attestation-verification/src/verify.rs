@@ -237,7 +237,7 @@ impl ReportVerifier {
 
 #[derive(ValueEnum, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Processor {
+pub enum Processor {
     /// 3rd Gen AMD EPYC Processor (Standard)
     Milan,
 
@@ -333,7 +333,7 @@ pub enum VerificationError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum FromReportError {
+pub enum FromReportError {
     #[error("attestation report version is lower than 3 and Chip ID is all 0s")]
     ZeroChipIp,
 
