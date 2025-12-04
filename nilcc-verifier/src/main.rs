@@ -186,31 +186,14 @@ fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
 async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, artifacts_url } = args;
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
-    let fetcher = ReportFetcher::new(artifact_cache, artifacts_url);
+    let fetcher = ReportFetcher::new(artifact_cache.clone(), artifacts_url);
     let bundle = fetcher.fetch_report(&endpoint).await?;
-    let ReportBundle {
-        cpu_count,
-        ovmf_path,
-        initrd_path,
-        kernel_path,
-        filesystem_root_hash,
-        metadata_hash,
-        tls_fingerprint,
-        nilcc_version,
-        metadata,
-        ..
-    } = bundle;
+    let ReportBundle { cpu_count, metadata_hash, tls_fingerprint, nilcc_version, metadata, vm_type, .. } = bundle;
 
-    let measurement = MeasurementGenerator {
-        vcpus: cpu_count,
-        ovmf: ovmf_path,
-        kernel: kernel_path,
-        initrd: initrd_path,
-        docker_compose_hash,
-        filesystem_root_hash,
-        kernel_args: metadata.cvm.cmdline.clone(),
-    }
-    .generate()?;
+    let artifacts_path = artifact_cache.join(&nilcc_version);
+    let measurement =
+        MeasurementGenerator::new(docker_compose_hash, cpu_count, vm_type.into(), &metadata, &artifacts_path)
+            .generate()?;
     let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
     let verifier = ReportVerifier::new(Arc::new(fetcher));
     verifier.verify_report(&bundle.report, &measurement).await?;

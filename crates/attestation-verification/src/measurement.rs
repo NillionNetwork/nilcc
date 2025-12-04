@@ -1,4 +1,7 @@
-use nilcc_artifacts::metadata::{KernelArgs, KernelCommandLine, MissingCommandLineParameter};
+use nilcc_artifacts::{
+    VmType,
+    metadata::{ArtifactsMetadata, KernelArgs, KernelCommandLine, MissingCommandLineParameter},
+};
 use sev::{
     error::MeasurementError,
     measurement::{
@@ -7,7 +10,7 @@ use sev::{
         vmsa::{GuestFeatures, VMMType},
     },
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Generates the measurement that a CVM should have generated given the parameters.
@@ -22,6 +25,25 @@ pub struct MeasurementGenerator {
 }
 
 impl MeasurementGenerator {
+    pub fn new(
+        docker_compose_hash: [u8; 32],
+        vcpus: u32,
+        vm_type: VmType,
+        metadata: &ArtifactsMetadata,
+        artifacts_path: &Path,
+    ) -> Self {
+        let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
+        Self {
+            vcpus,
+            ovmf: artifacts_path.join(&metadata.ovmf.path),
+            kernel: artifacts_path.join(&vm_type_metadata.kernel.path),
+            initrd: artifacts_path.join(&metadata.initrd.path),
+            docker_compose_hash,
+            filesystem_root_hash: vm_type_metadata.verity.root_hash,
+            kernel_args: metadata.cvm.cmdline.clone(),
+        }
+    }
+
     pub fn generate(self) -> Result<Vec<u8>, MeasurementHashError> {
         let Self { ovmf, kernel, initrd, docker_compose_hash, filesystem_root_hash, vcpus, kernel_args } = self;
         let docker_compose_hash = hex::encode(docker_compose_hash);

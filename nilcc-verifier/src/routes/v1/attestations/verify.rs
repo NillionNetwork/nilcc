@@ -47,22 +47,13 @@ pub(crate) async fn handler(
             warn!("Failed to download artifact version '{nilcc_version}': {e:#}");
             RequestHandlerError::internal()
         })?;
-    let metadata = artifacts.metadata;
-    let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
-    let measurement_hash = MeasurementGenerator {
-        vcpus,
-        ovmf: artifacts_path.join(metadata.ovmf.path),
-        kernel: artifacts_path.join(&vm_type_metadata.kernel.path),
-        initrd: artifacts_path.join(&metadata.initrd.path),
-        docker_compose_hash,
-        filesystem_root_hash: vm_type_metadata.verity.root_hash,
-        kernel_args: metadata.cvm.cmdline,
-    }
-    .generate()
-    .map_err(|e| {
-        error!("Failed to generate measurement hash: {e:#}");
-        RequestHandlerError::internal()
-    })?;
+    let measurement_hash =
+        MeasurementGenerator::new(docker_compose_hash, vcpus, vm_type, &artifacts.metadata, &artifacts_path)
+            .generate()
+            .map_err(|e| {
+                error!("Failed to generate measurement hash: {e:#}");
+                RequestHandlerError::internal()
+            })?;
     state.report_verifier.verify_report(&report, &measurement_hash).await.map_err(|e| {
         warn!("Failed to verify report: {e:#}");
         let error_code = ErrorCode::from(ValidateError::VerifyReports(e));

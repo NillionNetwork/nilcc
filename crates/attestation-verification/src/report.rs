@@ -92,29 +92,20 @@ impl ReportFetcher {
         let download_path = self.cache_path.join(&nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let vm_type = vm_type.into();
-        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type])
+        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type.into()])
             .without_disk_images()
             .without_artifact_overwrite()
             .with_artifacts_url(self.artifacts_url.clone());
         let artifacts = downloader.download(&download_path).await?;
         let Artifacts { metadata, metadata_hash } = artifacts;
-        let vm_type_metadata = metadata.cvm.images.resolve(vm_type);
-        let filesystem_root_hash = vm_type_metadata.verity.root_hash;
-        let ovmf_path = download_path.join(&metadata.ovmf.path);
-        let initrd_path = download_path.join(&metadata.initrd.path);
-        let kernel_path = download_path.join(&vm_type_metadata.kernel.path);
         Ok(ReportBundle {
             report,
             metadata,
             metadata_hash,
             cpu_count,
-            ovmf_path,
-            initrd_path,
-            kernel_path,
-            filesystem_root_hash,
             tls_fingerprint: hex::encode(cert_fingerprint),
             nilcc_version,
+            vm_type,
         })
     }
 }
@@ -154,11 +145,8 @@ pub struct ReportBundle {
     pub report: AttestationReport,
     pub metadata: ArtifactsMetadata,
     pub cpu_count: u32,
-    pub ovmf_path: PathBuf,
-    pub initrd_path: PathBuf,
-    pub kernel_path: PathBuf,
-    pub filesystem_root_hash: [u8; 32],
     pub metadata_hash: [u8; 32],
     pub tls_fingerprint: String,
     pub nilcc_version: String,
+    pub vm_type: VmType,
 }
