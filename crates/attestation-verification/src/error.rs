@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::io;
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ValidateError {
+pub enum ValidateError {
     #[error("invalid hex docker compose hash")]
     DockerComposeHash,
 
@@ -25,7 +25,7 @@ pub(crate) enum ValidateError {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub(crate) enum ErrorCode {
+pub enum ErrorCode {
     InvalidDockerComposeHash,
     InvalidTlsFingerprint,
     InvalidArtifacts,

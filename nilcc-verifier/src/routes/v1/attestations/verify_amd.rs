@@ -1,5 +1,5 @@
-use crate::error::{ErrorCode, ValidateError};
 use crate::routes::{RequestHandlerError, VerifyState};
+use attestation_verification::{ErrorCode, ValidateError};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;

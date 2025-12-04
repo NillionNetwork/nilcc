@@ -1,5 +1,4 @@
-use crate::certs::DefaultCertificateFetcher;
-use crate::verify::ReportVerifier;
+use attestation_verification::{DefaultCertificateFetcher, ReportVerifier};
 use axum::Router;
 use axum::routing::post;
 use axum::{Json, http::StatusCode, response::IntoResponse};

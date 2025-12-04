@@ -1,14 +1,11 @@
-use crate::{
-    error::{ErrorCode, ValidateError},
-    report::{ReportBundle, ReportResponse, VmType},
-    routes::build_router,
-};
+use crate::routes::build_router;
 use anyhow::Context;
-use certs::DefaultCertificateFetcher;
+use attestation_verification::{
+    DefaultCertificateFetcher, ErrorCode, MeasurementGenerator, ReportBundle, ReportFetcher, ReportResponse,
+    ReportVerifier, ValidateError, VmType,
+};
 use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
-use measurement::MeasurementGenerator;
 use nilcc_artifacts::{Artifacts, downloader::ArtifactsDownloader, metadata::ArtifactsMetadata};
-use report::ReportFetcher;
 use serde::Serialize;
 use std::{
     fs,
@@ -22,14 +19,8 @@ use tokio::{
     signal::{self, unix::SignalKind},
 };
 use tracing::{error, info, level_filters::LevelFilter};
-use verify::ReportVerifier;
 
-mod certs;
-mod error;
-mod measurement;
-mod report;
 mod routes;
-mod verify;
 
 #[derive(Parser)]
 struct Cli {

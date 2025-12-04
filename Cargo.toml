@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
   "crates/attestation-report",
+  "crates/attestation-verification",
   "crates/cvm-agent-models",
   "crates/nilcc-agent-models",
   "crates/nilcc-artifacts",

@@ -312,6 +312,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "attestation-verification"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "attestation-report",
+ "clap",
+ "hex",
+ "nilcc-artifacts",
+ "nom",
+ "openssl",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sev",
+ "sha2",
+ "thiserror 2.0.16",
+ "tracing",
+ "url",
+ "x509-parser 0.18.0",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2274,28 +2298,23 @@ name = "nilcc-verifier"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "attestation-report",
+ "attestation-verification",
  "axum",
  "clap",
  "convert_case",
  "hex",
  "nilcc-artifacts",
- "nom",
- "openssl",
  "reqwest",
  "rstest",
  "serde",
  "serde_json",
  "serde_with",
  "sev",
- "sha2",
  "thiserror 2.0.16",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "url",
- "x509-parser 0.18.0",
 ]
 
 [[package]]
