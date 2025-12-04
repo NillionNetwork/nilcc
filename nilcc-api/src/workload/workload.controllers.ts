@@ -215,10 +215,10 @@ export function restart(options: ControllerOptions): void {
     payloadValidator(RestartWorkloadRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
-      const workloadId = c.req.valid("json").workloadId;
+      const request = c.req.valid("json");
       await bindings.services.workload.restart(
         bindings,
-        workloadId,
+        request,
         c.get("account"),
         c.get("txQueryRunner"),
       );

@@ -29,6 +29,7 @@ export interface NilccAgentClient {
   restartWorkload(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
+    envVars?: Record<string, string>,
   ): Promise<void>;
 
   containers(
@@ -130,8 +131,11 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
   async restartWorkload(
     metalInstance: MetalInstanceEntity,
     workloadId: string,
+    envVars?: Record<string, string>,
   ): Promise<void> {
-    await this.sendWorkloadAction(metalInstance, workloadId, "restart");
+    await this.sendWorkloadAction(metalInstance, workloadId, "restart", {
+      envVars,
+    });
   }
 
   async containers(
@@ -245,11 +249,12 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
     metalInstance: MetalInstanceEntity,
     workloadId: string,
     action: string,
+    extraArgs?: Record<string, unknown>,
   ): Promise<void> {
     const url = this.makeUrl(metalInstance, `/api/v1/workloads/${action}`);
 
     try {
-      const request: ActionRequest = { id: workloadId };
+      const request: ActionRequest = { id: workloadId, ...extraArgs };
       this.log.info(
         `Applying ${action} action on workload ${workloadId} in agent ${metalInstance.id}`,
       );

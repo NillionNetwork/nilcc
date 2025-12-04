@@ -288,11 +288,36 @@ services:
     expect(await client.logs(workload.workloadId).status()).toBe(401);
   });
 
-  it("should allow performing workload actions", async ({ clients }) => {
+  it("should allow performing workload actions", async ({
+    expect,
+    clients,
+  }) => {
     const workloads = await clients.user.listWorkloads().submit();
     const workload = workloads[0];
-    await clients.user.restartWorkload(workload.workloadId).submit();
-    await clients.user.deleteWorkload(workload.workloadId).submit();
+    const workloadId = workload.workloadId;
+
+    // restart with env vars
+    {
+      await clients.user.restartWorkload(workloadId, { foo: "42" }).submit();
+      const workload = await clients.user.getWorkload(workloadId).submit();
+      expect(workload.envVars).toEqual({ foo: "42" });
+    }
+
+    // restart without env vars, nothing should have changed
+    {
+      await clients.user.restartWorkload(workloadId).submit();
+      const workload = await clients.user.getWorkload(workloadId).submit();
+      expect(workload.envVars).toEqual({ foo: "42" });
+    }
+
+    // restart by resetting env vars to an empty set
+    {
+      await clients.user.restartWorkload(workloadId, {}).submit();
+      const workload = await clients.user.getWorkload(workloadId).submit();
+      expect(workload.envVars).toEqual({});
+    }
+
+    await clients.user.deleteWorkload(workloadId).submit();
   });
 
   it("should not allow overcommitting credits", async ({ expect, clients }) => {
