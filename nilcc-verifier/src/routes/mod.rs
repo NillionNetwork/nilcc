@@ -15,7 +15,10 @@ pub(crate) fn build_router(cert_cache: PathBuf, artifacts_path: PathBuf) -> anyh
     let state = VerifyState { report_verifier, artifacts_path };
     let router = Router::new().nest(
         "/v1",
-        Router::new().route("/attestations/verify", post(v1::attestations::verify::handler)).with_state(state),
+        Router::new()
+            .route("/attestations/verify", post(v1::attestations::verify::handler))
+            .route("/attestations/verify-amd", post(v1::attestations::verify_amd::handler))
+            .with_state(state),
     );
     Ok(router)
 }
