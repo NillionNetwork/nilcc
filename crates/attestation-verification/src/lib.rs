@@ -9,3 +9,5 @@ pub use error::{ErrorCode, ValidateError};
 pub use measurement::{MeasurementGenerator, MeasurementHashError};
 pub use report::{EnvironmentSpec, ReportBundle, ReportBundleError, ReportFetcher, ReportResponse, VmType};
 pub use verify::{ReportVerifier, VerificationError};
+
+pub use sev;
