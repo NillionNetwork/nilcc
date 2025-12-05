@@ -15,8 +15,7 @@ rand = "0.9"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 serde = { version = "1.0", features = ["rc", "derive"] }
 serde_with = { version = "3.14", default-features = false, features = ["hex", "macros"] }
-# sev = { version = "7.1", default-features = false, features = ["snp"] }
-sev = { git = "https://github.com/virtee/sev", branch = "main", default-features = false, features = ["snp"] }
+sev = { workspace = true, default-features = false, features = ["snp"] }
 sha2 = "0.10"
 thiserror = "2.0"
 tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "process", "signal"] }
