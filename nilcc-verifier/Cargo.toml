@@ -13,7 +13,7 @@ reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = { version = "3.16", features = ["hex"] }
-sev = { version = "7.1", default-features = false }
+sev = { workspace = true, default-features = false }
 thiserror = "2.0"
 tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"

@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_with = { version = "3.14", features = ["hex"] }
-sev = { version = "7.1", default-features = false, features = ["snp"], optional = true }
+sev = { workspace = true, default-features = false, features = ["snp"], optional = true }
 
 [features]
 default = ["sev"]

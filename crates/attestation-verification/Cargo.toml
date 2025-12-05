@@ -13,7 +13,8 @@ openssl = { version = "^0.10" }
 reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sev = { version = "7.1", default-features = false, features = ["openssl", "snp"] }
+sev = { workspace = true, default-features = false, features = ["openssl", "snp"] }
+
 sha2 = "0.10"
 thiserror = "2.0"
 tracing = "0.1"
