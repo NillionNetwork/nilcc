@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use axum_server::Handle;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -9,6 +9,7 @@ use nilcc_agent::{
         qemu::{QemuClient, VmClient, VmDisplayMode},
     },
     config::{AgentConfig, AgentMode},
+    heartbeat_verifier::VerifierKeys,
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
     routes::{AppState, Clients, Services, build_router},
@@ -87,6 +88,13 @@ enum Command {
     /// Download resources.
     #[clap(subcommand)]
     Download(DownloadCommand),
+
+    /// Generate a list of the available heartbeat verifier keys.
+    VerifierKeys {
+        /// Path to the agent configuration file
+        #[clap(long, short)]
+        config: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -375,11 +383,16 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         cvm_artifacts_path: config.cvm.artifacts_path.clone(),
         vm_types,
     }));
+    // We can't run more than one workload per CPU so use that as the upper bound
+    let max_workloads = system_resources.cpus as usize;
+    let verifier_keys =
+        config.heartbeat_verifier.map(|config| VerifierKeys::new(&config, max_workloads)).transpose()?;
     let state = AppState {
         services: Services { workload: workload_service.clone(), upgrade: upgrade_service.clone() },
         clients: Clients { cvm_agent: cvm_agent_client },
         resource_limits: config.resources.limits,
         agent_domain: config.api.domain.clone(),
+        verifier_keys,
     };
     let router = build_router(state, config.api.token);
     let handle = Handle::new();
@@ -416,6 +429,24 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         None => server.serve(router.into_make_service()).await,
     };
     result.context("Failed to serve")
+}
+
+async fn print_verifier_keys(config: AgentConfig) -> Result<()> {
+    let resources = SystemResources::gather(config.resources.reserved).await?;
+    let total = resources.cpus as usize;
+    let verifier_config = config.heartbeat_verifier.ok_or_else(|| anyhow!("no heartbeat verifier config provided"))?;
+    let keys = VerifierKeys::new(&verifier_config, total)?;
+    let mut generated = Vec::new();
+    for _ in 0..total {
+        let key = keys.next_key()?;
+        generated.push(key);
+    }
+    for key in generated {
+        let private = hex::encode(key.secret_key());
+        let public = hex::encode(key.public_key());
+        println!("- private key {private} (public key {public})");
+    }
+    Ok(())
 }
 
 async fn shutdown_handler(handle: Handle) {
@@ -455,6 +486,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             let resources = SystemResources::gather(Default::default()).await?;
             let resources = serde_json::to_string_pretty(&resources).expect("failed to serialize");
             println!("{resources}");
+            Ok(())
+        }
+        Command::VerifierKeys { config } => {
+            let agent_config = load_config(&config).context("Loading agent configuration")?;
+            print_verifier_keys(agent_config).await?;
             Ok(())
         }
         Command::ValidateConfig { config } => {

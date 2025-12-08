@@ -3,6 +3,7 @@
 use crate::auth::AuthLayer;
 use crate::clients::cvm_agent::CvmAgentClient;
 use crate::config::ResourceLimitsConfig;
+use crate::heartbeat_verifier::VerifierKeys;
 use crate::services::upgrade::UpgradeService;
 use crate::services::workload::WorkloadService;
 use axum::Router;
@@ -40,6 +41,7 @@ pub struct AppState {
     pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
     pub agent_domain: String,
+    pub verifier_keys: Option<VerifierKeys>,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {

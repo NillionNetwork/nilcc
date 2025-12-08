@@ -2,6 +2,7 @@ pub mod auth;
 pub mod clients;
 pub mod compose;
 pub mod config;
+pub mod heartbeat_verifier;
 pub mod repositories;
 pub mod resources;
 pub mod routes;
