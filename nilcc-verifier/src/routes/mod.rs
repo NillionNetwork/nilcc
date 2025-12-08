@@ -1,6 +1,6 @@
 use attestation_verification::{DefaultCertificateFetcher, ReportVerifier};
 use axum::Router;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use convert_case::{Case, Casing};
 use serde::Serialize;
@@ -12,7 +12,7 @@ pub(crate) fn build_router(cert_cache: PathBuf, artifacts_path: PathBuf) -> anyh
     let cert_fetcher = Arc::new(DefaultCertificateFetcher::new(cert_cache)?);
     let report_verifier = ReportVerifier::new(cert_fetcher);
     let state = VerifyState { report_verifier, artifacts_path };
-    let router = Router::new().nest(
+    let router = Router::new().route("/health", get(|| async { StatusCode::OK })).nest(
         "/v1",
         Router::new()
             .route("/attestations/verify", post(v1::attestations::verify::handler))
