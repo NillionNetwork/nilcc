@@ -30,7 +30,7 @@ pub struct VerifierKeys {
 impl VerifierKeys {
     pub fn new(config: &HeartbeatVerifierConfig, key_count: usize) -> anyhow::Result<Self> {
         let engine = Secp256k1::new();
-        let network = if config.testnet { NetworkKind::Test } else { NetworkKind::Main };
+        let network = NetworkKind::Main;
         let master_key = Xpriv::new_master(network, &config.seed).context("Failed to generate verifier master key")?;
         // Generate N keys and keep their private/public keys
         let mut keys = Vec::new();
@@ -85,11 +85,8 @@ mod tests {
     use super::*;
     use std::sync::LazyLock;
 
-    static CONFIG: LazyLock<HeartbeatVerifierConfig> = LazyLock::new(|| HeartbeatVerifierConfig {
-        base_derivation_path: "m/44'/60'".parse().unwrap(),
-        seed: [0; 64],
-        testnet: false,
-    });
+    static CONFIG: LazyLock<HeartbeatVerifierConfig> =
+        LazyLock::new(|| HeartbeatVerifierConfig { base_derivation_path: "m/44'/60'".parse().unwrap(), seed: [0; 64] });
 
     #[test]
     fn generation() {

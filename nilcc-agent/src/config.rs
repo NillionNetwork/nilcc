@@ -245,10 +245,6 @@ pub struct HeartbeatVerifierConfig {
     /// The random seed to use.
     #[serde_as(as = "Hex")]
     pub seed: [u8; 64],
-
-    /// Whether to use a testnet key.
-    #[serde(default)]
-    pub testnet: bool,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
