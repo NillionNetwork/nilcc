@@ -56,7 +56,8 @@ pub fn build_router(state: AppState, token: String) -> Router {
                     .route("/artifacts/changelog", get(system::artifacts::changelog::handler))
                     .route("/artifacts/cleanup", post(system::artifacts::cleanup::handler))
                     .route("/agent/upgrade", post(system::agent::upgrade::handler))
-                    .route("/agent/version", get(system::agent::version::handler)),
+                    .route("/agent/version", get(system::agent::version::handler))
+                    .route("/verifier/keys", get(system::verifier::keys::handler)),
             )
             .nest(
                 "/workloads",

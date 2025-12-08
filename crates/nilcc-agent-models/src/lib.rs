@@ -2,6 +2,7 @@ use convert_case::{Case, Casing};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
+use serde_with::hex::Hex;
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -124,6 +125,15 @@ pub mod system {
         Pending,
         Success,
         Failure { error: String },
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, Deserialize, Validate)]
+    #[serde(rename_all = "camelCase")]
+    pub struct VerifierKey {
+        /// The public key.
+        #[serde_as(as = "Hex")]
+        pub public_key: Vec<u8>,
     }
 }
 
