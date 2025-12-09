@@ -25,6 +25,7 @@ use nilcc_agent_models::system::ArtifactsCleanupResponse;
 use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeState;
+use nilcc_agent_models::system::VerifierKey;
 use nilcc_agent_models::workloads::restart::RestartWorkloadRequest;
 use nilcc_agent_models::workloads::start::StartWorkloadRequest;
 use nilcc_agent_models::workloads::stop::StopWorkloadRequest;
@@ -33,6 +34,8 @@ use nilcc_agent_models::workloads::{
     delete::DeleteWorkloadRequest,
     list::WorkloadSummary,
 };
+use sha3::Digest;
+use sha3::Keccak256;
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -124,6 +127,10 @@ enum AdminCommand {
     /// Manage nilcc-agent versions.
     #[clap(subcommand)]
     Agent(AdminAgentCommand),
+
+    /// Manage verifier information.
+    #[clap(subcommand)]
+    Verifier(VerifierCommand),
 }
 
 #[derive(Subcommand)]
@@ -148,6 +155,12 @@ enum AdminAgentCommand {
 
     /// Get the current nilcc-agent binary version.
     Version,
+}
+
+#[derive(Subcommand)]
+enum VerifierCommand {
+    /// Get the public keys used for verification.
+    Keys,
 }
 
 #[derive(Args)]
@@ -625,6 +638,17 @@ fn agent_version(client: ApiClient) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn verifier_keys(client: ApiClient) -> anyhow::Result<()> {
+    let keys: Vec<VerifierKey> = client.get("/api/v1/system/verifier/keys")?;
+    for key in keys {
+        let key = &key.public_key[1..];
+        let digest = Keccak256::digest(key);
+        let address = hex::encode(&digest[digest.len() - 20..]);
+        println!("- 0x{address}");
+    }
+    Ok(())
+}
+
 fn display_last_upgrade(last_upgrade: Option<LastUpgrade>) {
     match last_upgrade {
         Some(upgrade) => {
@@ -698,6 +722,7 @@ fn main() {
         Command::Admin(AdminCommand::Artifacts(AdminArtifactsCommand::Cleanup)) => cleanup_artifacts(client),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Upgrade(args))) => upgrade_agent(client, args),
         Command::Admin(AdminCommand::Agent(AdminAgentCommand::Version)) => agent_version(client),
+        Command::Admin(AdminCommand::Verifier(VerifierCommand::Keys)) => verifier_keys(client),
     };
     if let Err(e) = result {
         eprintln!("Failed to run command: {e:#}");

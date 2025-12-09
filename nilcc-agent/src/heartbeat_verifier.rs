@@ -19,6 +19,7 @@ struct Inner {
 struct Keypair {
     private: [u8; 32],
     public: [u8; 33],
+    public_uncompressed: [u8; 65],
 }
 
 #[derive(Clone)]
@@ -39,7 +40,8 @@ impl VerifierKeys {
             let key = master_key.derive_priv(&engine, &key_path).context("Failed to derive private key")?;
             let private = key.private_key.secret_bytes();
             let public = key.private_key.public_key(&engine).serialize();
-            keys.push(Keypair { private, public });
+            let public_uncompressed = key.private_key.public_key(&engine).serialize_uncompressed();
+            keys.push(Keypair { private, public, public_uncompressed });
         }
         let inner = Inner { available_keys: (0..key_count).collect() };
         Ok(Self { keys: keys.into(), inner: Arc::new(Mutex::new(inner)) })
@@ -50,6 +52,10 @@ impl VerifierKeys {
         let key_index = inner.available_keys.pop_first().ok_or(NoMoreKeys)?;
         let key = self.keys[key_index];
         Ok(VerifierKey { key, key_index, inner: self.inner.clone() })
+    }
+
+    pub fn public_keys(&self) -> Vec<[u8; 65]> {
+        self.keys.iter().map(|k| k.public_uncompressed).collect()
     }
 }
 
