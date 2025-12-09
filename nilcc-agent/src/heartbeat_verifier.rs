@@ -1,4 +1,4 @@
-use crate::config::HeartbeatVerifierConfig;
+use crate::config::VerifierHeartbeatConfig;
 use anyhow::Context;
 use bitcoin::{
     NetworkKind,
@@ -29,7 +29,7 @@ pub struct VerifierKeys {
 }
 
 impl VerifierKeys {
-    pub fn new(config: &HeartbeatVerifierConfig, key_count: usize) -> anyhow::Result<Self> {
+    pub fn new(config: &VerifierHeartbeatConfig, key_count: usize) -> anyhow::Result<Self> {
         let engine = Secp256k1::new();
         let network = NetworkKind::Main;
         let master_key = Xpriv::new_master(network, &config.seed).context("Failed to generate verifier master key")?;
@@ -57,6 +57,19 @@ impl VerifierKeys {
     pub fn public_keys(&self) -> Vec<[u8; 65]> {
         self.keys.iter().map(|k| k.public_uncompressed).collect()
     }
+
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        Self::new(
+            &VerifierHeartbeatConfig {
+                base_derivation_path: "m/44'/60'".parse().unwrap(),
+                seed: [0; 64],
+                interval_seconds: std::time::Duration::from_secs(10),
+            },
+            10,
+        )
+        .expect("building verifier keys failed")
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,6 +83,14 @@ pub struct VerifierKey {
 }
 
 impl VerifierKey {
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        let inner = Arc::new(Mutex::new(Inner { available_keys: Default::default() }));
+        let key = Keypair { private: [0; 32], public: [0; 33], public_uncompressed: [0; 65] };
+        let key_index = 0;
+        Self { key, key_index, inner }
+    }
+
     pub fn secret_key(&self) -> [u8; 32] {
         self.key.private
     }
@@ -89,10 +110,13 @@ impl Drop for VerifierKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::LazyLock;
+    use std::{sync::LazyLock, time::Duration};
 
-    static CONFIG: LazyLock<HeartbeatVerifierConfig> =
-        LazyLock::new(|| HeartbeatVerifierConfig { base_derivation_path: "m/44'/60'".parse().unwrap(), seed: [0; 64] });
+    static CONFIG: LazyLock<VerifierHeartbeatConfig> = LazyLock::new(|| VerifierHeartbeatConfig {
+        base_derivation_path: "m/44'/60'".parse().unwrap(),
+        seed: [0; 64],
+        interval_seconds: Duration::from_secs(10),
+    });
 
     #[test]
     fn generation() {

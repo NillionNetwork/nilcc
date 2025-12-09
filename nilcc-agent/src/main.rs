@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use axum_server::Handle;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -258,6 +258,7 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         docker_config: config.docker,
         event_sender,
         repository_provider: repository_provider.clone(),
+        verifier_heartbeat_interval: config.verifier_heartbeat.interval_seconds,
     })
     .await?;
     let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
@@ -346,6 +347,10 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
 
     let vm_client = Arc::new(QemuClient::new(config.qemu.system_bin));
 
+    // We can't run more than one workload per CPU so use that as the upper bound
+    let max_workloads = system_resources.cpus as usize;
+    let verifier_keys = VerifierKeys::new(&config.verifier_heartbeat, max_workloads)?;
+
     let repository_provider = Arc::new(repository_provider);
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
     let event_sender = EventWorker::spawn(EventWorkerArgs {
@@ -362,6 +367,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         docker_config: config.docker,
         event_sender,
         repository_provider: repository_provider.clone(),
+        verifier_heartbeat_interval: config.verifier_heartbeat.interval_seconds,
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
@@ -370,6 +376,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         resources: system_resources.clone(),
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
         proxy_service: Box::new(proxy_service),
+        verifier_keys: verifier_keys.clone(),
     })
     .await
     .context("Creating workload service")?;
@@ -383,10 +390,6 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         cvm_artifacts_path: config.cvm.artifacts_path.clone(),
         vm_types,
     }));
-    // We can't run more than one workload per CPU so use that as the upper bound
-    let max_workloads = system_resources.cpus as usize;
-    let verifier_keys =
-        config.heartbeat_verifier.map(|config| VerifierKeys::new(&config, max_workloads)).transpose()?;
     let state = AppState {
         services: Services { workload: workload_service.clone(), upgrade: upgrade_service.clone() },
         clients: Clients { cvm_agent: cvm_agent_client },
@@ -434,8 +437,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
 async fn print_verifier_keys(config: AgentConfig) -> Result<()> {
     let resources = SystemResources::gather(config.resources.reserved).await?;
     let total = resources.cpus as usize;
-    let verifier_config = config.heartbeat_verifier.ok_or_else(|| anyhow!("no heartbeat verifier config provided"))?;
-    let keys = VerifierKeys::new(&verifier_config, total)?;
+    let keys = VerifierKeys::new(&config.verifier_heartbeat, total)?;
     let mut generated = Vec::new();
     for _ in 0..total {
         let key = keys.next_key()?;

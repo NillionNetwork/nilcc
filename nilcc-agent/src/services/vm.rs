@@ -4,6 +4,7 @@ use crate::{
         qemu::{HardDiskSpec, VmClient, VmSpec},
     },
     config::{DockerConfig, ZeroSslConfig},
+    heartbeat_verifier::VerifierKey,
     repositories::{sqlite::RepositoryProvider, workload::Workload},
     services::disk::{ApplicationMetadata, ContainerMetadata, DiskService, EnvironmentVariable, ExternalFile, IsoSpec},
     workers::{
@@ -23,6 +24,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{fs, sync::Mutex};
 use tracing::{error, info};
@@ -33,7 +35,7 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
-    async fn create_vm(&self, workload: Workload) -> Result<(), StartVmError>;
+    async fn create_vm(&self, workload: Workload, key: VerifierKey) -> Result<(), StartVmError>;
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
@@ -53,6 +55,7 @@ pub struct VmServiceArgs {
     pub docker_config: DockerConfig,
     pub event_sender: EventSender,
     pub repository_provider: Arc<dyn RepositoryProvider>,
+    pub verifier_heartbeat_interval: Duration,
 }
 
 pub struct DefaultVmService {
@@ -66,6 +69,7 @@ pub struct DefaultVmService {
     docker_config: DockerConfig,
     event_sender: EventSender,
     repository_provider: Arc<dyn RepositoryProvider>,
+    verifier_heartbeat_interval: Duration,
 }
 
 impl DefaultVmService {
@@ -80,6 +84,7 @@ impl DefaultVmService {
             docker_config,
             event_sender,
             repository_provider,
+            verifier_heartbeat_interval,
         } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
@@ -93,6 +98,7 @@ impl DefaultVmService {
             docker_config,
             event_sender,
             repository_provider,
+            verifier_heartbeat_interval,
         })
     }
 
@@ -200,7 +206,7 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn create_vm(&self, workload: Workload) -> Result<(), StartVmError> {
+    async fn create_vm(&self, workload: Workload, key: VerifierKey) -> Result<(), StartVmError> {
         let id = workload.id;
         let socket_path = self.state_path.join(format!("{id}.sock"));
         let mut workers = self.workers.lock().await;
@@ -234,6 +240,8 @@ impl VmService for DefaultVmService {
                     docker_credentials,
                     event_sender: self.event_sender.clone(),
                     domain: workload.domain,
+                    verifier_heartbeat_interval: self.verifier_heartbeat_interval,
+                    verifier_wallet_key: key,
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -399,6 +407,7 @@ mod tests {
                 docker_config,
                 event_sender: EventSender(channel(1).0),
                 repository_provider: Arc::new(repository_provider),
+                verifier_heartbeat_interval: Duration::from_secs(10),
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }
@@ -483,6 +492,6 @@ mod tests {
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service.create_vm(workload).await.expect("failed to start");
+        ctx.service.create_vm(workload, VerifierKey::dummy()).await.expect("failed to start");
     }
 }

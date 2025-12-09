@@ -41,7 +41,7 @@ pub struct AppState {
     pub clients: Clients,
     pub resource_limits: ResourceLimitsConfig,
     pub agent_domain: String,
-    pub verifier_keys: Option<VerifierKeys>,
+    pub verifier_keys: VerifierKeys,
 }
 
 pub fn build_router(state: AppState, token: String) -> Router {

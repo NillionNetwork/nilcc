@@ -1,5 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_with::DurationSeconds;
+use serde_with::hex::Hex;
+use serde_with::serde_as;
+use std::time::Duration;
 use validator::Validate;
 
 pub mod bootstrap {
@@ -22,6 +26,9 @@ pub mod bootstrap {
 
         /// The public domain the CVM is accessible at.
         pub domain: String,
+
+        /// Heartbeat configuration.
+        pub heartbeat: Option<HeartbeatConfig>,
     }
 
     /// The ACME credentials.
@@ -45,6 +52,19 @@ pub mod bootstrap {
 
         /// The optional server.
         pub server: Option<String>,
+    }
+
+    /// The heartbeat configuration.
+    #[serde_as]
+    #[derive(Clone, Deserialize, Serialize)]
+    pub struct HeartbeatConfig {
+        /// The interval at which heartbeats should occur.
+        #[serde_as(as = "DurationSeconds")]
+        pub interval: Duration,
+
+        /// The private key to use to pay for heartbeat transactions.
+        #[serde_as(as = "Hex")]
+        pub wallet_private_key: Vec<u8>,
     }
 }
 
