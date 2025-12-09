@@ -8,6 +8,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["json"] }
 axum-server = "0.7"
+bitcoin = { version = "0.32", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 docker-compose-types = { version = "0.22.0", default-features = false, features = ["yaml"] }

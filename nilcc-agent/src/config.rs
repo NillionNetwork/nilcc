@@ -1,5 +1,8 @@
 use anyhow::Context;
+use bitcoin::bip32::DerivationPath;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_with::hex::Hex;
+use serde_with::serde_as;
 use std::{net::SocketAddr, path::PathBuf};
 use uuid::Uuid;
 
@@ -44,6 +47,9 @@ pub struct AgentConfig {
     /// The optional TLS configuration.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
+
+    /// The heartbeat verifier configuration.
+    pub heartbeat_verifier: Option<HeartbeatVerifierConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -64,8 +70,10 @@ pub struct QemuConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum AgentMode {
+    /// Run in standalone mode without talking to nilcc-api.
     Standalone,
 
+    /// Run in remote mode, where the agent talks to nilcc-api.
     Remote(ControllerConfig),
 }
 
@@ -226,6 +234,19 @@ pub struct DockerConfig {
     pub password: String,
 }
 
+/// The heartbeat verifier configuration.
+#[serde_as]
+#[derive(Clone, Debug, Deserialize)]
+pub struct HeartbeatVerifierConfig {
+    /// The base derivation path to use for generated heartbeat keys.
+    #[serde(default = "default_base_derivation_path")]
+    pub base_derivation_path: DerivationPath,
+
+    /// The random seed to use.
+    #[serde_as(as = "Hex")]
+    pub seed: [u8; 64],
+}
+
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -259,4 +280,8 @@ fn default_server_timeout() -> u64 {
 
 fn ha_proxy_master_socket_path() -> PathBuf {
     "/var/run/haproxy-master.sock".into()
+}
+
+fn default_base_derivation_path() -> DerivationPath {
+    "m/44'/60'".parse().expect("invalid base derivation path")
 }
