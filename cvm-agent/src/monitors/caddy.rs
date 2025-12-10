@@ -7,12 +7,8 @@ use bollard::{
 use cvm_agent_models::health::EventKind;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-use std::{
-    borrow::Cow,
-    mem,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{borrow::Cow, mem, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -44,7 +40,7 @@ impl CaddyMonitor {
             threshold_timestamp = next_timestamp;
             match status {
                 Status::CertificateGenerated => {
-                    let mut system_state = self.system_state.lock().unwrap();
+                    let mut system_state = self.system_state.lock().await;
                     match mem::take(&mut *system_state) {
                         SystemState::WaitingBootstrap => error!("System is still waiting for bootstrap"),
                         SystemState::Starting | SystemState::Ready => {

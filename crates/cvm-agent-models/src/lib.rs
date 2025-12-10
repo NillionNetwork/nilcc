@@ -4,6 +4,7 @@ use serde_with::DurationSeconds;
 use serde_with::hex::Hex;
 use serde_with::serde_as;
 use std::time::Duration;
+use uuid::Uuid;
 use validator::Validate;
 
 pub mod bootstrap {
@@ -29,6 +30,9 @@ pub mod bootstrap {
 
         /// Heartbeat configuration.
         pub heartbeat: Option<HeartbeatConfig>,
+
+        /// The workload identifier.
+        pub workload_id: Option<Uuid>,
     }
 
     /// The ACME credentials.
@@ -65,6 +69,15 @@ pub mod bootstrap {
         /// The private key to use to pay for heartbeat transactions.
         #[serde_as(as = "Hex")]
         pub wallet_private_key: Vec<u8>,
+
+        /// The RPC endpoint to use to submit transactions.
+        pub rpc_endpoint: String,
+
+        /// The address for the contract that accepts heartbeats.
+        pub contract_address: String,
+
+        /// The URL where measurement hashes for this workload are published.
+        pub measurement_hash_url: String,
     }
 }
 

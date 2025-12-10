@@ -55,7 +55,9 @@ pub struct VmServiceArgs {
     pub docker_config: DockerConfig,
     pub event_sender: EventSender,
     pub repository_provider: Arc<dyn RepositoryProvider>,
+    pub verifier_heartbeat_rpc: String,
     pub verifier_heartbeat_interval: Duration,
+    pub verifier_contract_address: String,
 }
 
 pub struct DefaultVmService {
@@ -70,6 +72,8 @@ pub struct DefaultVmService {
     event_sender: EventSender,
     repository_provider: Arc<dyn RepositoryProvider>,
     verifier_heartbeat_interval: Duration,
+    verifier_heartbeat_rpc: String,
+    verifier_contract_address: String,
 }
 
 impl DefaultVmService {
@@ -85,6 +89,8 @@ impl DefaultVmService {
             event_sender,
             repository_provider,
             verifier_heartbeat_interval,
+            verifier_heartbeat_rpc,
+            verifier_contract_address,
         } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
@@ -99,6 +105,8 @@ impl DefaultVmService {
             event_sender,
             repository_provider,
             verifier_heartbeat_interval,
+            verifier_heartbeat_rpc,
+            verifier_contract_address,
         })
     }
 
@@ -241,7 +249,9 @@ impl VmService for DefaultVmService {
                     event_sender: self.event_sender.clone(),
                     domain: workload.domain,
                     verifier_heartbeat_interval: self.verifier_heartbeat_interval,
+                    verifier_heartbeat_rpc: self.verifier_heartbeat_rpc.clone(),
                     verifier_wallet_key: key,
+                    verifier_contract_address: self.verifier_contract_address.clone(),
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -408,6 +418,8 @@ mod tests {
                 event_sender: EventSender(channel(1).0),
                 repository_provider: Arc::new(repository_provider),
                 verifier_heartbeat_interval: Duration::from_secs(10),
+                verifier_heartbeat_rpc: "".into(),
+                verifier_contract_address: "".into(),
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }

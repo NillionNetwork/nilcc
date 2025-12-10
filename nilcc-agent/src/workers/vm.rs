@@ -39,7 +39,9 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) event_sender: EventSender,
     pub(crate) domain: String,
     pub(crate) verifier_heartbeat_interval: Duration,
+    pub(crate) verifier_heartbeat_rpc: String,
     pub(crate) verifier_wallet_key: VerifierKey,
+    pub(crate) verifier_contract_address: String,
 }
 
 pub(crate) struct VmWorker {
@@ -56,7 +58,9 @@ pub(crate) struct VmWorker {
     domain: String,
     event_sender: EventSender,
     verifier_heartbeat_interval: Duration,
+    verifier_heartbeat_rpc: String,
     verifier_wallet_key: VerifierKey,
+    verifier_contract_address: String,
     last_event_id: Option<u64>,
 }
 
@@ -74,7 +78,9 @@ impl VmWorker {
             event_sender,
             domain,
             verifier_heartbeat_interval,
+            verifier_heartbeat_rpc,
             verifier_wallet_key,
+            verifier_contract_address,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -92,8 +98,10 @@ impl VmWorker {
                 event_sender,
                 domain,
                 verifier_heartbeat_interval,
+                verifier_heartbeat_rpc,
                 verifier_wallet_key,
                 last_event_id: None,
+                verifier_contract_address,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
         });
@@ -217,9 +225,14 @@ impl VmWorker {
                             },
                             docker: self.docker_credentials.clone(),
                             domain: self.domain.clone(),
+                            workload_id: Some(self.workload_id),
                             heartbeat: Some(HeartbeatConfig {
                                 interval: self.verifier_heartbeat_interval,
                                 wallet_private_key: self.verifier_wallet_key.secret_key().to_vec(),
+                                rpc_endpoint: self.verifier_heartbeat_rpc.clone(),
+                                contract_address: self.verifier_contract_address.clone(),
+                                // TODO
+                                measurement_hash_url: "".into(),
                             }),
                         };
                         if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {

@@ -259,6 +259,8 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
         event_sender,
         repository_provider: repository_provider.clone(),
         verifier_heartbeat_interval: config.verifier_heartbeat.interval_seconds,
+        verifier_heartbeat_rpc: config.verifier_heartbeat.rpc_endpoint,
+        verifier_contract_address: config.verifier_heartbeat.contract_address,
     })
     .await?;
     let mut spec = vm_service.create_workload_spec(&workload).await.context("Failed to create workload spec")?;
@@ -368,6 +370,8 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         event_sender,
         repository_provider: repository_provider.clone(),
         verifier_heartbeat_interval: config.verifier_heartbeat.interval_seconds,
+        verifier_heartbeat_rpc: config.verifier_heartbeat.rpc_endpoint,
+        verifier_contract_address: config.verifier_heartbeat.contract_address,
     })
     .await?;
     let workload_service = DefaultWorkloadService::new(WorkloadServiceArgs {
