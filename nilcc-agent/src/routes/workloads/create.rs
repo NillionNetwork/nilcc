@@ -91,6 +91,7 @@ impl From<CreateWorkloadError> for HandlerError {
             CreateWorkloadError::AlreadyExists => Self::AlreadyExists,
             CreateWorkloadError::DomainExists => Self::DomainExists,
             CreateWorkloadError::ArtifactVersionMissing => Self::ArtifactVersionMissing,
+            CreateWorkloadError::NotEnoughKeys => Self::Internal(e.to_string()),
         }
     }
 }

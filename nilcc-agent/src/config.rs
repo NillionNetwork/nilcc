@@ -1,9 +1,10 @@
 use anyhow::Context;
 use bitcoin::bip32::DerivationPath;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_with::DurationSeconds;
 use serde_with::hex::Hex;
 use serde_with::serde_as;
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -49,7 +50,7 @@ pub struct AgentConfig {
     pub tls: Option<TlsConfig>,
 
     /// The heartbeat verifier configuration.
-    pub heartbeat_verifier: Option<HeartbeatVerifierConfig>,
+    pub verifier_heartbeat: VerifierHeartbeatConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -234,10 +235,10 @@ pub struct DockerConfig {
     pub password: String,
 }
 
-/// The heartbeat verifier configuration.
+/// The verifier heartbeat configuration.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
-pub struct HeartbeatVerifierConfig {
+pub struct VerifierHeartbeatConfig {
     /// The base derivation path to use for generated heartbeat keys.
     #[serde(default = "default_base_derivation_path")]
     pub base_derivation_path: DerivationPath,
@@ -245,6 +246,11 @@ pub struct HeartbeatVerifierConfig {
     /// The random seed to use.
     #[serde_as(as = "Hex")]
     pub seed: [u8; 64],
+
+    /// The interval at which heartbeats should occur.
+    #[serde_as(as = "DurationSeconds")]
+    #[serde(default = "default_verifier_heartbeat_interval")]
+    pub interval_seconds: Duration,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -284,4 +290,8 @@ fn ha_proxy_master_socket_path() -> PathBuf {
 
 fn default_base_derivation_path() -> DerivationPath {
     "m/44'/60'".parse().expect("invalid base derivation path")
+}
+
+fn default_verifier_heartbeat_interval() -> Duration {
+    Duration::from_secs(60 * 10)
 }

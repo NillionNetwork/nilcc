@@ -5,11 +5,12 @@ use crate::{
         qemu::{QemuClientError, VmClient, VmSpec},
     },
     config::ZeroSslConfig,
+    heartbeat_verifier::VerifierKey,
     workers::events::EventSender,
 };
 use chrono::Utc;
 use cvm_agent_models::{
-    bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials},
+    bootstrap::{AcmeCredentials, BootstrapRequest, DockerCredentials, HeartbeatConfig},
     health::{EventKind, LastEvent},
 };
 use metrics::{counter, gauge};
@@ -37,6 +38,8 @@ pub(crate) struct VmWorkerArgs {
     pub(crate) docker_credentials: Vec<DockerCredentials>,
     pub(crate) event_sender: EventSender,
     pub(crate) domain: String,
+    pub(crate) verifier_heartbeat_interval: Duration,
+    pub(crate) verifier_wallet_key: VerifierKey,
 }
 
 pub(crate) struct VmWorker {
@@ -52,6 +55,8 @@ pub(crate) struct VmWorker {
     docker_credentials: Vec<DockerCredentials>,
     domain: String,
     event_sender: EventSender,
+    verifier_heartbeat_interval: Duration,
+    verifier_wallet_key: VerifierKey,
     last_event_id: Option<u64>,
 }
 
@@ -68,6 +73,8 @@ impl VmWorker {
             docker_credentials,
             event_sender,
             domain,
+            verifier_heartbeat_interval,
+            verifier_wallet_key,
         } = args;
         let (sender, receiver) = channel(64);
         let join_handle = tokio::spawn(async move {
@@ -84,6 +91,8 @@ impl VmWorker {
                 docker_credentials,
                 event_sender,
                 domain,
+                verifier_heartbeat_interval,
+                verifier_wallet_key,
                 last_event_id: None,
             };
             worker.run().instrument(info_span!("vm_worker", workload_id = workload_id.to_string())).await;
@@ -208,6 +217,10 @@ impl VmWorker {
                             },
                             docker: self.docker_credentials.clone(),
                             domain: self.domain.clone(),
+                            heartbeat: Some(HeartbeatConfig {
+                                interval: self.verifier_heartbeat_interval,
+                                wallet_private_key: self.verifier_wallet_key.secret_key().to_vec(),
+                            }),
                         };
                         if let Err(e) = self.cvm_agent_client.bootstrap(self.cvm_agent_port, &request).await {
                             warn!("Failed to bootstrap agent: {e:#}");

@@ -318,6 +318,7 @@ mod tests {
             domain: domain.into(),
             last_reported_event: None,
             enabled: true,
+            wallet_key: None,
         }
     }
 

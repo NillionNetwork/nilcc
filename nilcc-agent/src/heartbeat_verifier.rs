@@ -1,4 +1,4 @@
-use crate::config::HeartbeatVerifierConfig;
+use crate::config::VerifierHeartbeatConfig;
 use anyhow::Context;
 use bitcoin::{
     NetworkKind,
@@ -29,7 +29,7 @@ pub struct VerifierKeys {
 }
 
 impl VerifierKeys {
-    pub fn new(config: &HeartbeatVerifierConfig, key_count: usize) -> anyhow::Result<Self> {
+    pub fn new(config: &VerifierHeartbeatConfig, key_count: usize) -> anyhow::Result<Self> {
         let engine = Secp256k1::new();
         let network = NetworkKind::Main;
         let master_key = Xpriv::new_master(network, &config.seed).context("Failed to generate verifier master key")?;
@@ -47,6 +47,16 @@ impl VerifierKeys {
         Ok(Self { keys: keys.into(), inner: Arc::new(Mutex::new(inner)) })
     }
 
+    pub fn get(&self, public_key: &[u8]) -> Result<VerifierKey, KeyLookupError> {
+        let key_index = self.keys.iter().position(|k| k.public == public_key).ok_or(KeyLookupError::NotFound)?;
+        let mut inner = self.inner.lock().expect("lock poisoned");
+        if !inner.available_keys.remove(&key_index) {
+            return Err(KeyLookupError::AlreadyInUse);
+        }
+        let key = self.keys[key_index];
+        Ok(VerifierKey { key, key_index, inner: self.inner.clone() })
+    }
+
     pub fn next_key(&self) -> Result<VerifierKey, NoMoreKeys> {
         let mut inner = self.inner.lock().expect("lock poisoned");
         let key_index = inner.available_keys.pop_first().ok_or(NoMoreKeys)?;
@@ -57,11 +67,33 @@ impl VerifierKeys {
     pub fn public_keys(&self) -> Vec<[u8; 65]> {
         self.keys.iter().map(|k| k.public_uncompressed).collect()
     }
+
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        Self::new(
+            &VerifierHeartbeatConfig {
+                base_derivation_path: "m/44'/60'".parse().unwrap(),
+                seed: [0; 64],
+                interval_seconds: std::time::Duration::from_secs(10),
+            },
+            10,
+        )
+        .expect("building verifier keys failed")
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("no more verifier keys available")]
 pub struct NoMoreKeys;
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyLookupError {
+    #[error("key not found")]
+    NotFound,
+
+    #[error("key already in use")]
+    AlreadyInUse,
+}
 
 pub struct VerifierKey {
     key: Keypair,
@@ -70,6 +102,14 @@ pub struct VerifierKey {
 }
 
 impl VerifierKey {
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        let inner = Arc::new(Mutex::new(Inner { available_keys: Default::default() }));
+        let key = Keypair { private: [0; 32], public: [0; 33], public_uncompressed: [0; 65] };
+        let key_index = 0;
+        Self { key, key_index, inner }
+    }
+
     pub fn secret_key(&self) -> [u8; 32] {
         self.key.private
     }
@@ -89,10 +129,13 @@ impl Drop for VerifierKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::LazyLock;
+    use std::{sync::LazyLock, time::Duration};
 
-    static CONFIG: LazyLock<HeartbeatVerifierConfig> =
-        LazyLock::new(|| HeartbeatVerifierConfig { base_derivation_path: "m/44'/60'".parse().unwrap(), seed: [0; 64] });
+    static CONFIG: LazyLock<VerifierHeartbeatConfig> = LazyLock::new(|| VerifierHeartbeatConfig {
+        base_derivation_path: "m/44'/60'".parse().unwrap(),
+        seed: [0; 64],
+        interval_seconds: Duration::from_secs(10),
+    });
 
     #[test]
     fn generation() {
@@ -121,5 +164,20 @@ mod tests {
 
         drop(key);
         assert!(keys.next_key().is_ok(), "key not available after drop");
+    }
+
+    #[test]
+    fn get_key() {
+        let keys = VerifierKeys::new(&CONFIG, 1).expect("creating keys");
+        let public_key = {
+            let key = keys.next_key().unwrap();
+            key.public_key()
+        };
+        // random lookup fails
+        assert!(matches!(keys.get(&[1, 2, 3]), Err(KeyLookupError::NotFound)));
+
+        // pull a key and try to pull it again
+        let _key = keys.get(&public_key).expect("lookup failed");
+        assert!(matches!(keys.get(&public_key), Err(KeyLookupError::AlreadyInUse)));
     }
 }
