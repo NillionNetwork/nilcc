@@ -33,6 +33,8 @@ pub struct Workload {
     pub ports: [u16; 3],
     pub domain: String,
     pub last_reported_event: Option<String>,
+    #[sqlx(json)]
+    pub wallet_key: Option<Vec<u8>>,
 }
 
 impl Workload {
@@ -68,6 +70,7 @@ impl fmt::Debug for Workload {
             enabled: running,
             docker_credentials,
             last_reported_event,
+            wallet_key,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -88,6 +91,7 @@ impl fmt::Debug for Workload {
             .field("running", running)
             .field("docker_credentials", docker_credentials)
             .field("last_reported_event", last_reported_event)
+            .field("wallet_key", &wallet_key.as_ref().map(hex::encode))
             .finish()
     }
 }
@@ -117,6 +121,9 @@ pub trait WorkloadRepository: Send + Sync {
 
     /// Set the `enabled` column for a workload.
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
+
+    /// Set the `wallet_key` column for a workload.
+    async fn set_wallet_key(&mut self, id: Uuid, wallet_key: Option<Vec<u8>>) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `gpus` column for a workload.
     async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError>;
@@ -198,10 +205,11 @@ INSERT INTO workloads (
     ports,
     domain,
     last_reported_event,
+    wallet_key,
     enabled,
     created_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 ";
         let Workload {
             id,
@@ -220,6 +228,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             domain,
             last_reported_event,
             enabled,
+            wallet_key,
         } = workload;
 
         sqlx::query(query)
@@ -238,6 +247,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             .bind(sqlx::types::Json(ports))
             .bind(domain)
             .bind(last_reported_event)
+            .bind(sqlx::types::Json(wallet_key))
             .bind(enabled)
             .bind(Utc::now())
             .execute(&mut *self.ctx)
@@ -270,6 +280,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError> {
         let query = "UPDATE workloads SET enabled = ? WHERE id = ?";
         sqlx::query(query).bind(value).bind(id).execute(&mut *self.ctx).await?;
+        Ok(())
+    }
+
+    async fn set_wallet_key(&mut self, id: Uuid, wallet_key: Option<Vec<u8>>) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET wallet_key = ? WHERE id = ?";
+        sqlx::query(query).bind(sqlx::types::Json(wallet_key)).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
     }
 
@@ -332,6 +348,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
+            wallet_key: None,
         };
         repo.create(&workload).await.expect("failed to insert");
 
@@ -347,6 +364,9 @@ mod tests {
 
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
+
+        repo.set_wallet_key(workload.id, Some(vec![1, 2, 3])).await.expect("failed to update");
+        assert_eq!(repo.find(workload.id).await.expect("failed to find").wallet_key, Some(vec![1, 2, 3]));
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);

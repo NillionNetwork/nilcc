@@ -227,6 +227,7 @@ impl DefaultWorkloadService {
         request: CreateWorkloadRequest,
         resources: &AvailableResources,
         artifacts_version: String,
+        wallet_key: Vec<u8>,
     ) -> Workload {
         let CreateWorkloadRequest {
             id,
@@ -265,6 +266,7 @@ impl DefaultWorkloadService {
             domain,
             last_reported_event: None,
             enabled: true,
+            wallet_key: Some(wallet_key),
         }
     }
 }
@@ -277,7 +279,20 @@ impl WorkloadService for DefaultWorkloadService {
         for workload in workloads {
             let id = workload.id;
             if workload.enabled {
-                let key = self.verifier_keys.next_key().context("Not enough verifier keys")?;
+                // Lookup the existing key if one is already set. This will only happen during the
+                // transition period where this is still null for some workloads.
+                let key = match &workload.wallet_key {
+                    Some(key) => {
+                        info!("Looking up key {} for workload {id}", hex::encode(key));
+                        self.verifier_keys.get(key)?
+                    }
+                    None => self.verifier_keys.next_key().context("Not enough verifier keys")?,
+                };
+                if workload.wallet_key.is_some() {
+                    info!("Using existing key {} for workload {id}", hex::encode(key.public_key()));
+                } else {
+                    info!("Assigning key {} to workload {id}", hex::encode(key.public_key()));
+                }
                 info!("Starting existing workload {id}");
                 self.vm_service.create_vm(workload, key).await?;
             } else {
@@ -312,16 +327,21 @@ impl WorkloadService for DefaultWorkloadService {
         if resources.ports.len() < TOTAL_PORTS {
             return Err(InsufficientResources("open ports"));
         }
-        let verifier_key = self.verifier_keys.next_key().map_err(|_| NotEnoughKeys)?;
-        let workload = self.build_workload(request, &resources, artifacts.version.clone());
+        let wallet_key = self.verifier_keys.next_key().map_err(|_| NotEnoughKeys)?;
+        let workload =
+            self.build_workload(request, &resources, artifacts.version.clone(), wallet_key.public_key().to_vec());
         let id = workload.id;
         info!("Storing workload {id} in database");
         let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         repo.create(&workload).await?;
 
-        info!("Scheduling VM {id} using artifacts version {}", artifacts.version);
+        info!(
+            "Scheduling VM {id} using artifacts version {} and wallet key {}",
+            artifacts.version,
+            hex::encode(wallet_key.public_key())
+        );
         let proxied_vm = ProxiedVm::from(&workload);
-        self.vm_service.create_vm(workload, verifier_key).await?;
+        self.vm_service.create_vm(workload, wallet_key).await?;
         self.proxy_service.start_vm_proxy(proxied_vm).await;
         repo.commit().await?;
 
@@ -382,7 +402,7 @@ impl WorkloadService for DefaultWorkloadService {
     }
 
     async fn stop_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         let workload = repo.find(id).await?;
         if !workload.enabled {
             info!("Workload {id} is already disabled");
@@ -390,20 +410,24 @@ impl WorkloadService for DefaultWorkloadService {
         }
         info!("Disabling workload {id}");
         repo.set_enabled(id, false).await?;
+        repo.set_wallet_key(id, None).await?;
+        repo.commit().await?;
         self.vm_service.delete_vm(id).await;
         Ok(())
     }
 
     async fn start_workload(&self, id: Uuid) -> Result<(), WorkloadLookupError> {
-        let mut repo = self.repository_provider.workloads(Default::default()).await?;
+        let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
         let workload = repo.find(id).await?;
         if workload.enabled {
             info!("Workload {id} is already enabled");
             return Ok(());
         }
-        info!("Starting workload {id}");
         let key = self.verifier_keys.next_key().map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
+        info!("Starting workload {id} using wallet key {}", hex::encode(key.public_key()));
         repo.set_enabled(id, true).await?;
+        repo.set_wallet_key(id, Some(key.public_key().to_vec())).await?;
+        repo.commit().await?;
         self.vm_service.create_vm(workload, key).await.map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
         Ok(())
     }
@@ -526,6 +550,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
+            wallet_key: None,
         }
     }
 
@@ -627,6 +652,7 @@ mod tests {
             disk_space_gb: 1.try_into().unwrap(),
             domain: "example.com".into(),
         };
+        let expected_key = VerifierKeys::dummy().next_key().unwrap().public_key().to_vec();
         let workload = Workload {
             id: request.id,
             docker_compose: request.docker_compose.clone(),
@@ -644,6 +670,7 @@ mod tests {
             domain: request.domain.clone(),
             last_reported_event: None,
             enabled: true,
+            wallet_key: Some(expected_key),
         };
         let mut builder = Builder::default();
         let id = workload.id;

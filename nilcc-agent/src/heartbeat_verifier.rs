@@ -47,6 +47,16 @@ impl VerifierKeys {
         Ok(Self { keys: keys.into(), inner: Arc::new(Mutex::new(inner)) })
     }
 
+    pub fn get(&self, public_key: &[u8]) -> Result<VerifierKey, KeyLookupError> {
+        let key_index = self.keys.iter().position(|k| k.public == public_key).ok_or(KeyLookupError::NotFound)?;
+        let mut inner = self.inner.lock().expect("lock poisoned");
+        if !inner.available_keys.remove(&key_index) {
+            return Err(KeyLookupError::AlreadyInUse);
+        }
+        let key = self.keys[key_index];
+        Ok(VerifierKey { key, key_index, inner: self.inner.clone() })
+    }
+
     pub fn next_key(&self) -> Result<VerifierKey, NoMoreKeys> {
         let mut inner = self.inner.lock().expect("lock poisoned");
         let key_index = inner.available_keys.pop_first().ok_or(NoMoreKeys)?;
@@ -75,6 +85,15 @@ impl VerifierKeys {
 #[derive(Debug, thiserror::Error)]
 #[error("no more verifier keys available")]
 pub struct NoMoreKeys;
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyLookupError {
+    #[error("key not found")]
+    NotFound,
+
+    #[error("key already in use")]
+    AlreadyInUse,
+}
 
 pub struct VerifierKey {
     key: Keypair,
@@ -145,5 +164,20 @@ mod tests {
 
         drop(key);
         assert!(keys.next_key().is_ok(), "key not available after drop");
+    }
+
+    #[test]
+    fn get_key() {
+        let keys = VerifierKeys::new(&CONFIG, 1).expect("creating keys");
+        let public_key = {
+            let key = keys.next_key().unwrap();
+            key.public_key()
+        };
+        // random lookup fails
+        assert!(matches!(keys.get(&[1, 2, 3]), Err(KeyLookupError::NotFound)));
+
+        // pull a key and try to pull it again
+        let _key = keys.get(&public_key).expect("lookup failed");
+        assert!(matches!(keys.get(&public_key), Err(KeyLookupError::AlreadyInUse)));
     }
 }
