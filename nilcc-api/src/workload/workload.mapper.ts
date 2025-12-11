@@ -25,6 +25,7 @@ export const workloadMapper = {
       creditRate: workload.creditRate,
       status: workload.status,
       domain,
+      heartbeat: workload.heartbeat,
       metalInstanceDomain: `${workload.metalInstance.id}.${metalInstancesDomain}`,
       accountId: workload.account.id,
       createdAt: workload.createdAt.toISOString(),
