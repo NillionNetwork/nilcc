@@ -477,7 +477,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            heartbeats: None,
+            heartbeat: None,
         };
         let mut builder = Builder::default();
         let base_disk_contents = b"totally a disk";

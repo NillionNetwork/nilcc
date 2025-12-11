@@ -37,7 +37,7 @@ pub struct Workload {
     pub domain: String,
     pub last_reported_event: Option<String>,
     #[sqlx(json)]
-    pub heartbeats: Option<WorkloadHeartbeats>,
+    pub heartbeat: Option<WorkloadHeartbeat>,
 }
 
 impl Workload {
@@ -73,7 +73,7 @@ impl fmt::Debug for Workload {
             enabled: running,
             docker_credentials,
             last_reported_event,
-            heartbeats,
+            heartbeat,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -94,14 +94,14 @@ impl fmt::Debug for Workload {
             .field("running", running)
             .field("docker_credentials", docker_credentials)
             .field("last_reported_event", last_reported_event)
-            .field("heartbeats", heartbeats)
+            .field("heartbeat", heartbeat)
             .finish()
     }
 }
 
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WorkloadHeartbeats {
+pub struct WorkloadHeartbeat {
     #[serde_as(as = "Option<Hex>")]
     pub wallet_public_key: Option<Vec<u8>>,
 
@@ -135,10 +135,10 @@ pub trait WorkloadRepository: Send + Sync {
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `heartbeats` column for a workload.
-    async fn set_heartbeats(
+    async fn set_heartbeat(
         &mut self,
         id: Uuid,
-        heartbeats: Option<WorkloadHeartbeats>,
+        heartbeats: Option<WorkloadHeartbeat>,
     ) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `gpus` column for a workload.
@@ -221,7 +221,7 @@ INSERT INTO workloads (
     ports,
     domain,
     last_reported_event,
-    heartbeats,
+    heartbeat,
     enabled,
     created_at
 )
@@ -244,7 +244,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             domain,
             last_reported_event,
             enabled,
-            heartbeats,
+            heartbeat,
         } = workload;
 
         sqlx::query(query)
@@ -263,7 +263,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             .bind(sqlx::types::Json(ports))
             .bind(domain)
             .bind(last_reported_event)
-            .bind(sqlx::types::Json(heartbeats))
+            .bind(sqlx::types::Json(heartbeat))
             .bind(enabled)
             .bind(Utc::now())
             .execute(&mut *self.ctx)
@@ -299,13 +299,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
         Ok(())
     }
 
-    async fn set_heartbeats(
+    async fn set_heartbeat(
         &mut self,
         id: Uuid,
-        heartbeats: Option<WorkloadHeartbeats>,
+        heartbeat: Option<WorkloadHeartbeat>,
     ) -> Result<(), WorkloadRepositoryError> {
-        let query = "UPDATE workloads SET heartbeats = ? WHERE id = ?";
-        sqlx::query(query).bind(sqlx::types::Json(heartbeats)).bind(id).execute(&mut *self.ctx).await?;
+        let query = "UPDATE workloads SET heartbeat = ? WHERE id = ?";
+        sqlx::query(query).bind(sqlx::types::Json(heartbeat)).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
     }
 
@@ -368,7 +368,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            heartbeats: None,
+            heartbeat: None,
         };
         repo.create(&workload).await.expect("failed to insert");
 
@@ -385,15 +385,15 @@ mod tests {
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
 
-        repo.set_heartbeats(
+        repo.set_heartbeat(
             workload.id,
-            Some(WorkloadHeartbeats { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() }),
+            Some(WorkloadHeartbeat { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() }),
         )
         .await
         .expect("failed to update");
         assert_eq!(
-            repo.find(workload.id).await.expect("failed to find").heartbeats,
-            Some(WorkloadHeartbeats { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() })
+            repo.find(workload.id).await.expect("failed to find").heartbeat,
+            Some(WorkloadHeartbeat { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() })
         );
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");

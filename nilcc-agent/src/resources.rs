@@ -318,7 +318,7 @@ mod tests {
             domain: domain.into(),
             last_reported_event: None,
             enabled: true,
-            heartbeats: None,
+            heartbeat: None,
         }
     }
 

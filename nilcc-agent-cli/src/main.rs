@@ -26,7 +26,7 @@ use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeState;
 use nilcc_agent_models::system::VerifierKey;
-use nilcc_agent_models::workloads::create::CreateWorkloadHeartbeats;
+use nilcc_agent_models::workloads::create::CreateWorkloadHeartbeat;
 use nilcc_agent_models::workloads::restart::RestartWorkloadRequest;
 use nilcc_agent_models::workloads::start::StartWorkloadRequest;
 use nilcc_agent_models::workloads::stop::StopWorkloadRequest;
@@ -442,7 +442,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         gpus,
         disk_space_gb,
         domain,
-        heartbeats: measurement_hash_url.map(|measurement_hash_url| CreateWorkloadHeartbeats { measurement_hash_url }),
+        heartbeat: measurement_hash_url.map(|measurement_hash_url| CreateWorkloadHeartbeat { measurement_hash_url }),
     };
     let response: CreateWorkloadResponse = client.post("/api/v1/workloads/create", &request)?;
     let CreateWorkloadResponse { id } = response;
