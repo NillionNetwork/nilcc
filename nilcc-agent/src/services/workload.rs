@@ -3,7 +3,7 @@ use crate::{
     repositories::{
         artifacts::ArtifactsRepositoryError,
         sqlite::{ProviderError, ProviderMode, RepositoryProvider},
-        workload::{Workload, WorkloadHeartbeats, WorkloadRepositoryError},
+        workload::{Workload, WorkloadHeartbeat, WorkloadRepositoryError},
     },
     resources::{GpuAddress, SystemResources},
     services::{
@@ -227,7 +227,7 @@ impl DefaultWorkloadService {
         request: CreateWorkloadRequest,
         resources: &AvailableResources,
         artifacts_version: String,
-        heartbeats: Option<WorkloadHeartbeats>,
+        heartbeat: Option<WorkloadHeartbeat>,
     ) -> Workload {
         let CreateWorkloadRequest {
             id,
@@ -265,13 +265,13 @@ impl DefaultWorkloadService {
             domain,
             last_reported_event: None,
             enabled: true,
-            heartbeats,
+            heartbeat,
         }
     }
 
     fn workload_key(&self, workload: &Workload) -> anyhow::Result<Option<VerifierKey>> {
         let id = workload.id;
-        let key = match &workload.heartbeats {
+        let key = match &workload.heartbeat {
             Some(config) => {
                 // Lookup the existing key if one is already set. This will only happen during the
                 // transition period where this is still null for some workloads.
@@ -339,12 +339,12 @@ impl WorkloadService for DefaultWorkloadService {
             return Err(InsufficientResources("open ports"));
         }
 
-        let (heartbeats, wallet_key) = match &request.heartbeats {
+        let (heartbeat, wallet_key) = match &request.heartbeat {
             Some(config) => {
                 let wallet_key = self.verifier_keys.next_key().map_err(|_| NotEnoughKeys)?;
                 let wallet_public_key = Some(wallet_key.public_key().to_vec());
                 (
-                    Some(WorkloadHeartbeats {
+                    Some(WorkloadHeartbeat {
                         wallet_public_key,
                         measurement_hash_url: config.measurement_hash_url.clone(),
                     }),
@@ -353,7 +353,7 @@ impl WorkloadService for DefaultWorkloadService {
             }
             None => (None, None),
         };
-        let workload = self.build_workload(request, &resources, artifacts.version.clone(), heartbeats);
+        let workload = self.build_workload(request, &resources, artifacts.version.clone(), heartbeat);
         let id = workload.id;
         info!("Storing workload {id} in database");
         let mut repo = self.repository_provider.workloads(ProviderMode::Transactional).await?;
@@ -433,13 +433,13 @@ impl WorkloadService for DefaultWorkloadService {
             return Ok(());
         }
         // The workload key is going back to the pool
-        let mut heartbeats = workload.heartbeats;
+        let mut heartbeats = workload.heartbeat;
         if let Some(config) = &mut heartbeats {
             config.wallet_public_key = None;
         }
         info!("Disabling workload {id}");
         repo.set_enabled(id, false).await?;
-        repo.set_heartbeats(id, heartbeats).await?;
+        repo.set_heartbeat(id, heartbeats).await?;
         repo.commit().await?;
         self.vm_service.delete_vm(id).await;
         Ok(())
@@ -453,12 +453,12 @@ impl WorkloadService for DefaultWorkloadService {
             return Ok(());
         }
         let key = self.verifier_keys.next_key().map_err(|e| WorkloadLookupError::Internal(e.to_string()))?;
-        if let Some(config) = &mut workload.heartbeats {
+        if let Some(config) = &mut workload.heartbeat {
             config.wallet_public_key = Some(key.public_key().to_vec());
         }
         info!("Starting workload {id} using wallet key {}", hex::encode(key.public_key()));
         repo.set_enabled(id, true).await?;
-        repo.set_heartbeats(id, workload.heartbeats.clone()).await?;
+        repo.set_heartbeat(id, workload.heartbeat.clone()).await?;
         repo.commit().await?;
         self.vm_service
             .create_vm(workload, Some(key))
@@ -490,7 +490,7 @@ mod tests {
         },
     };
     use mockall::predicate::{always, eq};
-    use nilcc_agent_models::workloads::create::CreateWorkloadHeartbeats;
+    use nilcc_agent_models::workloads::create::CreateWorkloadHeartbeat;
     use rstest::rstest;
     use uuid::Uuid;
 
@@ -586,7 +586,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            heartbeats: None,
+            heartbeat: None,
         }
     }
 
@@ -687,7 +687,7 @@ mod tests {
             gpus: 1,
             disk_space_gb: 1.try_into().unwrap(),
             domain: "example.com".into(),
-            heartbeats: Some(CreateWorkloadHeartbeats { measurement_hash_url: "url".into() }),
+            heartbeat: Some(CreateWorkloadHeartbeat { measurement_hash_url: "url".into() }),
         };
         let expected_key = VerifierKeys::dummy().next_key().unwrap().public_key().to_vec();
         let workload = Workload {
@@ -707,7 +707,7 @@ mod tests {
             domain: request.domain.clone(),
             last_reported_event: None,
             enabled: true,
-            heartbeats: Some(WorkloadHeartbeats {
+            heartbeat: Some(WorkloadHeartbeat {
                 wallet_public_key: Some(expected_key),
                 measurement_hash_url: "url".into(),
             }),
