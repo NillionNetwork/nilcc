@@ -2,6 +2,9 @@ use crate::{repositories::sqlite::SqliteTransactionContext, resources::GpuAddres
 use async_trait::async_trait;
 use chrono::Utc;
 use nilcc_agent_models::workloads::create::DockerCredentials;
+use serde::{Deserialize, Serialize};
+use serde_with::hex::Hex;
+use serde_with::serde_as;
 use sqlx::prelude::FromRow;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -34,7 +37,7 @@ pub struct Workload {
     pub domain: String,
     pub last_reported_event: Option<String>,
     #[sqlx(json)]
-    pub wallet_key: Option<Vec<u8>>,
+    pub heartbeats: Option<WorkloadHeartbeats>,
 }
 
 impl Workload {
@@ -70,7 +73,7 @@ impl fmt::Debug for Workload {
             enabled: running,
             docker_credentials,
             last_reported_event,
-            wallet_key,
+            heartbeats,
         } = self;
         // Hide this one since it can have sensitive data
         let environment_variables: BTreeMap<_, _> = env_vars.keys().map(|key| (key, "...")).collect();
@@ -91,9 +94,18 @@ impl fmt::Debug for Workload {
             .field("running", running)
             .field("docker_credentials", docker_credentials)
             .field("last_reported_event", last_reported_event)
-            .field("wallet_key", &wallet_key.as_ref().map(hex::encode))
+            .field("heartbeats", heartbeats)
             .finish()
     }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkloadHeartbeats {
+    #[serde_as(as = "Option<Hex>")]
+    pub wallet_public_key: Option<Vec<u8>>,
+
+    pub measurement_hash_url: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Display, EnumString, sqlx::Type)]
@@ -122,8 +134,12 @@ pub trait WorkloadRepository: Send + Sync {
     /// Set the `enabled` column for a workload.
     async fn set_enabled(&mut self, id: Uuid, value: bool) -> Result<(), WorkloadRepositoryError>;
 
-    /// Set the `wallet_key` column for a workload.
-    async fn set_wallet_key(&mut self, id: Uuid, wallet_key: Option<Vec<u8>>) -> Result<(), WorkloadRepositoryError>;
+    /// Set the `heartbeats` column for a workload.
+    async fn set_heartbeats(
+        &mut self,
+        id: Uuid,
+        heartbeats: Option<WorkloadHeartbeats>,
+    ) -> Result<(), WorkloadRepositoryError>;
 
     /// Set the `gpus` column for a workload.
     async fn set_gpus(&mut self, id: Uuid, gpus: &[GpuAddress]) -> Result<(), WorkloadRepositoryError>;
@@ -205,7 +221,7 @@ INSERT INTO workloads (
     ports,
     domain,
     last_reported_event,
-    wallet_key,
+    heartbeats,
     enabled,
     created_at
 )
@@ -228,7 +244,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             domain,
             last_reported_event,
             enabled,
-            wallet_key,
+            heartbeats,
         } = workload;
 
         sqlx::query(query)
@@ -247,7 +263,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
             .bind(sqlx::types::Json(ports))
             .bind(domain)
             .bind(last_reported_event)
-            .bind(sqlx::types::Json(wallet_key))
+            .bind(sqlx::types::Json(heartbeats))
             .bind(enabled)
             .bind(Utc::now())
             .execute(&mut *self.ctx)
@@ -283,9 +299,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
         Ok(())
     }
 
-    async fn set_wallet_key(&mut self, id: Uuid, wallet_key: Option<Vec<u8>>) -> Result<(), WorkloadRepositoryError> {
-        let query = "UPDATE workloads SET wallet_key = ? WHERE id = ?";
-        sqlx::query(query).bind(sqlx::types::Json(wallet_key)).bind(id).execute(&mut *self.ctx).await?;
+    async fn set_heartbeats(
+        &mut self,
+        id: Uuid,
+        heartbeats: Option<WorkloadHeartbeats>,
+    ) -> Result<(), WorkloadRepositoryError> {
+        let query = "UPDATE workloads SET heartbeats = ? WHERE id = ?";
+        sqlx::query(query).bind(sqlx::types::Json(heartbeats)).bind(id).execute(&mut *self.ctx).await?;
         Ok(())
     }
 
@@ -348,7 +368,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            wallet_key: None,
+            heartbeats: None,
         };
         repo.create(&workload).await.expect("failed to insert");
 
@@ -365,8 +385,16 @@ mod tests {
         repo.set_enabled(workload.id, false).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").enabled, false);
 
-        repo.set_wallet_key(workload.id, Some(vec![1, 2, 3])).await.expect("failed to update");
-        assert_eq!(repo.find(workload.id).await.expect("failed to find").wallet_key, Some(vec![1, 2, 3]));
+        repo.set_heartbeats(
+            workload.id,
+            Some(WorkloadHeartbeats { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() }),
+        )
+        .await
+        .expect("failed to update");
+        assert_eq!(
+            repo.find(workload.id).await.expect("failed to find").heartbeats,
+            Some(WorkloadHeartbeats { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() })
+        );
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
         assert_eq!(repo.find(workload.id).await.expect("failed to find").gpus, vec!["cc:dd".into()]);

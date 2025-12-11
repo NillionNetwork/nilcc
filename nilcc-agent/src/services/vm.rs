@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use cvm_agent_models::bootstrap::DockerCredentials;
+use cvm_agent_models::bootstrap::{DockerCredentials, HeartbeatConfig};
 use nilcc_artifacts::{
     VmType,
     metadata::{ArtifactsMetadata, DiskFormat, KernelArgs},
@@ -35,7 +35,7 @@ const CVM_AGENT_PORT: u16 = 59666;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait VmService: Send + Sync {
-    async fn create_vm(&self, workload: Workload, key: VerifierKey) -> Result<(), StartVmError>;
+    async fn create_vm(&self, workload: Workload, heartbeat_key: Option<VerifierKey>) -> Result<(), StartVmError>;
     async fn create_workload_spec(&self, workload: &Workload) -> Result<VmSpec, StartVmError>;
     async fn delete_vm(&self, id: Uuid);
     async fn restart_vm(&self, id: Uuid) -> Result<(), VmNotManaged>;
@@ -214,7 +214,7 @@ impl DefaultVmService {
 
 #[async_trait]
 impl VmService for DefaultVmService {
-    async fn create_vm(&self, workload: Workload, key: VerifierKey) -> Result<(), StartVmError> {
+    async fn create_vm(&self, workload: Workload, heartbeat_key: Option<VerifierKey>) -> Result<(), StartVmError> {
         let id = workload.id;
         let socket_path = self.state_path.join(format!("{id}.sock"));
         let mut workers = self.workers.lock().await;
@@ -237,6 +237,16 @@ impl VmService for DefaultVmService {
                     password: self.docker_config.password.clone(),
                     server: None,
                 });
+                let verifier_heartbeat = heartbeat_key.as_ref().map(|key| {
+                    HeartbeatConfig {
+                        interval: self.verifier_heartbeat_interval,
+                        wallet_private_key: key.secret_key().to_vec(),
+                        rpc_endpoint: self.verifier_heartbeat_rpc.clone(),
+                        contract_address: self.verifier_contract_address.clone(),
+                        // TODO
+                        measurement_hash_url: "".into(),
+                    }
+                });
                 let args = VmWorkerArgs {
                     workload_id: id,
                     vm_client: self.vm_client.clone(),
@@ -248,10 +258,8 @@ impl VmService for DefaultVmService {
                     docker_credentials,
                     event_sender: self.event_sender.clone(),
                     domain: workload.domain,
-                    verifier_heartbeat_interval: self.verifier_heartbeat_interval,
-                    verifier_heartbeat_rpc: self.verifier_heartbeat_rpc.clone(),
-                    verifier_wallet_key: key,
-                    verifier_contract_address: self.verifier_contract_address.clone(),
+                    verifier_heartbeat,
+                    verifier_heartbeat_key: heartbeat_key,
                 };
                 let worker = VmWorker::spawn(args);
                 workers.insert(id, worker);
@@ -469,7 +477,7 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            wallet_key: None,
+            heartbeats: None,
         };
         let mut builder = Builder::default();
         let base_disk_contents = b"totally a disk";
@@ -505,6 +513,6 @@ mod tests {
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service.create_vm(workload, VerifierKey::dummy()).await.expect("failed to start");
+        ctx.service.create_vm(workload, None).await.expect("failed to start");
     }
 }

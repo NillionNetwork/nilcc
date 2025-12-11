@@ -26,6 +26,7 @@ use nilcc_agent_models::system::InstallArtifactVersionRequest;
 use nilcc_agent_models::system::LastUpgrade;
 use nilcc_agent_models::system::UpgradeState;
 use nilcc_agent_models::system::VerifierKey;
+use nilcc_agent_models::workloads::create::CreateWorkloadHeartbeats;
 use nilcc_agent_models::workloads::restart::RestartWorkloadRequest;
 use nilcc_agent_models::workloads::start::StartWorkloadRequest;
 use nilcc_agent_models::workloads::stop::StopWorkloadRequest;
@@ -216,6 +217,10 @@ struct LaunchArgs {
     /// The path to the docker compose file to be used.
     #[clap(long = "docker-compose")]
     docker_compose_path: PathBuf,
+
+    /// The measurement hash URL.
+    #[clap(long = "measurement-hash-url")]
+    measurement_hash_url: Option<String>,
 }
 
 #[derive(Args)]
@@ -405,6 +410,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         disk_space_gb,
         domain,
         docker_compose_path,
+        measurement_hash_url,
     } = args;
     let docker_compose = fs::read_to_string(docker_compose_path).context("Failed to read docker compose")?;
     let mut env_vars: HashMap<_, _> = env_vars.into_iter().map(|kv| (kv.key, kv.value)).collect();
@@ -436,6 +442,7 @@ fn launch(client: ApiClient, args: LaunchArgs) -> anyhow::Result<()> {
         gpus,
         disk_space_gb,
         domain,
+        heartbeats: measurement_hash_url.map(|measurement_hash_url| CreateWorkloadHeartbeats { measurement_hash_url }),
     };
     let response: CreateWorkloadResponse = client.post("/api/v1/workloads/create", &request)?;
     let CreateWorkloadResponse { id } = response;
