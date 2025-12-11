@@ -3,7 +3,10 @@ import z from "zod";
 import { AgentCreateWorkloadError, AgentRequestError } from "#/common/errors";
 import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import type { DockerCredentials } from "#/workload/workload.dto";
-import type { WorkloadEntity } from "#/workload/workload.entity";
+import type {
+  WorkloadEntity,
+  WorkloadHearbeat,
+} from "#/workload/workload.entity";
 
 const ALLOWED_CREATE_WORKLOAD_ERRORS: string[] = [
   "DOCKER_COMPOSE",
@@ -104,6 +107,7 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
       gpus: workload.gpus,
       diskSpaceGb: workload.disk,
       domain,
+      heartbeat: workload.heartbeat,
     };
     try {
       await this.post(url, request, metalInstance);
@@ -288,6 +292,7 @@ type CreateWorkloadRequest = {
   gpus: number;
   diskSpaceGb: number;
   domain: string;
+  heartbeat?: WorkloadHearbeat;
 };
 
 type ActionRequest = {
