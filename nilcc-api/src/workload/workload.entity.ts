@@ -114,6 +114,17 @@ export class WorkloadEntity {
   )
   events: WorkloadEventEntity[];
 
+  @Column({
+    type: "text",
+    nullable: true,
+    transformer: {
+      to: (value?: WorkloadHearbeat) =>
+        value ? JSON.stringify(value) : undefined,
+      from: (value?: string) => (value ? JSON.parse(value) : undefined),
+    },
+  })
+  heartbeat?: WorkloadHearbeat;
+
   @Column({ type: "timestamp" })
   createdAt: Date;
 
@@ -150,4 +161,8 @@ export class WorkloadEventEntity {
 
   @Column({ type: "timestamp" })
   timestamp: Date;
+}
+
+export class WorkloadHearbeat {
+  measurementHashUrl: string;
 }

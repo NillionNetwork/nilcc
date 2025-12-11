@@ -40,6 +40,9 @@ services:
     cpus: 1,
     disk: 10,
     gpus: 0,
+    heartbeat: {
+      measurementHashUrl: "https://foo.com/potato",
+    },
   };
 
   const myMetalInstance: RegisterMetalInstanceRequest = {

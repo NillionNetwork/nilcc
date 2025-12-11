@@ -20,6 +20,15 @@ export const DockerCredentials = z.object({
 });
 export type DockerCredentials = z.infer<typeof DockerCredentials>;
 
+export const WorkloadHeartbeats = z
+  .object({
+    measurementHashUrl: z.string().url().openapi({
+      description: "The URL where the measurement hashes can be pulled from.",
+    }),
+  })
+  .openapi({ ref: "WorkloadHeartbeats" });
+export type WorkloadHeartbeats = z.infer<typeof WorkloadHeartbeats>;
+
 export const CreateWorkloadRequest = z
   .object({
     name: z
@@ -125,6 +134,9 @@ export const CreateWorkloadRequest = z
       description:
         "The number of GPUs to that the CVM should allocate for this workload.",
     }),
+    heartbeat: WorkloadHeartbeats.optional().openapi({
+      description: "The optional heartbeat configuration for this workload.",
+    }),
   })
   .openapi({
     ref: "CreateWorkloadRequest",
@@ -164,6 +176,9 @@ export const CreateWorkloadResponse = CreateWorkloadRequest.extend({
   metalInstanceDomain: z.string().openapi({
     description:
       "The domain for the metal instance host that is running this workload. This can be used when using a custom domain for a workload as the target for a CNAME record.",
+  }),
+  heartbeat: WorkloadHeartbeats.optional().openapi({
+    description: "The optional heartbeat configuration for this workload.",
   }),
 }).openapi({ ref: "CreateWorkloadResponse" });
 export type CreateWorkloadResponse = z.infer<typeof CreateWorkloadResponse>;
