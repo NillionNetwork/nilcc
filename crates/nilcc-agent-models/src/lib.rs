@@ -192,6 +192,14 @@ pub mod workloads {
 
             #[validate(regex(path  = DOMAIN_REGEX))]
             pub domain: String,
+
+            pub heartbeats: Option<CreateWorkloadHeartbeats>,
+        }
+
+        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+        #[serde(rename_all = "camelCase")]
+        pub struct CreateWorkloadHeartbeats {
+            pub measurement_hash_url: String,
         }
 
         #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
