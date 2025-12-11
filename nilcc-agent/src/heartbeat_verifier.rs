@@ -104,6 +104,14 @@ pub struct VerifierKey {
 }
 
 impl VerifierKey {
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        let inner = Arc::new(Mutex::new(Inner { available_keys: Default::default() }));
+        let key = Keypair { private: [0; 32], public: [0; 33], public_uncompressed: [0; 65] };
+        let key_index = 0;
+        Self { key, key_index, inner }
+    }
+
     pub fn secret_key(&self) -> [u8; 32] {
         self.key.private
     }

@@ -237,16 +237,17 @@ impl VmService for DefaultVmService {
                     password: self.docker_config.password.clone(),
                     server: None,
                 });
-                let verifier_heartbeat = heartbeat_key.as_ref().map(|key| {
-                    HeartbeatConfig {
+                let verifier_heartbeat = match (&heartbeat_key, &workload.heartbeat) {
+                    (Some(key), Some(heartbeat)) => Some(HeartbeatConfig {
                         interval: self.verifier_heartbeat_interval,
                         wallet_private_key: key.secret_key().to_vec(),
                         rpc_endpoint: self.verifier_heartbeat_rpc.clone(),
                         contract_address: self.verifier_contract_address.clone(),
-                        // TODO
-                        measurement_hash_url: "".into(),
-                    }
-                });
+                        measurement_hash_url: heartbeat.measurement_hash_url.clone(),
+                    }),
+                    _ => None,
+                };
+
                 let args = VmWorkerArgs {
                     workload_id: id,
                     vm_client: self.vm_client.clone(),
@@ -379,6 +380,7 @@ mod tests {
         repositories::{
             artifacts::{Artifacts, MockArtifactsRepository, utils::make_artifacts_metadata},
             sqlite::MockRepositoryProvider,
+            workload::WorkloadHeartbeat,
         },
         services::disk::MockDiskService,
     };
@@ -460,6 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_vm() {
+        let heartbeat_key = VerifierKey::dummy();
         let workload = Workload {
             id: Uuid::new_v4(),
             docker_compose: "compose".into(),
@@ -477,7 +480,10 @@ mod tests {
             domain: "example.com".into(),
             last_reported_event: None,
             enabled: true,
-            heartbeat: None,
+            heartbeat: Some(WorkloadHeartbeat {
+                measurement_hash_url: "https://foo".into(),
+                wallet_public_key: Some(heartbeat_key.public_key().into()),
+            }),
         };
         let mut builder = Builder::default();
         let base_disk_contents = b"totally a disk";
@@ -513,6 +519,6 @@ mod tests {
         builder.vm_client.expect_start_vm().return_once(move |_, _| Ok(()));
 
         let ctx = builder.build().await;
-        ctx.service.create_vm(workload, None).await.expect("failed to start");
+        ctx.service.create_vm(workload, Some(heartbeat_key)).await.expect("failed to start");
     }
 }
