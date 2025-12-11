@@ -6,11 +6,8 @@ use axum::{
 };
 use bollard::Docker;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{fmt, path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 
 pub(crate) mod containers;
 pub(crate) mod health;
@@ -28,6 +25,7 @@ pub enum SystemState {
 pub struct BootstrapContext {
     pub system_docker_compose: PathBuf,
     pub user_docker_compose: PathBuf,
+    pub user_docker_compose_sha256: [u8; 32],
     pub external_files: PathBuf,
     pub caddy_config: PathBuf,
     pub docker_config: PathBuf,
@@ -35,6 +33,8 @@ pub struct BootstrapContext {
     pub vm_type: VmType,
     pub iso_mount: PathBuf,
     pub event_holder: EventHolder,
+    pub cpus: u64,
+    pub gpus: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

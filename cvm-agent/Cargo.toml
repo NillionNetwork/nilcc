@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+alloy = { version = "1.1", features = ["contract", "providers"] }
+alloy-contract = "1.1"
+alloy-sol-types = "1.4"
+alloy-provider = { version = "1.1", features = ["ws"] }
 axum = { version = "0.8", features = ["json"] }
 axum-valid = "0.24"
 anyhow = "1"
@@ -12,8 +16,11 @@ chrono = "0.4"
 clap = { version = "4.5", features = ["derive", "string"] }
 futures = "0.3"
 regex = "1.11"
+num_cpus = "1.17"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_with = { version = "3.16", features = ["hex"] }
+# Note: preserve_order is needed to have deterministic serialization
+serde_json = { version = "1.0", features = ["preserve_order"] }
 sysinfo = { version = "0.37", default-features = false, features = ["system", "disk"] }
 tempfile = "3.23"
 tokio = { version =  "1.47", features = ["fs", "macros", "process", "rt", "signal"] }
@@ -21,5 +28,6 @@ tokio-stream = { version = "0.1", features = ["io-util"]}
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = "1.19"
 
 cvm-agent-models = { path = "../crates/cvm-agent-models" }

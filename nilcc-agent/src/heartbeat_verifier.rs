@@ -75,6 +75,8 @@ impl VerifierKeys {
                 base_derivation_path: "m/44'/60'".parse().unwrap(),
                 seed: [0; 64],
                 interval_seconds: std::time::Duration::from_secs(10),
+                rpc_endpoint: "".into(),
+                contract_address: "".into(),
             },
             10,
         )
@@ -135,6 +137,8 @@ mod tests {
         base_derivation_path: "m/44'/60'".parse().unwrap(),
         seed: [0; 64],
         interval_seconds: Duration::from_secs(10),
+        rpc_endpoint: "".into(),
+        contract_address: "".into(),
     });
 
     #[test]

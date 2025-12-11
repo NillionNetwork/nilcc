@@ -251,6 +251,12 @@ pub struct VerifierHeartbeatConfig {
     #[serde_as(as = "DurationSeconds")]
     #[serde(default = "default_verifier_heartbeat_interval")]
     pub interval_seconds: Duration,
+
+    /// The RPC endpoint to use to submit heartbeat transactions.
+    pub rpc_endpoint: String,
+
+    /// The address for the contract that handles heartbeats.
+    pub contract_address: String,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>

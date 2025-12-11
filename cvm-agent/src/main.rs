@@ -2,6 +2,7 @@ use crate::{
     resources::{ApplicationMetadata, Resources},
     routes::{AppState, BootstrapContext, VmType, create_router},
 };
+use alloy::signers::k256::sha2::{Digest, Sha256};
 use bollard::Docker;
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use std::{
@@ -18,6 +19,7 @@ use tokio::{
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod heartbeat;
 mod monitors;
 mod resources;
 mod routes;
@@ -87,10 +89,15 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
     fs::write(&caddy_path, resources.caddyfile).expect("failed to write Caddyfile");
 
     let user_compose_path = cli.iso_mount_path.join("docker-compose.yaml");
+    let user_docker_compose_sha256 = {
+        let contents = fs::read(&user_compose_path).expect("failed to read user docker compose file");
+        Sha256::digest(contents).into()
+    };
     let external_files_path = cli.iso_mount_path.join("files");
     let context = BootstrapContext {
         system_docker_compose: system_compose_path,
         user_docker_compose: user_compose_path,
+        user_docker_compose_sha256,
         external_files: external_files_path,
         caddy_config: caddy_path,
         docker_config: docker_config_path,
@@ -98,6 +105,8 @@ fn build_bootstrap_context(cli: &Cli) -> (TempDir, BootstrapContext) {
         vm_type,
         iso_mount: cli.iso_mount_path.clone(),
         event_holder: Default::default(),
+        cpus: num_cpus::get() as u64,
+        gpus: count_gpus() as u64,
     };
     (state_dir, context)
 }
@@ -133,8 +142,7 @@ fn count_gpus() -> usize {
     id
 }
 
-fn setup_gpus() {
-    let gpu_count = count_gpus();
+fn setup_gpus(gpu_count: u64) {
     match gpu_count {
         0 => info!("No GPUs detected"),
         1 => {
@@ -175,7 +183,7 @@ async fn main() {
     let docker = Docker::connect_with_local_defaults().expect("failed to connect to docker daemon");
     let (_state_dir, context) = build_bootstrap_context(&cli);
     if matches!(context.vm_type, VmType::Gpu) {
-        setup_gpus();
+        setup_gpus(context.gpus);
     }
     let state =
         Arc::new(AppState { docker, context, system_state: Default::default(), log_path: cli.log_file.clone() });
