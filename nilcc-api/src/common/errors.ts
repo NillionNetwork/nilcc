@@ -32,7 +32,14 @@ export class MetalInstanceManagingWorkloads extends AppError {
 
 export class ArtifactVersionDoesNotExist extends AppError {
   override kind = "ARTIFACT_VERSION_DOES_NOT_EXIST";
+  override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
   override description = "Artifact version does not exist";
+}
+
+export class ArtifactVersionNotSemver extends AppError {
+  override kind = "ARTIFACT_VERSION_NOT_SEMVER";
+  override statusCode: ContentfulStatusCode = StatusCodes.BAD_REQUEST;
+  override description = "Artifact version does not follow semver format";
 }
 
 export class InvalidDockerCompose extends AppError {

@@ -1,5 +1,10 @@
+import semver from "semver";
 import type { QueryRunner, Repository } from "typeorm";
-import { EntityAlreadyExists, isUniqueConstraint } from "#/common/errors";
+import {
+  ArtifactVersionNotSemver,
+  EntityAlreadyExists,
+  isUniqueConstraint,
+} from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type { EnableArtifactRequest } from "./artifact.dto";
 import { ArtifactEntity } from "./artifact.entity";
@@ -19,6 +24,12 @@ export class ArtifactService {
     bindings: AppBindings,
     request: EnableArtifactRequest,
   ): Promise<ArtifactEntity> {
+    if (
+      bindings.config.requireArtifactsSemver &&
+      !semver.valid(request.version)
+    ) {
+      throw new ArtifactVersionNotSemver();
+    }
     const repository = this.getRepository(bindings);
     const metadata = await bindings.services.artifactsClient.fetchMetadata(
       request.version,
