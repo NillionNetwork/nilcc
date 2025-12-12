@@ -117,8 +117,12 @@ impl HeartbeatEmitter {
 
     async fn connect(&self) -> anyhow::Result<impl Provider> {
         let ws = WsConnect::new(&self.rpc_endpoint).with_max_retries(u32::MAX);
-        let provider =
-            ProviderBuilder::new().wallet(self.wallet.clone()).with_simple_nonce_management().connect_ws(ws).await?;
+        let provider = ProviderBuilder::new()
+            .wallet(self.wallet.clone())
+            .with_simple_nonce_management()
+            .with_gas_estimation()
+            .connect_ws(ws)
+            .await?;
         Ok(provider)
     }
 
@@ -139,7 +143,8 @@ impl HeartbeatEmitter {
         let pending_tx = call.send().await?;
         let receipt = pending_tx.get_receipt().await?;
         let tx_hash = receipt.transaction_hash;
-        info!("HTX submitted in transaction {tx_hash}");
+        let status = if receipt.status() { "success" } else { "failure" };
+        info!("HTX submitted in transaction {tx_hash} with status {status}");
         Ok(())
     }
 }
