@@ -17,6 +17,8 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
     let event_holder = ctx.event_holder.clone();
     *system_state = SystemState::Starting;
 
+    let caddy_status = CaddyMonitor::spawn(state.docker.clone(), state.system_state.clone(), event_holder);
+
     match (request.workload_id, request.heartbeat) {
         (Some(workload_id), Some(heartbeat)) => {
             let args = HeartbeatEmitterArgs {
@@ -31,6 +33,7 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
                 measurement_hash_url: heartbeat.measurement_hash_url,
                 cpu_count: ctx.cpus,
                 gpu_count: ctx.gpus,
+                caddy_status,
             };
             if let Err(e) = HeartbeatEmitter::spawn(args).await {
                 error!("Failed setting up heartbeat emitter: {e}");
@@ -41,6 +44,5 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
     };
 
     ComposeMonitor::spawn(ctx, request.acme, request.docker, request.domain);
-    CaddyMonitor::spawn(state.docker.clone(), state.system_state.clone(), event_holder);
     StatusCode::OK
 }

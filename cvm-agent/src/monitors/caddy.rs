@@ -8,7 +8,7 @@ use cvm_agent_models::health::EventKind;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use std::{borrow::Cow, mem, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -23,15 +23,18 @@ pub struct CaddyMonitor {
 }
 
 impl CaddyMonitor {
-    pub fn spawn(docker: Docker, system_state: Arc<Mutex<SystemState>>, event_holder: EventHolder) {
+    pub fn spawn(docker: Docker, system_state: Arc<Mutex<SystemState>>, event_holder: EventHolder) -> CaddyStatus {
         let monitor = Self { docker, system_state, event_holder };
+        let (sender, receiver) = oneshot::channel();
         info!("Spawning caddy monitor");
         tokio::spawn(async move {
-            monitor.run().await;
+            monitor.run(sender).await;
         });
+        CaddyStatus(receiver)
     }
 
-    async fn run(self) {
+    async fn run(self, sender: oneshot::Sender<()>) {
+        let mut sender = Some(sender);
         let mut threshold_timestamp = 0.0;
         loop {
             let builder = LogsOptionsBuilder::new().tail("10").stderr(true);
@@ -45,6 +48,10 @@ impl CaddyMonitor {
                         SystemState::WaitingBootstrap => error!("System is still waiting for bootstrap"),
                         SystemState::Starting | SystemState::Ready => {
                             info!("Caddy fetched TLS certificate and is running successfully");
+                            // Notify the listener that we're ready
+                            if let Some(sender) = sender.take() {
+                                let _ = sender.send(());
+                            }
                             *system_state = SystemState::Ready
                         }
                     }
@@ -96,6 +103,16 @@ impl CaddyMonitor {
             last_timestamp = line.ts;
         }
         (last_timestamp, status)
+    }
+}
+
+pub(crate) struct CaddyStatus(oneshot::Receiver<()>);
+
+impl CaddyStatus {
+    pub(crate) async fn wait_tls_certificate(self) {
+        if self.0.await.is_err() {
+            error!("Caddy status receiver dropped");
+        }
     }
 }
 
