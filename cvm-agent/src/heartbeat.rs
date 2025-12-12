@@ -1,4 +1,4 @@
-use crate::heartbeat::NilAVRouter::NilAVRouterInstance;
+use crate::{heartbeat::NilAVRouter::NilAVRouterInstance, monitors::caddy::CaddyStatus};
 use alloy::{primitives::Address, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol_types::sol};
 use alloy_provider::{Provider, WsConnect};
 use anyhow::Context;
@@ -32,6 +32,7 @@ pub(crate) struct HeartbeatEmitterArgs {
     pub(crate) measurement_hash_url: String,
     pub(crate) cpu_count: u64,
     pub(crate) gpu_count: u64,
+    pub(crate) caddy_status: CaddyStatus,
 }
 
 pub(crate) struct HeartbeatEmitter {
@@ -62,6 +63,7 @@ impl HeartbeatEmitter {
             measurement_hash_url,
             cpu_count,
             gpu_count,
+            caddy_status,
         } = args;
         let contract_address: Address = contract_address.parse().context("Invalid contract address")?;
         let attestation_url = format!("https://{workload_domain}{ATTESTATION_PATH}");
@@ -81,11 +83,15 @@ impl HeartbeatEmitter {
             cpu_count,
             gpu_count,
         };
-        tokio::spawn(async move { submitter.run().await });
+        tokio::spawn(async move { submitter.run(caddy_status).await });
         Ok(())
     }
 
-    async fn run(self) {
+    async fn run(self, caddy_status: CaddyStatus) {
+        info!("Waiting for caddy to generate a TLS certificate before emitting heartbeats");
+        caddy_status.wait_tls_certificate().await;
+        info!("Starting heartbeat generation");
+
         let provider = loop {
             match self.connect().await {
                 Ok(out) => break out,
