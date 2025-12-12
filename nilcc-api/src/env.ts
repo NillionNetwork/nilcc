@@ -27,11 +27,9 @@ export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export const FeatureFlag = {
   OPENAPI_SPEC: "openapi",
-  PROMETHEUS_METRICS: "prometheus-metrics",
   LOCALSTACK: "localstack",
   PRETTY_LOGS: "pretty-logs",
   HTTP_ERROR_STACKTRACE: "http-error-stacktrace",
-  AUTO_MIGRATIONS: "auto-migrations",
 } as const;
 
 export type FeatureFlag = (typeof FeatureFlag)[keyof typeof FeatureFlag];
@@ -106,6 +104,7 @@ export const EnvVarsSchema = z.object({
   metalInstancesEndpointPort: z.number().default(443),
   metalInstancesIdleThresholdSeconds: z.number().default(120),
   artifactsBaseUrl: z.string(),
+  requireArtifactsSemver: z.boolean(),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -129,6 +128,7 @@ declare global {
       APP_METAL_INSTANCES_ENDPOINT_PORT?: string;
       APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS?: string;
       APP_ARTIFACTS_BASE_URL: string;
+      APP_REQUIRE_ARTIFACTS_SEMVER?: string;
     }
   }
 }
@@ -217,6 +217,8 @@ async function buildServices(
 export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
   const tryNumber = (n: string | undefined) =>
     n !== undefined ? Number(n) : undefined;
+  const tryBoolean = (n: string | undefined) =>
+    n !== undefined ? Boolean(n) : false;
   const config = EnvVarsSchema.parse({
     dbUri: process.env.APP_DB_URI,
     enabledFeatures: process.env.APP_ENABLED_FEATURES,
@@ -238,6 +240,9 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
       process.env.APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS,
     ),
     artifactsBaseUrl: process.env.APP_ARTIFACTS_BASE_URL,
+    requireArtifactsSemver: tryBoolean(
+      process.env.APP_REQUIRE_ARTIFACTS_SEMVER,
+    ),
   });
 
   return {
