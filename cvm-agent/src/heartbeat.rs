@@ -127,7 +127,7 @@ impl HeartbeatEmitter {
     }
 
     async fn submit_htx(&self, router: &NilAVRouterInstance<impl Provider>) -> anyhow::Result<()> {
-        let htx = Htx {
+        let htx = VersionedHtx::V1(Htx {
             workload_id: WorkloadId { current: self.workload_id.to_string() },
             nilcc_measurement: NilCcMeasurement {
                 url: self.attestation_url.clone(),
@@ -137,8 +137,8 @@ impl HeartbeatEmitter {
                 docker_compose_hash: self.docker_compose_hash,
             },
             builder_measurement: BuilderMeasurement { url: self.measurement_hash_url.clone() },
-        };
-        let htx = serde_json::to_vec(&htx)?;
+        });
+        let htx = htx.to_bytes()?;
         let call = router.submitHTX(htx.into());
         let pending_tx = call.send().await?;
         let receipt = pending_tx.get_receipt().await?;
@@ -185,4 +185,18 @@ struct Htx {
     nilcc_measurement: NilCcMeasurement,
 
     builder_measurement: BuilderMeasurement,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "version", rename_all = "camelCase")]
+enum VersionedHtx {
+    V1(Htx),
+}
+
+impl VersionedHtx {
+    fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        // Go through a `serde_json::Value` first to have consistent key ordering
+        let json = serde_json::to_value(self)?;
+        Ok(serde_json::to_vec(&json)?)
+    }
 }

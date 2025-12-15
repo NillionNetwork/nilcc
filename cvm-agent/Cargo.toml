@@ -19,8 +19,7 @@ regex = "1.11"
 num_cpus = "1.17"
 serde = { version = "1.0", features = ["derive"] }
 serde_with = { version = "3.16", features = ["hex"] }
-# Note: preserve_order is needed to have deterministic serialization
-serde_json = { version = "1.0", features = ["preserve_order"] }
+serde_json = "1.0"
 sysinfo = { version = "0.37", default-features = false, features = ["system", "disk"] }
 tempfile = "3.23"
 tokio = { version =  "1.47", features = ["fs", "macros", "process", "rt", "signal"] }
