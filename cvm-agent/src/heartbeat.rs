@@ -7,7 +7,7 @@ use serde_with::hex::Hex;
 use serde_with::serde_as;
 use std::time::Duration;
 use tokio::time::{MissedTickBehavior, interval, sleep};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 sol! {
@@ -101,12 +101,17 @@ impl HeartbeatEmitter {
                 }
             }
         };
-        let router = NilAVRouter::new(self.contract_address, provider);
+
+        let router = NilAVRouter::new(self.contract_address, &provider);
         let mut ticker = interval(self.tick_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         // reset immediately so we start by ticking
         ticker.reset_immediately();
-        loop {
+        for i in 0_u64.. {
+            if i % 5 == 0 {
+                self.display_balance(&provider).await;
+            }
+
             ticker.tick().await;
 
             if let Err(e) = self.submit_htx(&router).await {
@@ -123,7 +128,21 @@ impl HeartbeatEmitter {
             .with_gas_estimation()
             .connect_ws(ws)
             .await?;
+        info!("Connected to RPC endpoint");
         Ok(provider)
+    }
+
+    async fn display_balance(&self, provider: &impl Provider) {
+        let address = self.wallet.address();
+        let balance = match provider.get_balance(address).await {
+            Ok(balance) => balance,
+            Err(e) => {
+                warn!("Failed to get wallet balance: {e}");
+                return;
+            }
+        };
+        let balance = alloy::primitives::utils::format_ether(balance);
+        info!("Wallet {address} has {balance} ETH");
     }
 
     async fn submit_htx(&self, router: &NilAVRouterInstance<impl Provider>) -> anyhow::Result<()> {
