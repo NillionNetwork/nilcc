@@ -72,6 +72,10 @@ enum Command {
         #[clap(long, short)]
         config: PathBuf,
 
+        /// Only print the qemu command being invoked instead of invoking it.
+        #[clap(long, short)]
+        print_only: bool,
+
         /// The identifier for the workload to debug.
         workload_id: Uuid,
     },
@@ -232,7 +236,7 @@ async fn process_acme_events(mut state: AcmeState<io::Error, io::Error>) {
     warn!("Reached end of ACME event stream")
 }
 
-async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
+async fn debug_workload(config: AgentConfig, workload_id: Uuid, print_only: bool) -> Result<()> {
     info!("Setting up dependencies");
     let nilcc_api_client: Arc<dyn NilccApiClient> = Arc::new(DummyNilccApiClient);
 
@@ -270,6 +274,16 @@ async fn debug_workload(config: AgentConfig, workload_id: Uuid) -> Result<()> {
 
     let socket_path = state_path.path().join("qemu.sock");
     let args = vm_client.build_start_vm_args(&spec, &socket_path)?;
+    if print_only {
+        let args = args
+            .into_iter()
+            .map(|arg| if arg.contains(' ') { format!("'{arg}'") } else { arg })
+            .collect::<Vec<_>>()
+            .join(" ");
+        println!("{} {args}", config.qemu.system_bin.display());
+        return Ok(());
+    }
+
     let mut child = std::process::Command::new(&config.qemu.system_bin)
         .args(args)
         .spawn()
@@ -483,9 +497,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             run_daemon(config).await?;
             Ok(())
         }
-        Command::Debug { config, workload_id } => {
+        Command::Debug { config, workload_id, print_only } => {
             let agent_config = load_config(&config).context("Loading agent configuration")?;
-            debug_workload(agent_config, workload_id).await?;
+            debug_workload(agent_config, workload_id, print_only).await?;
             Ok(())
         }
         Command::Resources => {
