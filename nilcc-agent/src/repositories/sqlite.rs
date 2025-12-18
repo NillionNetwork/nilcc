@@ -15,7 +15,7 @@ use std::{
     path::Path,
     str::FromStr,
 };
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct SqliteDb(pub(crate) SqlitePool);

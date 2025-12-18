@@ -146,17 +146,17 @@ impl HeartbeatEmitter {
     }
 
     async fn submit_htx(&self, router: &NilAVRouterInstance<impl Provider>) -> anyhow::Result<()> {
-        let htx = VersionedHtx::V1(Htx {
+        let htx = Htx::Nillion(NillionHtx::V1(NillionHtxV1 {
             workload_id: WorkloadId { current: self.workload_id.to_string() },
-            nilcc_measurement: NilCcMeasurement {
+            workload_measurement: WorkloadMeasurement {
                 url: self.attestation_url.clone(),
-                nilcc_version: self.nilcc_version.clone(),
-                cpu_count: self.cpu_count,
+                artifacts_version: self.nilcc_version.clone(),
+                cpus: self.cpu_count,
                 gpus: self.gpu_count,
                 docker_compose_hash: self.docker_compose_hash,
             },
             builder_measurement: BuilderMeasurement { url: self.measurement_hash_url.clone() },
-        });
+        }));
         let htx = htx.to_bytes()?;
         let call = router.submitHTX(htx.into());
         let pending_tx = call.send().await?;
@@ -175,18 +175,11 @@ struct WorkloadId {
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct NilCcMeasurement {
+struct WorkloadMeasurement {
     url: String,
-
-    #[serde(rename = "nilcc_version")]
-    nilcc_version: String,
-
-    #[serde(rename = "cpu_count")]
-    cpu_count: u64,
-
-    #[serde(rename = "GPUs")]
+    artifacts_version: String,
+    cpus: u64,
     gpus: u64,
-
     #[serde_as(as = "Hex")]
     docker_compose_hash: [u8; 32],
 }
@@ -197,24 +190,26 @@ struct BuilderMeasurement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Htx {
+struct NillionHtxV1 {
     workload_id: WorkloadId,
-
-    #[serde(rename = "nilCC_measurement")]
-    nilcc_measurement: NilCcMeasurement,
-
+    workload_measurement: WorkloadMeasurement,
     builder_measurement: BuilderMeasurement,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "version", rename_all = "camelCase")]
-enum VersionedHtx {
-    V1(Htx),
+enum NillionHtx {
+    V1(NillionHtxV1),
 }
 
-impl VersionedHtx {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "camelCase")]
+enum Htx {
+    Nillion(NillionHtx),
+}
+
+impl Htx {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        // Go through a `serde_json::Value` first to have consistent key ordering
         let json = serde_json::to_value(self)?;
         Ok(serde_json::to_vec(&json)?)
     }
