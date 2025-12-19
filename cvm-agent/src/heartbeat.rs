@@ -1,4 +1,4 @@
-use crate::{heartbeat::NilAVRouter::NilAVRouterInstance, monitors::caddy::CaddyStatus};
+use crate::{heartbeat::HeartbeatManager::HeartbeatManagerInstance, monitors::caddy::CaddyStatus};
 use alloy::{primitives::Address, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol_types::sol};
 use alloy_provider::{Provider, WsConnect};
 use anyhow::Context;
@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 sol! {
     #[sol(rpc)]
-    contract NilAVRouter {
-        function submitHTX(bytes calldata rawHTX) external returns (bytes32 htxId);
+    contract HeartbeatManager {
+        function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId) external whenNotPaused nonReentrant returns (bytes32 heartbeatKey);
     }
 }
 
@@ -102,7 +102,7 @@ impl HeartbeatEmitter {
             }
         };
 
-        let router = NilAVRouter::new(self.contract_address, &provider);
+        let manager = HeartbeatManager::new(self.contract_address, &provider);
         let mut ticker = interval(self.tick_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         // reset immediately so we start by ticking
@@ -114,7 +114,7 @@ impl HeartbeatEmitter {
 
             ticker.tick().await;
 
-            if let Err(e) = self.submit_htx(&router).await {
+            if let Err(e) = self.submit_htx(&manager).await {
                 error!("Failed to submit HTX: {e}");
             }
         }
@@ -145,7 +145,7 @@ impl HeartbeatEmitter {
         info!("Wallet {address} has {balance} ETH");
     }
 
-    async fn submit_htx(&self, router: &NilAVRouterInstance<impl Provider>) -> anyhow::Result<()> {
+    async fn submit_htx(&self, router: &HeartbeatManagerInstance<impl Provider>) -> anyhow::Result<()> {
         let htx = Htx::Nillion(NillionHtx::V1(NillionHtxV1 {
             workload_id: WorkloadId { current: self.workload_id.to_string() },
             workload_measurement: WorkloadMeasurement {
@@ -157,8 +157,11 @@ impl HeartbeatEmitter {
             },
             builder_measurement: BuilderMeasurement { url: self.measurement_hash_url.clone() },
         }));
+        // Use the current block - 1 for the snapshot id
+        let snapshot_id = router.provider().get_block_number().await.context("failed to get block number")?;
+        let snapshot_id = snapshot_id.saturating_sub(1);
         let htx = htx.to_bytes()?;
-        let call = router.submitHTX(htx.into());
+        let call = router.submitHeartbeat(htx.into(), snapshot_id);
         let pending_tx = call.send().await?;
         let receipt = pending_tx.get_receipt().await?;
         let tx_hash = receipt.transaction_hash;
