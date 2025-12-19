@@ -156,6 +156,7 @@ impl HeartbeatEmitter {
                 docker_compose_hash: self.docker_compose_hash,
             },
             builder_measurement: BuilderMeasurement { url: self.measurement_hash_url.clone() },
+            nonce: rand::random(),
         }));
         // Use the current block - 1 for the snapshot id
         let snapshot_id = router.provider().get_block_number().await.context("failed to get block number")?;
@@ -192,11 +193,15 @@ struct BuilderMeasurement {
     url: String,
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct NillionHtxV1 {
     workload_id: WorkloadId,
     workload_measurement: WorkloadMeasurement,
     builder_measurement: BuilderMeasurement,
+    // TODO: this is temporary
+    #[serde_as(as = "Hex")]
+    nonce: [u8; 16],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
