@@ -19,6 +19,7 @@ use std::{
     io,
     ops::Range,
     sync::Arc,
+    time::Duration,
 };
 use strum::EnumDiscriminants;
 use tokio::sync::Mutex;
@@ -129,6 +130,7 @@ pub struct WorkloadServiceArgs {
     pub resources: SystemResources,
     pub open_ports: Range<u16>,
     pub verifier_keys: VerifierKeys,
+    pub verifier_heartbeat_interval: Duration,
 }
 
 struct AvailableResources {
@@ -175,6 +177,7 @@ pub struct DefaultWorkloadService {
     proxy_service: Box<dyn ProxyService>,
     resources: Mutex<AvailableResources>,
     verifier_keys: VerifierKeys,
+    verifier_heartbeat_interval: Duration,
 }
 
 impl DefaultWorkloadService {
@@ -186,6 +189,7 @@ impl DefaultWorkloadService {
             resources,
             open_ports,
             verifier_keys,
+            verifier_heartbeat_interval,
         } = args;
 
         let mut repo = repository_provider.workloads(Default::default()).await?;
@@ -219,7 +223,14 @@ impl DefaultWorkloadService {
             "Starting with available cpus = {cpus}, gpus = {gpu_count}, memory = {memory_mb}MB, disk = {disk_space_gb}GB"
         );
         let resources = AvailableResources { cpus, gpus, ports, memory_mb, disk_space_gb }.into();
-        Ok(Self { vm_service, repository_provider, proxy_service, resources, verifier_keys })
+        Ok(Self {
+            vm_service,
+            repository_provider,
+            proxy_service,
+            resources,
+            verifier_keys,
+            verifier_heartbeat_interval,
+        })
     }
 
     fn build_workload(
@@ -347,6 +358,7 @@ impl WorkloadService for DefaultWorkloadService {
                     Some(WorkloadHeartbeat {
                         wallet_public_key,
                         measurement_hash_url: config.measurement_hash_url.clone(),
+                        heartbeat_interval: Some(self.verifier_heartbeat_interval),
                     }),
                     Some(wallet_key),
                 )
@@ -476,6 +488,8 @@ impl WorkloadService for DefaultWorkloadService {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::{
         repositories::{
@@ -540,6 +554,7 @@ mod tests {
                 resources,
                 open_ports,
                 verifier_keys: VerifierKeys::dummy(),
+                verifier_heartbeat_interval: Duration::from_secs(42),
             };
             DefaultWorkloadService::new(args).await
         }
@@ -710,6 +725,7 @@ mod tests {
             heartbeat: Some(WorkloadHeartbeat {
                 wallet_public_key: Some(expected_key),
                 measurement_hash_url: "url".into(),
+                heartbeat_interval: Some(Duration::from_secs(42)),
             }),
         };
         let mut builder = Builder::default();

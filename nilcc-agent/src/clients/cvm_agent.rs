@@ -2,6 +2,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use cvm_agent_models::{
     bootstrap::BootstrapRequest,
+    config::HeartbeatConfigRequest,
     container::Container,
     health::HealthResponse,
     logs::{ContainerLogsRequest, ContainerLogsResponse, SystemLogsRequest, SystemLogsResponse},
@@ -9,6 +10,7 @@ use cvm_agent_models::{
 };
 use reqwest::Client;
 use serde::{Serialize, de::DeserializeOwned};
+use std::time::Duration;
 use tracing::info;
 
 #[async_trait]
@@ -28,6 +30,11 @@ pub trait CvmAgentClient: Send + Sync {
     async fn system_stats(&self, cvm_agent_port: u16) -> Result<SystemStatsResponse, CvmAgentRequestError>;
     async fn check_health(&self, cvm_agent_port: u16) -> Result<HealthResponse, CvmAgentRequestError>;
     async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError>;
+    async fn set_heartbeat_config(
+        &self,
+        cvm_agent_port: u16,
+        request: &HeartbeatConfigRequest,
+    ) -> Result<(), CvmAgentRequestError>;
 }
 
 pub struct DefaultCvmAgentClient {
@@ -36,10 +43,8 @@ pub struct DefaultCvmAgentClient {
 
 impl DefaultCvmAgentClient {
     pub fn new() -> anyhow::Result<Self> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .context("Failed to build reqwest client")?;
+        let client =
+            Client::builder().timeout(Duration::from_secs(5)).build().context("Failed to build reqwest client")?;
         Ok(Self { client })
     }
 
@@ -50,14 +55,14 @@ impl DefaultCvmAgentClient {
         query: &Q,
     ) -> Result<T, CvmAgentRequestError> {
         let endpoint = format!("http://127.0.0.1:{port}{path}");
-        info!("Sending request to {endpoint}");
+        info!("Sending GET request to {endpoint}");
         let response = self.client.get(endpoint).query(query).send().await?.error_for_status()?.json().await?;
         Ok(response)
     }
 
     async fn post<R: Serialize>(&self, port: u16, path: &str, request: &R) -> Result<(), CvmAgentRequestError> {
         let endpoint = format!("http://127.0.0.1:{port}{path}");
-        info!("Sending request to {endpoint}");
+        info!("Sending POST request to {endpoint}");
         self.client.post(endpoint).json(request).send().await?.error_for_status()?;
         Ok(())
     }
@@ -95,6 +100,14 @@ impl CvmAgentClient for DefaultCvmAgentClient {
 
     async fn bootstrap(&self, cvm_agent_port: u16, request: &BootstrapRequest) -> Result<(), CvmAgentRequestError> {
         self.post(cvm_agent_port, "/api/v1/system/bootstrap", request).await
+    }
+
+    async fn set_heartbeat_config(
+        &self,
+        cvm_agent_port: u16,
+        request: &HeartbeatConfigRequest,
+    ) -> Result<(), CvmAgentRequestError> {
+        self.post(cvm_agent_port, "/api/v1/config/heartbeats", request).await
     }
 }
 
