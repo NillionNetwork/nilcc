@@ -35,9 +35,14 @@ pub(crate) async fn handler(state: SharedState, request: Json<BootstrapRequest>)
                 gpu_count: ctx.gpus,
                 caddy_status,
             };
-            if let Err(e) = HeartbeatEmitter::spawn(args).await {
-                error!("Failed setting up heartbeat emitter: {e}");
-                return StatusCode::INTERNAL_SERVER_ERROR;
+            match HeartbeatEmitter::spawn(args).await {
+                Ok(handle) => {
+                    *state.heartbeat_handle.lock().await = Some(handle);
+                }
+                Err(e) => {
+                    error!("Failed setting up heartbeat emitter: {e}");
+                    return StatusCode::INTERNAL_SERVER_ERROR;
+                }
             }
         }
         _ => info!("Not emitting heartbeats since the necessary config wasn't provided"),

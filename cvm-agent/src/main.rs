@@ -185,8 +185,13 @@ async fn main() {
     if matches!(context.vm_type, VmType::Gpu) {
         setup_gpus(context.gpus);
     }
-    let state =
-        Arc::new(AppState { docker, context, system_state: Default::default(), log_path: cli.log_file.clone() });
+    let state = Arc::new(AppState {
+        docker,
+        context,
+        system_state: Default::default(),
+        log_path: cli.log_file.clone(),
+        heartbeat_handle: Default::default(),
+    });
     let router = create_router(state.clone());
     let listener = TcpListener::bind(cli.bind_endpoint).await.expect("failed to bind");
     match axum::serve(listener, router).with_graceful_shutdown(shutdown_signal()).await {
