@@ -64,8 +64,8 @@ impl VerifierKeys {
         Ok(VerifierKey { key, key_index, inner: self.inner.clone() })
     }
 
-    pub fn public_keys(&self) -> Vec<[u8; 65]> {
-        self.keys.iter().map(|k| k.public_uncompressed).collect()
+    pub fn public_keys(&self) -> Vec<PublicKey> {
+        self.keys.iter().map(|k| PublicKey { public: k.public, public_uncompressed: k.public_uncompressed }).collect()
     }
 
     #[cfg(test)]
@@ -82,6 +82,11 @@ impl VerifierKeys {
         )
         .expect("building verifier keys failed")
     }
+}
+
+pub struct PublicKey {
+    pub public: [u8; 33],
+    pub public_uncompressed: [u8; 65],
 }
 
 #[derive(Debug, thiserror::Error)]

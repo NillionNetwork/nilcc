@@ -648,10 +648,11 @@ fn agent_version(client: ApiClient) -> anyhow::Result<()> {
 fn verifier_keys(client: ApiClient) -> anyhow::Result<()> {
     let keys: Vec<VerifierKey> = client.get("/api/v1/system/verifier/keys")?;
     for key in keys {
+        let status = if key.active { "active" } else { "inactive" };
         let key = &key.public_key[1..];
         let digest = Keccak256::digest(key);
         let address = hex::encode(&digest[digest.len() - 20..]);
-        println!("- 0x{address}");
+        println!("- 0x{address} ({status})");
     }
     Ok(())
 }
