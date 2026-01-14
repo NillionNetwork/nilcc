@@ -1,14 +1,15 @@
 use anyhow::{Context, Result};
 use axum_server::Handle;
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use cvm_agent_models::config::HeartbeatConfigRequest;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use nilcc_agent::{
     clients::{
-        cvm_agent::DefaultCvmAgentClient,
+        cvm_agent::{CvmAgentClient, DefaultCvmAgentClient},
         nilcc_api::{DummyNilccApiClient, HttpNilccApiClient, NilccApiClient, NilccApiClientArgs},
         qemu::{QemuClient, VmClient, VmDisplayMode},
     },
-    config::{AgentConfig, AgentMode},
+    config::{AgentConfig, AgentMode, VerifierHeartbeatConfig},
     heartbeat_verifier::VerifierKeys,
     repositories::sqlite::{RepositoryProvider, SqliteDb, SqliteRepositoryProvider},
     resources::SystemResources,
@@ -310,6 +311,35 @@ fn validate_config(config_path: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn sync_heartbeat_config(
+    provider: &Arc<SqliteRepositoryProvider>,
+    config: &VerifierHeartbeatConfig,
+    client: &Arc<DefaultCvmAgentClient>,
+) -> anyhow::Result<()> {
+    let config = HeartbeatConfigRequest { interval: config.interval_seconds };
+    let mut repo = provider.workloads(Default::default()).await?;
+    let workloads = repo.list().await?;
+    for workload in workloads {
+        let id = workload.id;
+        let cvm_agent_port = workload.cvm_agent_port();
+        let Some(mut heartbeat) = workload.heartbeat else {
+            continue;
+        };
+        if heartbeat.heartbeat_interval == Some(config.interval) {
+            continue;
+        }
+        info!("Setting heartbeat interval to {:?} for workload {id}", config.interval);
+        if workload.enabled
+            && let Err(e) = client.set_heartbeat_config(cvm_agent_port, &config).await
+        {
+            error!("Could not set heartbeat config for workload {id}: {e}");
+        }
+        heartbeat.heartbeat_interval = Some(config.interval);
+        repo.set_heartbeat(id, Some(heartbeat)).await?;
+    }
+    Ok(())
+}
+
 async fn run_daemon(config_path: PathBuf) -> Result<()> {
     let config = load_config(&config_path).context("Loading agent configuration")?;
     info!("Setting up dependencies");
@@ -369,6 +399,9 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
 
     let repository_provider = Arc::new(repository_provider);
     let cvm_agent_client = Arc::new(DefaultCvmAgentClient::new().context("Failed to create cvm-agent client")?);
+    sync_heartbeat_config(&repository_provider, &config.verifier_heartbeat, &cvm_agent_client)
+        .await
+        .context("Failed to sync heartbeat config")?;
     let event_sender = EventWorker::spawn(EventWorkerArgs {
         api_client: nilcc_api_client.clone(),
         repository_provider: repository_provider.clone(),
@@ -395,6 +428,7 @@ async fn run_daemon(config_path: PathBuf) -> Result<()> {
         open_ports: config.sni_proxy.start_port_range..config.sni_proxy.end_port_range,
         proxy_service: Box::new(proxy_service),
         verifier_keys: verifier_keys.clone(),
+        verifier_heartbeat_interval: config.verifier_heartbeat.interval_seconds,
     })
     .await
     .context("Creating workload service")?;

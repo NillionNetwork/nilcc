@@ -483,6 +483,7 @@ mod tests {
             heartbeat: Some(WorkloadHeartbeat {
                 measurement_hash_url: "https://foo".into(),
                 wallet_public_key: Some(heartbeat_key.public_key().into()),
+                heartbeat_interval: Some(Duration::from_secs(1337)),
             }),
         };
         let mut builder = Builder::default();

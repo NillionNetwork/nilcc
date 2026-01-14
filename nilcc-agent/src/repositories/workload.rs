@@ -9,6 +9,7 @@ use sqlx::prelude::FromRow;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
+    time::Duration,
 };
 use strum::{Display, EnumString};
 use uuid::Uuid;
@@ -49,7 +50,7 @@ impl Workload {
         self.ports[1]
     }
 
-    pub(crate) fn cvm_agent_port(&self) -> u16 {
+    pub fn cvm_agent_port(&self) -> u16 {
         self.ports[2]
     }
 }
@@ -104,8 +105,8 @@ impl fmt::Debug for Workload {
 pub struct WorkloadHeartbeat {
     #[serde_as(as = "Option<Hex>")]
     pub wallet_public_key: Option<Vec<u8>>,
-
     pub measurement_hash_url: String,
+    pub heartbeat_interval: Option<Duration>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Display, EnumString, sqlx::Type)]
@@ -387,13 +388,21 @@ mod tests {
 
         repo.set_heartbeat(
             workload.id,
-            Some(WorkloadHeartbeat { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() }),
+            Some(WorkloadHeartbeat {
+                wallet_public_key: Some(vec![1, 2, 3]),
+                measurement_hash_url: "a".into(),
+                heartbeat_interval: Some(Duration::from_secs(1337)),
+            }),
         )
         .await
         .expect("failed to update");
         assert_eq!(
             repo.find(workload.id).await.expect("failed to find").heartbeat,
-            Some(WorkloadHeartbeat { wallet_public_key: Some(vec![1, 2, 3]), measurement_hash_url: "a".into() })
+            Some(WorkloadHeartbeat {
+                wallet_public_key: Some(vec![1, 2, 3]),
+                measurement_hash_url: "a".into(),
+                heartbeat_interval: Some(Duration::from_secs(1337)),
+            })
         );
 
         repo.set_gpus(workload.id, &["cc:dd".into()]).await.expect("failed to update");
