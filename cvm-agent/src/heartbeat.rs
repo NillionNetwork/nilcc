@@ -109,8 +109,6 @@ impl HeartbeatEmitter {
 
         let manager = HeartbeatManager::new(self.contract_address, &provider);
         let mut ctx = Context::new(self.tick_interval);
-        // reset immediately so we start by ticking
-        ctx.ticker.reset_immediately();
         for i in 0_u64.. {
             if i % 5 == 0 {
                 self.display_balance(&provider).await;
@@ -179,7 +177,11 @@ impl HeartbeatEmitter {
     fn process_pending_commands(receiver: &mut Receiver<HeartbeatEmitterCommand>, mut ctx: Context) -> Context {
         while let Ok(command) = receiver.try_recv() {
             match command {
-                HeartbeatEmitterCommand::SetInterval(interval) => ctx = Context::new(interval),
+                HeartbeatEmitterCommand::SetInterval(interval) => {
+                    ctx = Context::new(interval);
+                    // Only tick once after the period, not right away
+                    ctx.ticker.reset();
+                }
             }
         }
         ctx
