@@ -69,7 +69,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         "/api/v1",
         Router::new()
             .route("/health", get(health::handler))
-            .route("/config/heartbeats", get(config::heartbeats::handler))
+            .route("/config/heartbeats", post(config::heartbeats::handler))
             .route("/containers/logs", get(containers::logs::handler))
             .route("/containers/list", get(containers::list::handler))
             .route("/system/bootstrap", post(system::bootstrap::handler))
