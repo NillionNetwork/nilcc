@@ -1,12 +1,15 @@
 use crate::{heartbeat::HeartbeatManager::HeartbeatManagerInstance, monitors::caddy::CaddyStatus};
 use alloy::{primitives::Address, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol_types::sol};
 use alloy_provider::{Provider, WsConnect};
-use anyhow::Context;
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
 use std::time::Duration;
-use tokio::time::{MissedTickBehavior, interval, sleep};
+use tokio::{
+    sync::mpsc::{Receiver, Sender, channel},
+    time::{Interval, MissedTickBehavior, interval, sleep},
+};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -50,7 +53,7 @@ pub(crate) struct HeartbeatEmitter {
 }
 
 impl HeartbeatEmitter {
-    pub(crate) async fn spawn(args: HeartbeatEmitterArgs) -> anyhow::Result<()> {
+    pub(crate) async fn spawn(args: HeartbeatEmitterArgs) -> anyhow::Result<HeartbeatEmitterHandle> {
         let HeartbeatEmitterArgs {
             workload_id,
             workload_domain,
@@ -65,6 +68,7 @@ impl HeartbeatEmitter {
             gpu_count,
             caddy_status,
         } = args;
+        let (sender, receiver) = channel(1024);
         let contract_address: Address = contract_address.parse().context("Invalid contract address")?;
         let attestation_url = format!("https://{workload_domain}{ATTESTATION_PATH}");
         let wallet = PrivateKeySigner::from_slice(&wallet_private_key).context("Invalid wallet private key")?;
@@ -83,11 +87,12 @@ impl HeartbeatEmitter {
             cpu_count,
             gpu_count,
         };
-        tokio::spawn(async move { submitter.run(caddy_status).await });
-        Ok(())
+        tokio::spawn(async move { submitter.run(caddy_status, receiver).await });
+        let handle = HeartbeatEmitterHandle(sender);
+        Ok(handle)
     }
 
-    async fn run(self, caddy_status: CaddyStatus) {
+    async fn run(self, caddy_status: CaddyStatus, mut receiver: Receiver<HeartbeatEmitterCommand>) {
         info!("Waiting for caddy to generate a TLS certificate before emitting heartbeats");
         caddy_status.wait_tls_certificate().await;
         info!("Starting heartbeat generation");
@@ -103,20 +108,20 @@ impl HeartbeatEmitter {
         };
 
         let manager = HeartbeatManager::new(self.contract_address, &provider);
-        let mut ticker = interval(self.tick_interval);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut ctx = Context::new(self.tick_interval);
         // reset immediately so we start by ticking
-        ticker.reset_immediately();
+        ctx.ticker.reset_immediately();
         for i in 0_u64.. {
             if i % 5 == 0 {
                 self.display_balance(&provider).await;
             }
 
-            ticker.tick().await;
+            ctx.ticker.tick().await;
 
             if let Err(e) = self.submit_htx(&manager).await {
                 error!("Failed to submit HTX: {e}");
             }
+            ctx = Self::process_pending_commands(&mut receiver, ctx);
         }
     }
 
@@ -169,6 +174,42 @@ impl HeartbeatEmitter {
         let status = if receipt.status() { "success" } else { "failure" };
         info!("HTX submitted in transaction {tx_hash} with status {status}");
         Ok(())
+    }
+
+    fn process_pending_commands(receiver: &mut Receiver<HeartbeatEmitterCommand>, mut ctx: Context) -> Context {
+        while let Ok(command) = receiver.try_recv() {
+            match command {
+                HeartbeatEmitterCommand::SetInterval(interval) => ctx = Context::new(interval),
+            }
+        }
+        ctx
+    }
+}
+
+#[must_use]
+pub(crate) struct HeartbeatEmitterHandle(Sender<HeartbeatEmitterCommand>);
+
+impl HeartbeatEmitterHandle {
+    pub(crate) async fn set_interval(&self, interval: Duration) {
+        if self.0.send(HeartbeatEmitterCommand::SetInterval(interval)).await.is_err() {
+            error!("Heartbeat emitter channel dropped");
+        }
+    }
+}
+
+pub(crate) enum HeartbeatEmitterCommand {
+    SetInterval(Duration),
+}
+
+struct Context {
+    ticker: Interval,
+}
+
+impl Context {
+    fn new(tick_interval: Duration) -> Self {
+        let mut ticker = interval(tick_interval);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        Self { ticker }
     }
 }
 

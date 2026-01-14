@@ -1,4 +1,4 @@
-use crate::monitors::EventHolder;
+use crate::{heartbeat::HeartbeatEmitterHandle, monitors::EventHolder};
 use axum::{
     Router,
     extract::State,
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
+pub(crate) mod config;
 pub(crate) mod containers;
 pub(crate) mod health;
 pub(crate) mod system;
@@ -58,6 +59,7 @@ pub struct AppState {
     pub context: BootstrapContext,
     pub system_state: Arc<Mutex<SystemState>>,
     pub log_path: PathBuf,
+    pub heartbeat_handle: Arc<Mutex<Option<HeartbeatEmitterHandle>>>,
 }
 
 pub(crate) type SharedState = State<Arc<AppState>>;
@@ -67,6 +69,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         "/api/v1",
         Router::new()
             .route("/health", get(health::handler))
+            .route("/config/heartbeats", get(config::heartbeats::handler))
             .route("/containers/logs", get(containers::logs::handler))
             .route("/containers/list", get(containers::list::handler))
             .route("/system/bootstrap", post(system::bootstrap::handler))

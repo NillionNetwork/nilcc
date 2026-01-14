@@ -81,6 +81,19 @@ pub mod bootstrap {
     }
 }
 
+pub mod config {
+    use super::*;
+
+    /// A request to change the heartbeat configuration.
+    #[serde_as]
+    #[derive(Clone, Deserialize, Serialize)]
+    pub struct HeartbeatConfigRequest {
+        /// The interval at which heartbeats should occur.
+        #[serde_as(as = "DurationSeconds")]
+        pub interval: Duration,
+    }
+}
+
 pub mod container {
     use super::*;
 
