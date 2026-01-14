@@ -134,6 +134,9 @@ pub mod system {
         /// The public key.
         #[serde_as(as = "Hex")]
         pub public_key: Vec<u8>,
+
+        /// Whether this key is in use.
+        pub active: bool,
     }
 }
 
