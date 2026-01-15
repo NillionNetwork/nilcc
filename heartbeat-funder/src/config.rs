@@ -2,15 +2,21 @@ use alloy::{
     primitives::{Address, U256},
     signers::local::PrivateKeySigner,
 };
+use reqwest::Url;
 use serde::{Deserialize, Deserializer, de::Unexpected};
 use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
-use std::{fmt, time::Duration};
+use std::{collections::BTreeSet, fmt, time::Duration};
 
 #[serde_as]
 #[derive(Deserialize)]
 pub struct Config {
     /// A list of static wallets to be funded.
-    pub wallets: Vec<Address>,
+    #[serde(default)]
+    pub wallets: BTreeSet<Address>,
+
+    /// Configuration for standalone nilcc-agent instances that need to be monitored.
+    #[serde(default)]
+    pub agents: Vec<AgentConfig>,
 
     /// The funding threshold configurations.
     pub thresholds: ThresholdsConfig,
@@ -18,10 +24,9 @@ pub struct Config {
     /// The RPC config.
     pub rpc: RpcConfig,
 
-    /// The interval at which wallets are polled and funded.
-    #[serde(default = "default_interval")]
-    #[serde_as(as = "DurationSeconds")]
-    pub interval_seconds: Duration,
+    /// The interval configuration.
+    #[serde(default)]
+    pub intervals: IntervalsConfig,
 
     /// The private key to use to sign transactions.
     #[serde_as(as = "DisplayFromStr")]
@@ -38,6 +43,35 @@ impl Config {
         let config = config.try_deserialize()?;
         Ok(config)
     }
+}
+
+#[serde_as]
+#[derive(Deserialize)]
+pub struct IntervalsConfig {
+    /// The interval at which wallets are polled and funded.
+    #[serde(default = "default_funding_interval")]
+    #[serde_as(as = "DurationSeconds")]
+    pub funding: Duration,
+
+    /// The interval at which agents are polled for new addresses.
+    #[serde(default = "default_agent_interval")]
+    #[serde_as(as = "DurationSeconds")]
+    pub agent: Duration,
+}
+
+impl Default for IntervalsConfig {
+    fn default() -> Self {
+        Self { funding: default_funding_interval(), agent: default_agent_interval() }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AgentConfig {
+    /// The agent URL.
+    pub url: Url,
+
+    /// The authentication token.
+    pub token: String,
 }
 
 #[derive(Deserialize)]
@@ -89,6 +123,10 @@ where
     deserializer.deserialize_str(Visitor)
 }
 
-fn default_interval() -> Duration {
+fn default_funding_interval() -> Duration {
     Duration::from_secs(60 * 10)
+}
+
+fn default_agent_interval() -> Duration {
+    Duration::from_secs(30)
 }
