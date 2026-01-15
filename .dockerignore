@@ -6,6 +6,7 @@
 !/nilcc-agent-cli
 !/nilcc-verifier
 !/cvm-agent
+!/heartbeat-funder
 !/crates
 !/Cargo.toml
 !/Cargo.lock

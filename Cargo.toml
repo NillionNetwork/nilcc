@@ -12,8 +12,9 @@ members = [
   "nilcc-attester",
   "nilcc-agent",
   "nilcc-agent-cli",
-  "nilcc-verifier"
- ]
+  "nilcc-verifier",
+  "heartbeat-funder"
+]
 
 [workspace.dependencies]
 sev = { git = "https://github.com/virtee/sev", branch = "main", default-features = false }
