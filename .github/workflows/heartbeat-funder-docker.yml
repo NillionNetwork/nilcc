@@ -1,0 +1,57 @@
+name: heartbeat-funder docker
+
+on:
+  push:
+    tags:
+      - 'heartbeat-funder-*'
+    branches:
+      - main
+    paths:
+      - 'heartbeat-funder/**'
+      - 'Cargo.lock'
+      - 'crates/**'
+
+jobs:
+  docker-build-heartbeat-funder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate docker tag
+        run: |
+          if [[ "$GITHUB_REF" =~ ^refs/tags/heartbeat-funder-.* ]]; then
+            # Remove the 'refs/tags/heartbeat-funder-' prefix for tags
+            tag=${GITHUB_REF:27}
+          else
+            # Or use `latest` tag otherwise
+            tag=latest
+          fi
+          echo "DOCKER_TAG=ghcr.io/nillionnetwork/heartbeat-funder:${tag}" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: heartbeat-funder/Dockerfile
+          tags: ${{ env.DOCKER_TAG }}
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: heartbeat-funder/Dockerfile
+          push: true
+          tags: ${{ env.DOCKER_TAG }}
+          build-args: |
+            VERSION=${{ env.PACKAGE_VERSION }}
+
