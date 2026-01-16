@@ -46,6 +46,7 @@ export const GetMetalInstanceResponse = z
     metalInstanceId: Uuid,
     agentVersion: z.string(),
     hostname: z.string(),
+    domain: z.string(),
     publicIp: z.string(),
     memoryMb: Resource,
     cpus: Resource,

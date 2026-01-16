@@ -4,10 +4,12 @@ import type { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity
 export const metalInstanceMapper = {
   entityToResponse(
     metalInstance: MetalInstanceEntity,
+    subdomain: string,
   ): GetMetalInstanceResponse {
     return {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
+      domain: `${metalInstance.id}.${subdomain}`,
       publicIp: metalInstance.publicIp,
       memoryMb: {
         total: metalInstance.totalMemory,

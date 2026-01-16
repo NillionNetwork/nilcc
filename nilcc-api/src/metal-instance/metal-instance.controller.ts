@@ -122,7 +122,12 @@ export function read(options: ControllerOptions) {
       if (!instance) {
         throw new EntityNotFound("metal instance");
       }
-      return c.json(metalInstanceMapper.entityToResponse(instance));
+      return c.json(
+        metalInstanceMapper.entityToResponse(
+          instance,
+          bindings.config.metalInstancesDnsDomain,
+        ),
+      );
     },
   );
 }
@@ -150,7 +155,14 @@ export function list(options: ControllerOptions) {
     responseValidator(bindings, ListMetalInstancesResponse),
     async (c) => {
       const instances = await bindings.services.metalInstance.list(bindings);
-      return c.json(instances);
+      return c.json(
+        instances.map((instance) =>
+          metalInstanceMapper.entityToResponse(
+            instance,
+            bindings.config.metalInstancesDnsDomain,
+          ),
+        ),
+      );
     },
   );
 }
