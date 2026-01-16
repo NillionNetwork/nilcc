@@ -1,13 +1,16 @@
 use crate::config::ThresholdsConfig;
 use alloy::{
-    primitives::{Address, TxKind, utils::format_ether},
+    primitives::{
+        Address, TxKind, U256,
+        utils::{UnitsError, format_ether, parse_ether},
+    },
     providers::{ProviderBuilder, WsConnect},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
 };
 use alloy_provider::Provider;
 use anyhow::Context;
-use std::{collections::BTreeSet, time::Duration};
+use std::{collections::BTreeSet, fmt, str::FromStr, time::Duration};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender, channel},
@@ -39,6 +42,7 @@ impl Funder {
         let FunderArgs { rpc_endpoint, signer, static_addresses, poll_interval, thresholds } = args;
         let mut ticker = interval(poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
         let (sender, command_receiver) = channel(1024);
         let funder = Self { rpc_endpoint, signer, ticker, thresholds, command_receiver, addresses: static_addresses };
         tokio::spawn(funder.run());
@@ -76,6 +80,15 @@ impl Funder {
     }
 
     async fn handle_tick(&mut self, provider: &impl Provider) {
+        // Print our balance so we can keep track of this externally.
+        let address = self.signer.address();
+        match provider.get_balance(address).await.map(EthAmount) {
+            Ok(balance) => info!("Wallet {address} has {balance} ETH"),
+            Err(e) => {
+                error!("Failed to get our own balance: {e}");
+            }
+        };
+
         info!("Validating that {} addresses are well funded", self.addresses.len());
         if let Err(e) = self.ensure_addresses_funded(&provider).await {
             error!("Failed to fund addresses: {e:#}");
@@ -111,19 +124,18 @@ impl Funder {
     }
 
     async fn ensure_address_funded_eth(&self, address: Address, provider: &impl Provider) -> anyhow::Result<()> {
-        let eth_balance = provider.get_balance(address).await.context("Failed to get address balance")?;
-        let eth_balance_str = format_ether(eth_balance);
+        let eth_balance: EthAmount =
+            provider.get_balance(address).await.context("Failed to get address balance")?.into();
         if eth_balance > self.thresholds.eth.minimum {
-            info!("Address {address} has enough ETH balance: {eth_balance_str}");
+            info!("Address {address} has enough ETH balance: {eth_balance}");
             return Ok(());
         }
         let missing = self.thresholds.eth.target.saturating_sub(eth_balance);
-        let missing_str = format_ether(missing);
-        info!("{address} has {eth_balance_str} ETH, need to fund with {missing_str} ETH");
+        info!("{address} has {eth_balance} ETH, need to fund with {missing} ETH");
 
-        let tx = TransactionRequest { to: Some(TxKind::Call(address)), value: Some(missing), ..Default::default() };
+        let tx = TransactionRequest { to: Some(TxKind::Call(address)), value: Some(missing.0), ..Default::default() };
         let tx_hash = provider.send_transaction(tx).await?.watch().await?;
-        info!("Funded {address} with {missing_str} ETH in transaction {tx_hash}");
+        info!("Funded {address} with {missing} ETH in transaction {tx_hash}");
         Ok(())
     }
 
@@ -162,4 +174,35 @@ impl FunderHandle {
 enum FunderCommand {
     AddAddress(Address),
     RemoveAddress(Address),
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
+pub struct EthAmount(U256);
+
+impl EthAmount {
+    fn saturating_sub(self, other: EthAmount) -> Self {
+        Self(self.0.saturating_sub(other.0))
+    }
+}
+
+impl FromStr for EthAmount {
+    type Err = UnitsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value = parse_ether(s)?;
+        Ok(Self(value))
+    }
+}
+
+impl fmt::Display for EthAmount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let formatted = format_ether(self.0);
+        write!(f, "{formatted}")
+    }
+}
+
+impl From<U256> for EthAmount {
+    fn from(amount: U256) -> Self {
+        Self(amount)
+    }
 }
