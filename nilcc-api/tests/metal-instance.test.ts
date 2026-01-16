@@ -53,8 +53,12 @@ describe("Metal Instance", () => {
       lastSeenAt: undefined,
       availableArtifactVersions: undefined,
       token: myMetalInstance.token,
+      domain: undefined,
     };
     expect(cleanInstance).toEqual(myMetalInstance);
+    expect(instance.domain).toEqual(
+      `${myMetalInstance.metalInstanceId}.agents.private.localhost`,
+    );
   });
 
   it("should register a metal instance that already exists, updating it", async ({
@@ -84,6 +88,7 @@ describe("Metal Instance", () => {
       lastSeenAt: undefined,
       availableArtifactVersions: undefined,
       token: myMetalInstance.token,
+      domain: undefined,
     };
     expect(cleanInstance).toEqual(updatedInstance);
   });
