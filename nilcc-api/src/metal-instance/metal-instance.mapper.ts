@@ -10,6 +10,7 @@ export const metalInstanceMapper = {
       agentVersion: metalInstance.agentVersion,
       hostname: metalInstance.hostname,
       domain: `${metalInstance.id}.${subdomain}`,
+      token: metalInstance.token,
       publicIp: metalInstance.publicIp,
       memoryMb: {
         total: metalInstance.totalMemory,

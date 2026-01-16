@@ -52,7 +52,6 @@ describe("Metal Instance", () => {
       createdAt: undefined,
       lastSeenAt: undefined,
       availableArtifactVersions: undefined,
-      token: myMetalInstance.token,
       domain: undefined,
     };
     expect(cleanInstance).toEqual(myMetalInstance);
@@ -87,7 +86,6 @@ describe("Metal Instance", () => {
       createdAt: undefined,
       lastSeenAt: undefined,
       availableArtifactVersions: undefined,
-      token: myMetalInstance.token,
       domain: undefined,
     };
     expect(cleanInstance).toEqual(updatedInstance);
