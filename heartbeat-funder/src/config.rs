@@ -1,11 +1,9 @@
-use alloy::{
-    primitives::{Address, U256},
-    signers::local::PrivateKeySigner,
-};
+use crate::funder::EthAmount;
+use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 use reqwest::Url;
-use serde::{Deserialize, Deserializer, de::Unexpected};
+use serde::Deserialize;
 use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
-use std::{collections::BTreeSet, fmt, time::Duration};
+use std::{collections::BTreeSet, time::Duration};
 
 #[serde_as]
 #[derive(Deserialize)]
@@ -98,47 +96,23 @@ pub struct ThresholdsConfig {
     pub eth: EthThresholdConfig,
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 pub struct EthThresholdConfig {
     /// The minimum amount of ETH a wallet is tolerated to hold.
-    #[serde(deserialize_with = "parse_eth")]
-    pub minimum: U256,
+    #[serde_as(as = "DisplayFromStr")]
+    pub minimum: EthAmount,
 
     /// The target amount of ETH that we target whenever we fund. When the amount falls bellow
     /// `minimum`, it will be topped up to `target`.
-    #[serde(deserialize_with = "parse_eth")]
-    pub target: U256,
+    #[serde_as(as = "DisplayFromStr")]
+    pub target: EthAmount,
 }
 
 #[derive(Deserialize)]
 pub struct RpcConfig {
     /// The RPC endpoint to use.
     pub endpoint: String,
-}
-
-fn parse_eth<'de, D>(deserializer: D) -> Result<U256, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct Visitor;
-
-    impl<'a> serde::de::Visitor<'a> for Visitor {
-        type Value = U256;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("struct U256")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            alloy::primitives::utils::parse_ether(v)
-                .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(v), &self))
-        }
-    }
-
-    deserializer.deserialize_str(Visitor)
 }
 
 fn default_funding_interval() -> Duration {
