@@ -1,6 +1,7 @@
 use crate::{
+    agent::{NilccAgentClient, NilccAgentMonitor, NilccAgentMonitorArgs},
     config::Config,
-    monitor::{Monitor, MonitorArgs},
+    funder::{Funder, FunderArgs},
 };
 use anyhow::bail;
 use clap::Parser;
@@ -8,8 +9,9 @@ use tokio::signal::{self, unix::SignalKind};
 use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::filter::EnvFilter;
 
+mod agent;
 mod config;
-mod monitor;
+mod funder;
 
 /// Heartbeat funder allows monitoring and funding wallets that are used to emit heartbeats in
 /// nilcc workloads.
@@ -53,13 +55,21 @@ async fn main() -> anyhow::Result<()> {
         bail!("ETH minimum funding threshold must be lower than its target");
     }
 
-    Monitor::spawn(MonitorArgs {
+    let funder = Funder::spawn(FunderArgs {
         rpc_endpoint: config.rpc.endpoint,
         signer: config.private_key,
         static_addresses: config.wallets,
-        poll_interval: config.interval_seconds,
+        poll_interval: config.intervals.funding,
         thresholds: config.thresholds,
     });
+    for agent in config.agents {
+        let client = NilccAgentClient::new(agent.url, &agent.token);
+        NilccAgentMonitor::spawn(NilccAgentMonitorArgs {
+            client,
+            poll_interval: config.intervals.agent,
+            funder_handle: funder.clone(),
+        });
+    }
 
     shutdown_signal().await;
     Ok(())
