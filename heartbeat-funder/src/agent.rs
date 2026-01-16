@@ -8,7 +8,7 @@ use reqwest::{
 use serde::de::DeserializeOwned;
 use std::{collections::BTreeSet, time::Duration};
 use tokio::time::{Interval, MissedTickBehavior, interval};
-use tracing::{Instrument, error, info_span};
+use tracing::{Instrument, error, info, info_span};
 
 pub struct NilccAgentMonitorArgs {
     pub client: NilccAgentClient,
@@ -29,9 +29,9 @@ impl NilccAgentMonitor {
         let mut ticker = interval(poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        let agent_url = client.base_url.host().map(|h| h.to_string()).unwrap_or_default();
+        let agent_host = client.base_url.host().map(|h| h.to_string()).unwrap_or_default();
         let monitor = Self { client, ticker, funder_handle, active_addresses: Default::default() };
-        tokio::spawn(monitor.run().instrument(info_span!("agent", url = agent_url.to_string())));
+        tokio::spawn(monitor.run().instrument(info_span!("agent", host = agent_host)));
     }
 
     async fn run(mut self) {
@@ -59,6 +59,7 @@ impl NilccAgentMonitor {
                 })
             })
             .collect();
+        info!("{} active addresses found", active_addresses.len());
         let removed_addresses: Vec<_> = self.active_addresses.difference(&active_addresses).collect();
         let new_addresses: Vec<_> = active_addresses.difference(&self.active_addresses).collect();
         for address in new_addresses {
