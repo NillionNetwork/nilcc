@@ -1,5 +1,6 @@
 use crate::{
     agent::{NilccAgentClient, NilccAgentMonitor, NilccAgentMonitorArgs},
+    api::{NilccApiClient, NilccApiMonitor, NilccApiMonitorArgs},
     config::Config,
     funder::{Funder, FunderArgs},
 };
@@ -10,6 +11,7 @@ use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::filter::EnvFilter;
 
 mod agent;
+mod api;
 mod config;
 mod funder;
 
@@ -69,6 +71,15 @@ async fn main() -> anyhow::Result<()> {
             poll_interval: config.intervals.agent,
             funder_handle: funder.clone(),
         });
+    }
+    if let Some(api) = config.api {
+        let client = NilccApiClient::new(api.url, &api.token);
+        NilccApiMonitor::spawn(NilccApiMonitorArgs {
+            client,
+            poll_interval: config.intervals.api,
+            agent_poll_interval: config.intervals.agent,
+            funder_handle: funder.clone(),
+        })
     }
 
     shutdown_signal().await;

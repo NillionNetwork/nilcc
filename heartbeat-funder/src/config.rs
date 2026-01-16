@@ -18,6 +18,10 @@ pub struct Config {
     #[serde(default)]
     pub agents: Vec<AgentConfig>,
 
+    /// Configuration for nilcc-api.
+    #[serde(default)]
+    pub api: Option<ApiConfig>,
+
     /// The funding threshold configurations.
     pub thresholds: ThresholdsConfig,
 
@@ -57,17 +61,31 @@ pub struct IntervalsConfig {
     #[serde(default = "default_agent_interval")]
     #[serde_as(as = "DurationSeconds")]
     pub agent: Duration,
+
+    /// The interval at which nilcc-api is polled for new agents.
+    #[serde(default = "default_api_interval")]
+    #[serde_as(as = "DurationSeconds")]
+    pub api: Duration,
 }
 
 impl Default for IntervalsConfig {
     fn default() -> Self {
-        Self { funding: default_funding_interval(), agent: default_agent_interval() }
+        Self { funding: default_funding_interval(), agent: default_agent_interval(), api: default_api_interval() }
     }
 }
 
 #[derive(Deserialize)]
 pub struct AgentConfig {
     /// The agent URL.
+    pub url: Url,
+
+    /// The authentication token.
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct ApiConfig {
+    /// The api URL.
     pub url: Url,
 
     /// The authentication token.
@@ -129,4 +147,8 @@ fn default_funding_interval() -> Duration {
 
 fn default_agent_interval() -> Duration {
     Duration::from_secs(30)
+}
+
+fn default_api_interval() -> Duration {
+    Duration::from_secs(120)
 }
