@@ -76,7 +76,8 @@ impl VerifierKeys {
                 seed: [0; 64],
                 interval_seconds: std::time::Duration::from_secs(10),
                 rpc_endpoint: "".into(),
-                contract_address: "".into(),
+                heartbeat_contract_address: "".into(),
+                token_contract_address: "".into(),
             },
             10,
         )
@@ -143,7 +144,8 @@ mod tests {
         seed: [0; 64],
         interval_seconds: Duration::from_secs(10),
         rpc_endpoint: "".into(),
-        contract_address: "".into(),
+        heartbeat_contract_address: "".into(),
+        token_contract_address: "".into(),
     });
 
     #[test]

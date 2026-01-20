@@ -74,7 +74,10 @@ pub mod bootstrap {
         pub rpc_endpoint: String,
 
         /// The address for the contract that accepts heartbeats.
-        pub contract_address: String,
+        pub heartbeat_contract_address: String,
+
+        /// The address for the NIL token contract.
+        pub token_contract_address: String,
 
         /// The URL where measurement hashes for this workload are published.
         pub measurement_hash_url: String,

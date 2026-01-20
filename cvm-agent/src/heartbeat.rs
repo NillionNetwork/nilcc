@@ -1,5 +1,13 @@
-use crate::{heartbeat::HeartbeatManager::HeartbeatManagerInstance, monitors::caddy::CaddyStatus};
-use alloy::{primitives::Address, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol_types::sol};
+use crate::{
+    heartbeat::{HeartbeatManager::HeartbeatManagerInstance, NilToken::NilTokenInstance},
+    monitors::caddy::CaddyStatus,
+};
+use alloy::{
+    primitives::{Address, Uint},
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+    sol_types::sol,
+};
 use alloy_provider::{Provider, WsConnect};
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -18,16 +26,24 @@ sol! {
     contract HeartbeatManager {
         function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId) external whenNotPaused nonReentrant returns (bytes32 heartbeatKey);
     }
+
+    #[sol(rpc)]
+    contract NilToken {
+        function approve(address spender, uint256 value) external returns (bool);
+        function allowance(address owner, address spender) external view returns (uint256);
+    }
 }
 
 const ATTESTATION_PATH: &str = "/nilcc/api/v2/report";
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
+const TOKEN_APPROVAL_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 
 pub(crate) struct HeartbeatEmitterArgs {
     pub(crate) workload_id: Uuid,
     pub(crate) workload_domain: String,
     pub(crate) rpc_endpoint: String,
-    pub(crate) contract_address: String,
+    pub(crate) heartbeat_contract_address: String,
+    pub(crate) token_contract_address: String,
     pub(crate) wallet_private_key: Vec<u8>,
     pub(crate) nilcc_version: String,
     pub(crate) docker_compose_hash: [u8; 32],
@@ -43,7 +59,8 @@ pub(crate) struct HeartbeatEmitter {
     attestation_url: String,
     rpc_endpoint: String,
     wallet: PrivateKeySigner,
-    contract_address: Address,
+    heartbeat_contract_address: Address,
+    token_contract_address: Address,
     nilcc_version: String,
     docker_compose_hash: [u8; 32],
     tick_interval: Duration,
@@ -58,7 +75,8 @@ impl HeartbeatEmitter {
             workload_id,
             workload_domain,
             rpc_endpoint,
-            contract_address,
+            heartbeat_contract_address,
+            token_contract_address,
             wallet_private_key,
             nilcc_version,
             docker_compose_hash,
@@ -69,7 +87,9 @@ impl HeartbeatEmitter {
             caddy_status,
         } = args;
         let (sender, receiver) = channel(1024);
-        let contract_address: Address = contract_address.parse().context("Invalid contract address")?;
+        let heartbeat_contract_address =
+            heartbeat_contract_address.parse().context("Invalid heartbeat contract address")?;
+        let token_contract_address = token_contract_address.parse().context("Invalid token contract address")?;
         let attestation_url = format!("https://{workload_domain}{ATTESTATION_PATH}");
         let wallet = PrivateKeySigner::from_slice(&wallet_private_key).context("Invalid wallet private key")?;
         info!("Starting heartbeat emitter using wallet {}", wallet.address());
@@ -79,7 +99,8 @@ impl HeartbeatEmitter {
             attestation_url,
             rpc_endpoint,
             wallet,
-            contract_address,
+            heartbeat_contract_address,
+            token_contract_address,
             nilcc_version,
             docker_compose_hash,
             tick_interval,
@@ -107,7 +128,20 @@ impl HeartbeatEmitter {
             }
         };
 
-        let manager = HeartbeatManager::new(self.contract_address, &provider);
+        let manager = HeartbeatManager::new(self.heartbeat_contract_address, &provider);
+        let token = NilToken::new(self.token_contract_address, &provider);
+        loop {
+            match self.approve_nil(&token).await {
+                Ok(_) => {
+                    info!("NIL payments approved, starting heartbeat loop");
+                    break;
+                }
+                Err(e) => {
+                    error!("Failed to approve NIL payments: {e}");
+                    sleep(TOKEN_APPROVAL_RETRY_INTERVAL).await;
+                }
+            };
+        }
         let mut ctx = Context::new(self.tick_interval);
         for i in 0_u64.. {
             if i % 5 == 0 {
@@ -135,6 +169,20 @@ impl HeartbeatEmitter {
         Ok(provider)
     }
 
+    async fn approve_nil(&self, contract: &NilTokenInstance<impl Provider>) -> anyhow::Result<()> {
+        let allowance = contract.allowance(self.wallet.address(), self.heartbeat_contract_address).call().await?;
+        if allowance == Uint::MAX {
+            info!("Address already has a configured allowance, ignoring request");
+            return Ok(());
+        }
+        info!("Need to approve payment allowance for heartbeat contract at {}", self.heartbeat_contract_address);
+
+        // Approve an infinite payment allowance since we fully trust the heartbeat manager
+        let tx = contract.approve(self.heartbeat_contract_address, Uint::MAX).send().await?.get_receipt().await?;
+        info!("Approved payment allowance on tx {}", tx.transaction_hash);
+        Ok(())
+    }
+
     async fn display_balance(&self, provider: &impl Provider) {
         let address = self.wallet.address();
         let balance = match provider.get_balance(address).await {
@@ -159,7 +207,6 @@ impl HeartbeatEmitter {
                 docker_compose_hash: self.docker_compose_hash,
             },
             builder_measurement: BuilderMeasurement { url: self.measurement_hash_url.clone() },
-            nonce: rand::random(),
         }));
         // Use the current block - 1 for the snapshot id
         let snapshot_id = router.provider().get_block_number().await.context("failed to get block number")?;
@@ -242,9 +289,6 @@ struct NillionHtxV1 {
     workload_id: WorkloadId,
     workload_measurement: WorkloadMeasurement,
     builder_measurement: BuilderMeasurement,
-    // TODO: this is temporary
-    #[serde_as(as = "Hex")]
-    nonce: [u8; 16],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
