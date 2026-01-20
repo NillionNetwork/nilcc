@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
         static_addresses: config.wallets,
         poll_interval: config.intervals.funding,
         thresholds: config.thresholds,
+        contracts: config.contracts,
     });
     for agent in config.agents {
         let client = NilccAgentClient::new(agent.url, &agent.token);

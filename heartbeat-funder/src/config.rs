@@ -1,4 +1,4 @@
-use crate::funder::EthAmount;
+use crate::funder::{EthAmount, NilAmount};
 use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 use reqwest::Url;
 use serde::Deserialize;
@@ -25,6 +25,9 @@ pub struct Config {
 
     /// The RPC config.
     pub rpc: RpcConfig,
+
+    /// The contracts addresses.
+    pub contracts: ContractsConfig,
 
     /// The interval configuration.
     #[serde(default)]
@@ -94,6 +97,9 @@ pub struct ApiConfig {
 pub struct ThresholdsConfig {
     /// The ETH threshold configuration.
     pub eth: EthThresholdConfig,
+
+    /// The NIL threshold configuration.
+    pub nil: NilThresholdConfig,
 }
 
 #[serde_as]
@@ -109,10 +115,29 @@ pub struct EthThresholdConfig {
     pub target: EthAmount,
 }
 
+#[serde_as]
+#[derive(Deserialize)]
+pub struct NilThresholdConfig {
+    /// The minimum amount of NIL a wallet is tolerated to hold.
+    #[serde_as(as = "DisplayFromStr")]
+    pub minimum: NilAmount,
+
+    /// The target amount of NIL that we target whenever we fund. When the amount falls bellow
+    /// `minimum`, it will be topped up to `target`.
+    #[serde_as(as = "DisplayFromStr")]
+    pub target: NilAmount,
+}
+
 #[derive(Deserialize)]
 pub struct RpcConfig {
     /// The RPC endpoint to use.
     pub endpoint: String,
+}
+
+#[derive(Deserialize)]
+pub struct ContractsConfig {
+    /// The NIL contract address.
+    pub nil: Address,
 }
 
 fn default_funding_interval() -> Duration {
