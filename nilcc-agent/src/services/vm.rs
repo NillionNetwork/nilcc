@@ -58,6 +58,7 @@ pub struct VmServiceArgs {
     pub verifier_heartbeat_rpc: String,
     pub verifier_heartbeat_interval: Duration,
     pub verifier_contract_address: String,
+    pub token_contract_address: String,
 }
 
 pub struct DefaultVmService {
@@ -74,6 +75,7 @@ pub struct DefaultVmService {
     verifier_heartbeat_interval: Duration,
     verifier_heartbeat_rpc: String,
     verifier_contract_address: String,
+    token_contract_address: String,
 }
 
 impl DefaultVmService {
@@ -91,6 +93,7 @@ impl DefaultVmService {
             verifier_heartbeat_interval,
             verifier_heartbeat_rpc,
             verifier_contract_address,
+            token_contract_address,
         } = args;
         fs::create_dir_all(&state_path).await.context("Creating state directory")?;
         Ok(Self {
@@ -107,6 +110,7 @@ impl DefaultVmService {
             verifier_heartbeat_interval,
             verifier_heartbeat_rpc,
             verifier_contract_address,
+            token_contract_address,
         })
     }
 
@@ -242,7 +246,8 @@ impl VmService for DefaultVmService {
                         interval: self.verifier_heartbeat_interval,
                         wallet_private_key: key.secret_key().to_vec(),
                         rpc_endpoint: self.verifier_heartbeat_rpc.clone(),
-                        contract_address: self.verifier_contract_address.clone(),
+                        heartbeat_contract_address: self.verifier_contract_address.clone(),
+                        token_contract_address: self.token_contract_address.clone(),
                         measurement_hash_url: heartbeat.measurement_hash_url.clone(),
                     }),
                     _ => None,
@@ -430,6 +435,7 @@ mod tests {
                 verifier_heartbeat_interval: Duration::from_secs(10),
                 verifier_heartbeat_rpc: "".into(),
                 verifier_contract_address: "".into(),
+                token_contract_address: "".into(),
             };
             let service = DefaultVmService::new(args).await.expect("failed to build");
             Context { service, state_path }

@@ -256,7 +256,10 @@ pub struct VerifierHeartbeatConfig {
     pub rpc_endpoint: String,
 
     /// The address for the contract that handles heartbeats.
-    pub contract_address: String,
+    pub heartbeat_contract_address: String,
+
+    /// The address for the NIL token contract.
+    pub token_contract_address: String,
 }
 
 pub fn read_file_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
