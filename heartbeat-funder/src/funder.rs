@@ -140,7 +140,9 @@ impl Funder {
 
     async fn ensure_address_funded(&self, address: Address, ctx: &Context) -> anyhow::Result<()> {
         self.ensure_address_funded_eth(address, ctx).await?;
-        self.ensure_address_funded_nil(address, ctx).await?;
+        if !self.thresholds.nil.target.is_zero() {
+            self.ensure_address_funded_nil(address, ctx).await?;
+        }
         Ok(())
     }
 
