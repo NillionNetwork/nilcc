@@ -57,6 +57,10 @@ async fn main() -> anyhow::Result<()> {
         bail!("ETH minimum funding threshold must be lower than its target");
     }
 
+    if !config.thresholds.nil.target.is_zero() && config.thresholds.nil.minimum >= config.thresholds.nil.target {
+        bail!("NIL minimum funding threshold must be lower than its target");
+    }
+
     let funder = Funder::spawn(FunderArgs {
         rpc_endpoint: config.rpc.endpoint,
         signer: config.private_key,

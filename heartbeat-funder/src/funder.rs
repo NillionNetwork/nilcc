@@ -65,6 +65,8 @@ impl Funder {
     }
 
     async fn run(mut self, contracts: ContractsConfig) {
+        info!("Using wallet {}", self.signer.address());
+
         info!("Connecting to RPC endpoint {}", self.rpc_endpoint);
         let provider = loop {
             match self.connect().await {
@@ -237,6 +239,10 @@ pub struct AssetAmount<const U: u8>(U256);
 impl<const U: u8> AssetAmount<U> {
     fn saturating_sub(self, other: AssetAmount<U>) -> Self {
         Self(self.0.saturating_sub(other.0))
+    }
+
+    pub(crate) fn is_zero(&self) -> bool {
+        self.0.is_zero()
     }
 }
 
