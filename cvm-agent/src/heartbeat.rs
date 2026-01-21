@@ -31,12 +31,14 @@ sol! {
     contract NilToken {
         function approve(address spender, uint256 value) external returns (bool);
         function allowance(address owner, address spender) external view returns (uint256);
+        function balanceOf(address account) external view returns (uint256);
     }
 }
 
 const ATTESTATION_PATH: &str = "/nilcc/api/v2/report";
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const TOKEN_APPROVAL_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+const NIL_TOKEN_DECIMALS: u8 = 6;
 
 pub(crate) struct HeartbeatEmitterArgs {
     pub(crate) workload_id: Uuid,
@@ -145,7 +147,7 @@ impl HeartbeatEmitter {
         let mut ctx = Context::new(self.tick_interval);
         for i in 0_u64.. {
             if i % 5 == 0 {
-                self.display_balance(&provider).await;
+                self.display_balance(&provider, &token).await;
             }
 
             ctx.ticker.tick().await;
@@ -183,17 +185,25 @@ impl HeartbeatEmitter {
         Ok(())
     }
 
-    async fn display_balance(&self, provider: &impl Provider) {
+    async fn display_balance(&self, provider: &impl Provider, token: &NilTokenInstance<impl Provider>) {
         let address = self.wallet.address();
-        let balance = match provider.get_balance(address).await {
+        let eth_balance = match provider.get_balance(address).await {
             Ok(balance) => balance,
             Err(e) => {
-                warn!("Failed to get wallet balance: {e}");
+                warn!("Failed to get wallet ETH balance: {e}");
                 return;
             }
         };
-        let balance = alloy::primitives::utils::format_ether(balance);
-        info!("Wallet {address} has {balance} ETH");
+        let nil_balance = match token.balanceOf(address).call().await {
+            Ok(balance) => balance,
+            Err(e) => {
+                warn!("Failed to get wallet NIL balance: {e}");
+                return;
+            }
+        };
+        let eth_balance = alloy::primitives::utils::format_ether(eth_balance);
+        let nil_balance = alloy::primitives::utils::format_units(nil_balance, NIL_TOKEN_DECIMALS).unwrap_or_default();
+        info!("Wallet {address} has {eth_balance} ETH and {nil_balance} NIL");
     }
 
     async fn submit_htx(&self, router: &HeartbeatManagerInstance<impl Provider>) -> anyhow::Result<()> {
