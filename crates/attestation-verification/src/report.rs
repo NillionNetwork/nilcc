@@ -117,7 +117,7 @@ impl ReportFetcher {
     }
 }
 
-pub trait ArtifactsDownloaderBuilder {
+pub trait ArtifactsDownloaderBuilder: Send + Sync + 'static {
     fn build_downloader(&self, nilcc_version: String, vm_type: VmType) -> ArtifactsDownloader;
 }
 
