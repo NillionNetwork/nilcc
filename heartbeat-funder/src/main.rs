@@ -93,19 +93,15 @@ async fn main() -> anyhow::Result<()> {
         bail!("NIL minimum funding threshold must be lower than its target");
     }
 
-    let metrics_handle = match config.otel {
-        Some(_) if is_otel_disabled() => {
+    let metrics_handle = match is_otel_disabled() {
+        true => {
             info!("OTEL metrics disabled via env var");
             None
         }
-        Some(config) => {
-            info!("Exporting OTEL samples to {}", config.endpoint);
-            let handle = setup_otel(config).context("Failed to setup OTEL")?;
+        false => {
+            info!("Exporting OTEL samples to {}", config.otel.endpoint);
+            let handle = setup_otel(config.otel).context("Failed to setup OTEL")?;
             Some(handle)
-        }
-        None => {
-            info!("No metrics config provided");
-            None
         }
     };
 

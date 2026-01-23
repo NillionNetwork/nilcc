@@ -41,7 +41,8 @@ pub struct Config {
     pub private_key: PrivateKeySigner,
 
     /// OTEL configuration.
-    pub otel: Option<OtelConfig>,
+    #[serde(default)]
+    pub otel: OtelConfig,
 }
 
 impl Config {
@@ -166,6 +167,17 @@ pub struct OtelConfig {
     /// OTEL metrics config.
     #[serde(default)]
     pub metrics: OtelMetricsConfig,
+}
+
+impl Default for OtelConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: default_otlp_endpoint(),
+            export_timeout: default_otel_export_timeout(),
+            resource_attributes: Default::default(),
+            metrics: Default::default(),
+        }
+    }
 }
 
 #[serde_as]
