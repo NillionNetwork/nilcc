@@ -2,7 +2,7 @@ use crate::routes::build_router;
 use anyhow::Context;
 use attestation_verification::{
     DefaultCertificateFetcher, ErrorCode, MeasurementGenerator, ReportBundle, ReportFetcher, ReportResponse,
-    ReportVerifier, ValidateError, VmType,
+    ReportVerifier, ValidateError, VmType, report::DefaultArtifactsDownloaderBuilder,
 };
 use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use nilcc_artifacts::{Artifacts, downloader::ArtifactsDownloader, metadata::ArtifactsMetadata};
@@ -186,7 +186,8 @@ fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
 async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
     let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, artifacts_url } = args;
     let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
-    let fetcher = ReportFetcher::new(artifact_cache.clone(), artifacts_url);
+    let fetcher =
+        ReportFetcher::new(artifact_cache.clone(), artifacts_url, Box::new(DefaultArtifactsDownloaderBuilder));
     let bundle = fetcher.fetch_report(&endpoint).await?;
     let ReportBundle { cpu_count, metadata_hash, tls_fingerprint, nilcc_version, metadata, vm_type, .. } = bundle;
 
