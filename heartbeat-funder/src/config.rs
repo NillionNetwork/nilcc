@@ -27,7 +27,7 @@ pub struct Config {
     pub rpc: RpcConfig,
 
     /// The contracts addresses.
-    pub contracts: ContractsConfig,
+    pub contracts: Option<ContractsConfig>,
 
     /// The interval configuration.
     #[serde(default)]
@@ -99,6 +99,7 @@ pub struct ThresholdsConfig {
     pub eth: EthThresholdConfig,
 
     /// The NIL threshold configuration.
+    #[serde(default)]
     pub nil: NilThresholdConfig,
 }
 
@@ -116,7 +117,7 @@ pub struct EthThresholdConfig {
 }
 
 #[serde_as]
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct NilThresholdConfig {
     /// The minimum amount of NIL a wallet is tolerated to hold.
     #[serde_as(as = "DisplayFromStr")]

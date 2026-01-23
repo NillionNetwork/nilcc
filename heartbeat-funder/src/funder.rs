@@ -40,7 +40,7 @@ pub struct FunderArgs {
     pub static_addresses: BTreeSet<Address>,
     pub poll_interval: Duration,
     pub thresholds: ThresholdsConfig,
-    pub contracts: ContractsConfig,
+    pub contracts: Option<ContractsConfig>,
 }
 
 pub struct Funder {
@@ -64,7 +64,7 @@ impl Funder {
         FunderHandle(sender)
     }
 
-    async fn run(mut self, contracts: ContractsConfig) {
+    async fn run(mut self, contracts: Option<ContractsConfig>) {
         info!("Using wallet {}", self.signer.address());
 
         info!("Connecting to RPC endpoint {}", self.rpc_endpoint);
@@ -78,7 +78,16 @@ impl Funder {
             }
         };
         let provider = DynProvider::new(provider);
-        let nil = NilTokenInstance::new(contracts.nil, provider.clone());
+        let nil = match contracts {
+            Some(contracts) => {
+                info!("Funding NIL via contract address {}", contracts.nil);
+                Some(NilTokenInstance::new(contracts.nil, provider.clone()))
+            }
+            None => {
+                info!("Disabling NIL funding support since no contract address was provided");
+                None
+            }
+        };
         let ctx = Context { provider, nil };
 
         loop {
@@ -163,8 +172,9 @@ impl Funder {
     }
 
     async fn ensure_address_funded_nil(&self, address: Address, ctx: &Context) -> anyhow::Result<()> {
+        let Some(nil) = &ctx.nil else { return Ok(()) };
         let nil_balance: NilAmount =
-            ctx.nil.balanceOf(address).call().await.context("Failed to get address balance")?.into();
+            nil.balanceOf(address).call().await.context("Failed to get address balance")?.into();
         if nil_balance > self.thresholds.nil.minimum {
             info!("Address {address} has enough NIL balance: {nil_balance}");
             return Ok(());
@@ -172,8 +182,7 @@ impl Funder {
         let missing = self.thresholds.nil.target.saturating_sub(nil_balance);
         info!("{address} has {nil_balance} NIL, need to fund with {missing} NIL");
 
-        let receipt = ctx
-            .nil
+        let receipt = nil
             .transfer(address, missing.0)
             .send()
             .await
@@ -205,7 +214,7 @@ impl Funder {
 
 struct Context {
     provider: DynProvider,
-    nil: NilTokenInstance<DynProvider>,
+    nil: Option<NilTokenInstance<DynProvider>>,
 }
 
 #[derive(Clone)]
@@ -235,7 +244,7 @@ enum FunderCommand {
 pub type EthAmount = AssetAmount<{ Unit::ETHER.get() }>;
 pub type NilAmount = AssetAmount<6>;
 
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, PartialEq, PartialOrd)]
 pub struct AssetAmount<const U: u8>(U256);
 
 impl<const U: u8> AssetAmount<U> {
