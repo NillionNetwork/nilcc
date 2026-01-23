@@ -11,3 +11,5 @@ pub use report::{EnvironmentSpec, ReportBundle, ReportBundleError, ReportFetcher
 pub use verify::{ReportVerifier, VerificationError};
 
 pub use sev;
+
+pub use nilcc_artifacts;
