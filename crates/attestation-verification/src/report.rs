@@ -46,11 +46,16 @@ impl From<VmType> for nilcc_artifacts::VmType {
 pub struct ReportFetcher {
     cache_path: PathBuf,
     artifacts_url: String,
+    artifacts_download_builder: Box<dyn ArtifactsDownloaderBuilder>,
 }
 
 impl ReportFetcher {
-    pub fn new(cache_path: PathBuf, artifacts_url: String) -> Self {
-        Self { cache_path, artifacts_url }
+    pub fn new(
+        cache_path: PathBuf,
+        artifacts_url: String,
+        artifacts_download_builder: Box<dyn ArtifactsDownloaderBuilder>,
+    ) -> Self {
+        Self { cache_path, artifacts_url, artifacts_download_builder }
     }
 
     pub async fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
@@ -92,7 +97,9 @@ impl ReportFetcher {
         let download_path = self.cache_path.join(&nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let downloader = ArtifactsDownloader::new(nilcc_version.clone(), vec![vm_type.into()])
+        let downloader = self
+            .artifacts_download_builder
+            .build_downloader(nilcc_version.clone(), vm_type)
             .without_disk_images()
             .without_artifact_overwrite()
             .with_artifacts_url(self.artifacts_url.clone());
@@ -107,6 +114,18 @@ impl ReportFetcher {
             nilcc_version,
             vm_type,
         })
+    }
+}
+
+pub trait ArtifactsDownloaderBuilder: Send + Sync + 'static {
+    fn build_downloader(&self, nilcc_version: String, vm_type: VmType) -> ArtifactsDownloader;
+}
+
+pub struct DefaultArtifactsDownloaderBuilder;
+
+impl ArtifactsDownloaderBuilder for DefaultArtifactsDownloaderBuilder {
+    fn build_downloader(&self, nilcc_version: String, vm_type: VmType) -> ArtifactsDownloader {
+        ArtifactsDownloader::new(nilcc_version, vec![vm_type.into()])
     }
 }
 
