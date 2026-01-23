@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::ValueEnum;
 use nilcc_artifacts::{
     Artifacts,
@@ -8,7 +9,10 @@ use reqwest::{ClientBuilder, Url, tls::TlsInfo};
 use serde::Deserialize;
 use sev::firmware::guest::AttestationReport;
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tracing::info;
 use x509_parser::parse_x509_certificate;
 
@@ -46,16 +50,16 @@ impl From<VmType> for nilcc_artifacts::VmType {
 pub struct ReportFetcher {
     cache_path: PathBuf,
     artifacts_url: String,
-    artifacts_download_builder: Box<dyn ArtifactsDownloaderBuilder>,
+    artifacts_downloader: Box<dyn ReportArtifactsDownloader>,
 }
 
 impl ReportFetcher {
     pub fn new(
         cache_path: PathBuf,
         artifacts_url: String,
-        artifacts_download_builder: Box<dyn ArtifactsDownloaderBuilder>,
+        artifacts_downloader: Box<dyn ReportArtifactsDownloader>,
     ) -> Self {
-        Self { cache_path, artifacts_url, artifacts_download_builder }
+        Self { cache_path, artifacts_url, artifacts_downloader }
     }
 
     pub async fn fetch_report(&self, base_url: &str) -> Result<ReportBundle, ReportBundleError> {
@@ -97,13 +101,10 @@ impl ReportFetcher {
         let download_path = self.cache_path.join(&nilcc_version);
 
         info!("Downloading artifacts, using {} as cache", self.cache_path.display());
-        let downloader = self
-            .artifacts_download_builder
-            .build_downloader(nilcc_version.clone(), vm_type)
-            .without_disk_images()
-            .without_artifact_overwrite()
-            .with_artifacts_url(self.artifacts_url.clone());
-        let artifacts = downloader.download(&download_path).await?;
+        let artifacts = self
+            .artifacts_downloader
+            .download(nilcc_version.clone(), vm_type, self.artifacts_url.clone(), &download_path)
+            .await?;
         let Artifacts { metadata, metadata_hash } = artifacts;
         Ok(ReportBundle {
             report,
@@ -117,15 +118,33 @@ impl ReportFetcher {
     }
 }
 
-pub trait ArtifactsDownloaderBuilder: Send + Sync + 'static {
-    fn build_downloader(&self, nilcc_version: String, vm_type: VmType) -> ArtifactsDownloader;
+#[async_trait]
+pub trait ReportArtifactsDownloader: Send + Sync + 'static {
+    async fn download(
+        &self,
+        nilcc_version: String,
+        vm_type: VmType,
+        artifacts_url: String,
+        download_path: &Path,
+    ) -> Result<Artifacts, DownloadError>;
 }
 
-pub struct DefaultArtifactsDownloaderBuilder;
+pub struct DefaultReportArtifactsDownloader;
 
-impl ArtifactsDownloaderBuilder for DefaultArtifactsDownloaderBuilder {
-    fn build_downloader(&self, nilcc_version: String, vm_type: VmType) -> ArtifactsDownloader {
-        ArtifactsDownloader::new(nilcc_version, vec![vm_type.into()])
+#[async_trait]
+impl ReportArtifactsDownloader for DefaultReportArtifactsDownloader {
+    async fn download(
+        &self,
+        nilcc_version: String,
+        vm_type: VmType,
+        artifacts_url: String,
+        download_path: &Path,
+    ) -> Result<Artifacts, DownloadError> {
+        let downloader = ArtifactsDownloader::new(nilcc_version, vec![vm_type.into()])
+            .without_disk_images()
+            .without_artifact_overwrite()
+            .with_artifacts_url(artifacts_url);
+        downloader.download(download_path).await
     }
 }
 
