@@ -1,11 +1,18 @@
 use crate::{
     agent::{NilccAgentClient, NilccAgentMonitor, NilccAgentMonitorArgs},
     api::{NilccApiClient, NilccApiMonitor, NilccApiMonitorArgs},
-    config::Config,
+    config::{Config, OtelConfig},
     funder::{Funder, FunderArgs},
 };
-use anyhow::bail;
+use anyhow::{Context, bail};
 use clap::Parser;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::{MetricExporterBuilder, WithExportConfig};
+use opentelemetry_sdk::{
+    Resource,
+    metrics::{PeriodicReader, SdkMeterProvider},
+};
+use std::env;
 use tokio::signal::{self, unix::SignalKind};
 use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::filter::EnvFilter;
@@ -14,6 +21,7 @@ mod agent;
 mod api;
 mod config;
 mod funder;
+mod metrics;
 
 /// Heartbeat funder allows monitoring and funding wallets that are used to emit heartbeats in
 /// nilcc workloads.
@@ -43,6 +51,30 @@ async fn shutdown_signal() {
     }
 }
 
+fn is_otel_disabled() -> bool {
+    env::var("OTEL_SDK_DISABLED").as_deref() == Ok("true")
+}
+
+fn setup_otel(config: OtelConfig) -> anyhow::Result<SdkMeterProvider> {
+    let service_name = env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "heartbeat-funder".to_string());
+    let mut attributes = vec![KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))];
+    for (key, value) in config.resource_attributes {
+        attributes.push(KeyValue::new(key, value));
+    }
+    let resource = Resource::builder().with_service_name(service_name).build();
+    let exporter = MetricExporterBuilder::new()
+        .with_tonic()
+        .with_endpoint(config.endpoint)
+        .with_timeout(config.export_timeout)
+        .build()
+        .context("Failed to build metrics exporter")?;
+
+    let reader = PeriodicReader::builder(exporter).with_interval(config.metrics.export_interval).build();
+    let provider = SdkMeterProvider::builder().with_resource(resource).with_reader(reader).build();
+    opentelemetry::global::set_meter_provider(provider.clone());
+    Ok(provider)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -60,6 +92,22 @@ async fn main() -> anyhow::Result<()> {
     if !config.thresholds.nil.target.is_zero() && config.thresholds.nil.minimum >= config.thresholds.nil.target {
         bail!("NIL minimum funding threshold must be lower than its target");
     }
+
+    let metrics_handle = match config.otel {
+        Some(_) if is_otel_disabled() => {
+            info!("OTEL metrics disabled via env var");
+            None
+        }
+        Some(config) => {
+            info!("Exporting OTEL samples to {}", config.endpoint);
+            let handle = setup_otel(config).context("Failed to setup OTEL")?;
+            Some(handle)
+        }
+        None => {
+            info!("No metrics config provided");
+            None
+        }
+    };
 
     let funder = Funder::spawn(FunderArgs {
         rpc_endpoint: config.rpc.endpoint,
@@ -88,5 +136,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     shutdown_signal().await;
+    if let Some(handle) = metrics_handle {
+        info!("Shutting down metrics exporter");
+        let _ = handle.shutdown();
+    }
     Ok(())
 }

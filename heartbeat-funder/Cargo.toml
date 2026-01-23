@@ -9,6 +9,9 @@ alloy-provider = { version = "1.1", features = ["ws"] }
 anyhow = "1"
 clap = { version =  "4.5", features = ["derive", "env"] }
 config = { version = "0.15", default-features = false, features = ["yaml"] }
+opentelemetry = { version = "0.31", default-features = false, features = ["metrics"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["grpc-tonic", "metrics"] }
+opentelemetry_sdk = { version = "0.31", default-features = false, features = ["rt-tokio", "metrics"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", features = ["ring"] }
 serde = { version = "1.0", features = ["derive"] }
