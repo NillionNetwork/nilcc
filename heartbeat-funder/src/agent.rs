@@ -1,4 +1,4 @@
-use crate::funder::FunderHandle;
+use crate::{funder::FunderHandle, metrics};
 use alloy::primitives::{Address, Keccak256};
 use nilcc_agent_models::{errors::RequestHandlerError, system::VerifierKey};
 use reqwest::{
@@ -35,6 +35,7 @@ impl NilccAgentMonitor {
     }
 
     async fn run(mut self) {
+        metrics::get().agents.inc_monitored(1);
         loop {
             self.ticker.tick().await;
 

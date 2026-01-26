@@ -1,6 +1,7 @@
 use crate::{
     config::{ContractsConfig, ThresholdsConfig},
     funder::NilToken::NilTokenInstance,
+    metrics,
 };
 use alloy::{
     primitives::{
@@ -66,6 +67,7 @@ impl Funder {
 
     async fn run(mut self, contracts: Option<ContractsConfig>) {
         info!("Using wallet {}", self.signer.address());
+        metrics::get().addresses.inc_monitored(self.addresses.len());
 
         info!("Connecting to RPC endpoint {}", self.rpc_endpoint);
         let provider = loop {
@@ -112,7 +114,10 @@ impl Funder {
         // Print our balance so we can keep track of this externally.
         let address = self.signer.address();
         match ctx.provider.get_balance(address).await.map(EthAmount::from) {
-            Ok(balance) => info!("Wallet {address} has {balance} ETH"),
+            Ok(balance) => {
+                info!("Wallet {address} has {balance} ETH");
+                metrics::get().wallet.eth.set_funds(balance);
+            }
             Err(e) => {
                 error!("Failed to get our own balance: {e}");
             }
@@ -129,6 +134,7 @@ impl Funder {
             FunderCommand::AddAddress(address) => {
                 info!("Adding address {address} to monitored set");
                 self.addresses.insert(address);
+                metrics::get().addresses.inc_monitored(self.addresses.len());
                 if let Err(e) = self.ensure_address_funded(address, ctx).await {
                     error!("Failed to fund address {address}: {e}");
                 }
@@ -136,6 +142,7 @@ impl Funder {
             FunderCommand::RemoveAddress(address) => {
                 info!("Removing address {address} from monitored set");
                 self.addresses.remove(&address);
+                metrics::get().addresses.dec_monitored(self.addresses.len());
             }
         }
     }
@@ -168,6 +175,8 @@ impl Funder {
         let tx = TransactionRequest { to: Some(TxKind::Call(address)), value: Some(missing.0), ..Default::default() };
         let tx_hash = ctx.provider.send_transaction(tx).await?.watch().await?;
         info!("Funded {address} with {missing} ETH in transaction {tx_hash}");
+        metrics::get().wallet.eth.inc_payments(1);
+        metrics::get().wallet.eth.inc_sent(missing);
         Ok(())
     }
 
@@ -279,6 +288,12 @@ impl<const U: u8> fmt::Display for AssetAmount<U> {
 impl<const U: u8> From<U256> for AssetAmount<U> {
     fn from(amount: U256) -> Self {
         Self(amount)
+    }
+}
+
+impl<const U: u8> From<AssetAmount<U>> for f64 {
+    fn from(amount: AssetAmount<U>) -> Self {
+        Self::from(amount.0)
     }
 }
 
