@@ -8,8 +8,10 @@ use alloy::{
     signers::local::PrivateKeySigner,
     sol_types::sol,
 };
+use alloy_contract::{CallBuilder, CallDecoder};
 use alloy_provider::{Provider, WsConnect};
 use anyhow::Context as _;
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
@@ -223,7 +225,8 @@ impl HeartbeatEmitter {
         let snapshot_id = snapshot_id.saturating_sub(1);
         let htx = htx.to_bytes()?;
         let call = router.submitHeartbeat(htx.into(), snapshot_id);
-        let pending_tx = call.send().await?;
+        let gas = Self::overestimate_gas(&call).await?;
+        let pending_tx = call.gas(gas).send().await?;
         let receipt = pending_tx.get_receipt().await?;
         let tx_hash = receipt.transaction_hash;
         let status = if receipt.status() { "success" } else { "failure" };
@@ -242,6 +245,13 @@ impl HeartbeatEmitter {
             }
         }
         ctx
+    }
+
+    pub async fn overestimate_gas<P: Provider, D: CallDecoder>(call: &CallBuilder<&P, D>) -> anyhow::Result<u64> {
+        // Estimate gas and add a 50% buffer
+        let estimated_gas = call.estimate_gas().await.map_err(|e| anyhow!("failed to estimate gas: {e}"))?;
+        let gas_with_buffer = estimated_gas.saturating_add(estimated_gas / 2);
+        Ok(gas_with_buffer)
     }
 }
 
