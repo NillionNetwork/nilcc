@@ -56,12 +56,12 @@ fn is_otel_disabled() -> bool {
 }
 
 fn setup_otel(config: OtelConfig) -> anyhow::Result<SdkMeterProvider> {
-    let service_name = env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "heartbeat-funder".to_string());
+    let service_name = env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| env!("CARGO_PKG_NAME").to_string());
     let mut attributes = vec![KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))];
     for (key, value) in config.resource_attributes {
         attributes.push(KeyValue::new(key, value));
     }
-    let resource = Resource::builder().with_service_name(service_name).build();
+    let resource = Resource::builder().with_service_name(service_name).with_attributes(attributes).build();
     let exporter = MetricExporterBuilder::new()
         .with_tonic()
         .with_endpoint(config.endpoint)
