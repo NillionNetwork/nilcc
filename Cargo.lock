@@ -5229,7 +5229,7 @@ dependencies = [
 [[package]]
 name = "sev"
 version = "7.1.0"
-source = "git+https://github.com/virtee/sev?branch=main#c7b6bbb4e9c0fe85199723ab082ccadf39a494f0"
+source = "git+https://github.com/virtee/sev?rev=3d5c52ff7dcd3f67b14f77d96d76aae1eb9f7f8b#3d5c52ff7dcd3f67b14f77d96d76aae1eb9f7f8b"
 dependencies = [
  "base64",
  "bitfield",
