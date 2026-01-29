@@ -17,4 +17,4 @@ members = [
 ]
 
 [workspace.dependencies]
-sev = { git = "https://github.com/virtee/sev", branch = "main", default-features = false }
+sev = { git = "https://github.com/virtee/sev", rev = "3d5c52ff7dcd3f67b14f77d96d76aae1eb9f7f8b", default-features = false }
