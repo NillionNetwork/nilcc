@@ -73,7 +73,8 @@ impl From<ValidateError> for ErrorCode {
                 | VerificationError::InvalidMeasurement { .. }
                 | VerificationError::InvalidVcekPubKey
                 | VerificationError::MalformedReportSignature
-                | VerificationError::InvalidSignature => InvalidReport,
+                | VerificationError::InvalidSignature
+                | VerificationError::DebugAllowed => InvalidReport,
                 VerificationError::SerializeReport(_) => Internal,
             },
         }
