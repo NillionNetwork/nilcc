@@ -225,6 +225,12 @@ impl HeartbeatEmitter {
         let snapshot_id = snapshot_id.saturating_sub(1);
         let htx = htx.to_bytes()?;
         let call = router.submitHeartbeat(htx.into(), snapshot_id);
+
+        // Don't set any priority fees in heartbeats.
+        let estimate = router.provider().estimate_eip1559_fees().await?;
+        let priority_fee = 1u128;
+        let call = call.max_priority_fee_per_gas(priority_fee).max_fee_per_gas(estimate.max_fee_per_gas);
+
         let gas = Self::overestimate_gas(&call).await?;
         let pending_tx = call.gas(gas).send().await?;
         let receipt = pending_tx.get_receipt().await?;
