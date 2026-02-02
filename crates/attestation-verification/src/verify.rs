@@ -43,6 +43,9 @@ impl ReportVerifier {
 
         Self::verify_report_signature(&certs.vcek, report)?;
         Self::verify_attestation_tcb(&certs.vcek, report, &processor)?;
+        if report.policy.debug_allowed() {
+            return Err(VerificationError::DebugAllowed);
+        }
         info!("Verification successful");
         Ok(())
     }
@@ -330,6 +333,9 @@ pub enum VerificationError {
 
     #[error("invalid AMD certificate: {0}")]
     InvalidCertificate(&'static str),
+
+    #[error("debug mode allowed")]
+    DebugAllowed,
 }
 
 #[derive(Debug, thiserror::Error)]
