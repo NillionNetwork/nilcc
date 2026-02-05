@@ -93,13 +93,24 @@ struct ValidateArgs {
     #[clap(short, long, default_value = default_cert_cache_path().into_os_string())]
     cert_cache: PathBuf,
 
-    /// The docker compose hash that the CVM executes.
-    #[clap(long)]
-    docker_compose_hash: String,
+    #[clap(flatten)]
+    measurement: Measurement,
 
     /// The base url from which artifacts should be fetched.
     #[clap(long, default_value = default_artifacts_url())]
     artifacts_url: String,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+struct Measurement {
+    /// The docker compose hash that the CVM executes.
+    #[clap(long, group = "measurement-hash")]
+    docker_compose_hash: Option<String>,
+
+    /// Disable measurement hash validation.
+    #[clap(long, group = "measurement-hash")]
+    ignore_measurement_hash: bool,
 }
 
 #[derive(Args)]
@@ -184,16 +195,21 @@ fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
 }
 
 async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
-    let ValidateArgs { endpoint, artifact_cache, cert_cache, docker_compose_hash, artifacts_url } = args;
-    let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
+    let ValidateArgs { endpoint, artifact_cache, cert_cache, measurement, artifacts_url } = args;
     let fetcher = ReportFetcher::new(artifact_cache.clone(), artifacts_url, Box::new(DefaultReportArtifactsDownloader));
     let bundle = fetcher.fetch_report(&endpoint).await?;
     let ReportBundle { cpu_count, metadata_hash, tls_fingerprint, nilcc_version, metadata, vm_type, .. } = bundle;
 
     let artifacts_path = artifact_cache.join(&nilcc_version);
-    let measurement =
-        MeasurementGenerator::new(docker_compose_hash, cpu_count, vm_type.into(), &metadata, &artifacts_path)
-            .generate()?;
+    let measurement = match measurement.ignore_measurement_hash {
+        true => bundle.report.measurement.to_vec(),
+        false => {
+            let docker_compose_hash = measurement.docker_compose_hash.expect("no docker compose hash");
+            let docker_compose_hash = decode_compose_hash(&docker_compose_hash)?;
+            MeasurementGenerator::new(docker_compose_hash, cpu_count, vm_type.into(), &metadata, &artifacts_path)
+                .generate()?
+        }
+    };
     let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
     let verifier = ReportVerifier::new(Arc::new(fetcher));
     verifier.verify_report(&bundle.report, &measurement).await?;
