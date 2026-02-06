@@ -71,6 +71,7 @@ impl NilccApiMonitor {
                 client,
                 poll_interval: self.agent_poll_interval,
                 funder_handle: self.funder_handle.clone(),
+                name: None,
             });
             self.agents.insert(instance.id);
         }
