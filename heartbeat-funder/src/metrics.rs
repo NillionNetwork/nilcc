@@ -1,7 +1,7 @@
 use crate::funder::EthAmount;
 use opentelemetry::{
     global,
-    metrics::{Counter, Gauge, Meter, UpDownCounter},
+    metrics::{Counter, Gauge, Meter},
 };
 use std::sync::LazyLock;
 
@@ -32,24 +32,20 @@ impl Metrics {
 }
 
 pub(crate) struct AddressMetrics {
-    monitored: UpDownCounter<i64>,
+    monitored: Gauge<u64>,
 }
 
 impl AddressMetrics {
     fn new(meter: &Meter) -> Self {
         let monitored = meter
-            .i64_up_down_counter("nilcc.funder.addresses.monitored")
+            .u64_gauge("nilcc.funder.addresses.monitored")
             .with_description("Total number of addresses monitored")
             .build();
         Self { monitored }
     }
 
-    pub(crate) fn inc_monitored(&self, amount: usize) {
-        self.monitored.add(amount as i64, &[]);
-    }
-
-    pub(crate) fn dec_monitored(&self, amount: usize) {
-        self.monitored.add(-(amount as i64), &[]);
+    pub(crate) fn set_monitored(&self, amount: u64) {
+        self.monitored.record(amount, &[]);
     }
 }
 
