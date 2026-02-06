@@ -6,18 +6,18 @@ use alloy::{
 use reqwest::Url;
 use serde::Deserialize;
 use serde_with::{DisplayFromStr, DurationSeconds, serde_as};
-use std::{collections::BTreeSet, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 #[serde_as]
 #[derive(Deserialize)]
 pub struct Config {
     /// A list of static wallets to be funded.
     #[serde(default)]
-    pub wallets: BTreeSet<Address>,
+    pub wallets: BTreeMap<String, Address>,
 
     /// Configuration for standalone nilcc-agent instances that need to be monitored.
     #[serde(default)]
-    pub agents: Vec<AgentConfig>,
+    pub agents: BTreeMap<String, AgentConfig>,
 
     /// Configuration for nilcc-api.
     #[serde(default)]

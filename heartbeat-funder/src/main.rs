@@ -108,17 +108,18 @@ async fn main() -> anyhow::Result<()> {
     let funder = Funder::spawn(FunderArgs {
         rpc_endpoint: config.rpc.endpoint,
         signer: config.private_key,
-        static_addresses: config.wallets,
+        static_addresses: config.wallets.into_values().collect(),
         poll_interval: config.intervals.funding,
         thresholds: config.thresholds,
         contracts: config.contracts,
     });
-    for agent in config.agents {
+    for (name, agent) in config.agents {
         let client = NilccAgentClient::new(agent.url, &agent.token);
         NilccAgentMonitor::spawn(NilccAgentMonitorArgs {
             client,
             poll_interval: config.intervals.agent,
             funder_handle: funder.clone(),
+            name: Some(name),
         });
     }
     if let Some(api) = config.api {

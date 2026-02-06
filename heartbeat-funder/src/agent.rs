@@ -14,6 +14,7 @@ pub struct NilccAgentMonitorArgs {
     pub client: NilccAgentClient,
     pub poll_interval: Duration,
     pub funder_handle: FunderHandle,
+    pub name: Option<String>,
 }
 
 pub struct NilccAgentMonitor {
@@ -25,13 +26,14 @@ pub struct NilccAgentMonitor {
 
 impl NilccAgentMonitor {
     pub fn spawn(args: NilccAgentMonitorArgs) {
-        let NilccAgentMonitorArgs { client, poll_interval, funder_handle } = args;
+        let NilccAgentMonitorArgs { client, poll_interval, funder_handle, name } = args;
         let mut ticker = interval(poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         let agent_host = client.base_url.host().map(|h| h.to_string()).unwrap_or_default();
         let monitor = Self { client, ticker, funder_handle, active_addresses: Default::default() };
-        tokio::spawn(monitor.run().instrument(info_span!("agent", host = agent_host)));
+        let name = name.unwrap_or_else(|| "<unknown>".to_string());
+        tokio::spawn(monitor.run().instrument(info_span!("agent", host = agent_host, name = name)));
     }
 
     async fn run(mut self) {
