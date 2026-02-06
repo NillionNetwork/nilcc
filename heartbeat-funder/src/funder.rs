@@ -67,7 +67,7 @@ impl Funder {
 
     async fn run(mut self, contracts: Option<ContractsConfig>) {
         info!("Using wallet {}", self.signer.address());
-        metrics::get().addresses.inc_monitored(self.addresses.len());
+        metrics::get().addresses.set_monitored(self.addresses.len() as u64);
 
         info!("Connecting to RPC endpoint {}", self.rpc_endpoint);
         let provider = loop {
@@ -134,7 +134,7 @@ impl Funder {
             FunderCommand::AddAddress(address) => {
                 info!("Adding address {address} to monitored set");
                 self.addresses.insert(address);
-                metrics::get().addresses.inc_monitored(self.addresses.len());
+                metrics::get().addresses.set_monitored(self.addresses.len() as u64);
                 if let Err(e) = self.ensure_address_funded(address, ctx).await {
                     error!("Failed to fund address {address}: {e}");
                 }
@@ -142,7 +142,7 @@ impl Funder {
             FunderCommand::RemoveAddress(address) => {
                 info!("Removing address {address} from monitored set");
                 self.addresses.remove(&address);
-                metrics::get().addresses.dec_monitored(self.addresses.len());
+                metrics::get().addresses.set_monitored(self.addresses.len() as u64);
             }
         }
     }
