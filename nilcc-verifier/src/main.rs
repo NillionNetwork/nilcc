@@ -99,6 +99,10 @@ struct ValidateArgs {
     /// The base url from which artifacts should be fetched.
     #[clap(long, default_value = default_artifacts_url())]
     artifacts_url: String,
+
+    /// The domain where the processor's VCEK cert should be fetched from.
+    #[clap(long)]
+    processor_cert_domain: Option<String>,
 }
 
 #[derive(Args)]
@@ -195,7 +199,7 @@ fn decode_compose_hash(input: &str) -> Result<[u8; 32], ValidateError> {
 }
 
 async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
-    let ValidateArgs { endpoint, artifact_cache, cert_cache, measurement, artifacts_url } = args;
+    let ValidateArgs { endpoint, artifact_cache, cert_cache, measurement, artifacts_url, processor_cert_domain } = args;
     let fetcher = ReportFetcher::new(artifact_cache.clone(), artifacts_url, Box::new(DefaultReportArtifactsDownloader));
     let bundle = fetcher.fetch_report(&endpoint).await?;
     let ReportBundle { cpu_count, metadata_hash, tls_fingerprint, nilcc_version, metadata, vm_type, .. } = bundle;
@@ -210,7 +214,10 @@ async fn validate(args: ValidateArgs) -> Result<ReportMetadata, ValidateError> {
                 .generate()?
         }
     };
-    let fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
+    let mut fetcher = DefaultCertificateFetcher::new(cert_cache).map_err(ValidateError::CertCacheDirectories)?;
+    if let Some(domain) = processor_cert_domain {
+        fetcher = fetcher.with_processor_cert_domain(domain);
+    }
     let verifier = ReportVerifier::new(Arc::new(fetcher));
     verifier.verify_report(&bundle.report, &measurement).await?;
 
