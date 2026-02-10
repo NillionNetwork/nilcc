@@ -12,7 +12,7 @@ use std::{
 };
 use tracing::{error, info};
 
-const KDS_CERT_SITE: &str = "https://kdsintf.amd.com";
+const KDS_DOMAIN: &str = "kdsintf.amd.com";
 
 /// The set of certificates needed to validate a report.
 pub struct Certs {
@@ -33,12 +33,18 @@ pub trait CertificateFetcher: Send + Sync + 'static {
 /// A default implementation of the certificate fetcher.
 pub struct DefaultCertificateFetcher {
     cache_path: PathBuf,
+    processor_cert_domain: String,
 }
 
 impl DefaultCertificateFetcher {
     pub fn new(cache_path: PathBuf) -> io::Result<Self> {
         fs::create_dir_all(&cache_path)?;
-        Ok(Self { cache_path })
+        Ok(Self { cache_path, processor_cert_domain: KDS_DOMAIN.to_string() })
+    }
+
+    pub fn with_processor_cert_domain(mut self, domain: String) -> Self {
+        self.processor_cert_domain = domain;
+        self
     }
 
     async fn fetch_vcek(&self, processor: &Processor, report: &AttestationReport) -> Result<Certificate, FetcherError> {
@@ -59,7 +65,7 @@ impl DefaultCertificateFetcher {
             }
         };
 
-        let url = identifier.kds_url();
+        let url = identifier.kds_url(&self.processor_cert_domain);
         info!("Fetching VCEK from {url}");
 
         let response = get(url).await.and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingVcek)?;
@@ -89,7 +95,7 @@ impl DefaultCertificateFetcher {
             }
         };
 
-        let url = format!("{KDS_CERT_SITE}/vcek/v1/{}/cert_chain", processor.to_kds_url());
+        let url = format!("https://{KDS_DOMAIN}/vcek/v1/{}/cert_chain", processor.to_kds_url());
         info!("Fetching CA chain from {url}");
 
         let response = get(url).await.and_then(|r| r.error_for_status()).map_err(FetcherError::FetchingCertChain)?;
@@ -165,7 +171,7 @@ impl ProcessorVcekIdentifier {
         })
     }
 
-    fn kds_url(&self) -> String {
+    fn kds_url(&self, vcek_domain: &str) -> String {
         let Self { processor, fmc, bootloader, tee, snp, microcode, hw_id } = self;
         let fmc_param = match fmc {
             Some(fmc) => format!("&fmcSPL={fmc:02}"),
@@ -173,7 +179,7 @@ impl ProcessorVcekIdentifier {
         };
         let processor = processor.to_kds_url();
         format!(
-            "{KDS_CERT_SITE}/vcek/v1/{processor}/{hw_id}?blSPL={bootloader:02}&teeSPL={tee:02}&snpSPL={snp:02}&ucodeSPL={microcode:02}{fmc_param}"
+            "https://{vcek_domain}/vcek/v1/{processor}/{hw_id}?blSPL={bootloader:02}&teeSPL={tee:02}&snpSPL={snp:02}&ucodeSPL={microcode:02}{fmc_param}"
         )
     }
 
