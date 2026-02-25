@@ -24,6 +24,7 @@ import { CreateArtifactsTable1758563696154 } from "migrations/1758563696154-Crea
 import { MetalInstanceArtifactVersions1758645450546 } from "migrations/1758645450546-MetalInstanceArtifactVersions";
 import { ArtifactVersionMandatory1758656531192 } from "migrations/1758656531192-ArtifactVersionMandatory";
 import { WorkloadHeartbeats1765485856928 } from "migrations/1765485856928-WorkloadHeartbeats";
+import { ApiTokensTable1771977600000 } from "migrations/1771977600000-ApiTokensTable";
 import { DataSource } from "typeorm";
 import type { EnvVars } from "#/env";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
@@ -32,6 +33,7 @@ import {
   WorkloadEventEntity,
 } from "#/workload/workload.entity";
 import { AccountEntity } from "./account/account.entity";
+import { ApiTokenEntity } from "./api-token/api-token.entity";
 import { ArtifactEntity } from "./artifact/artifact.entity";
 import { WorkloadTierEntity } from "./workload-tier/workload-tier.entity";
 
@@ -41,9 +43,10 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
     url: config.dbUri,
     entities: [
       AccountEntity,
+      ApiTokenEntity,
       ArtifactEntity,
-      WorkloadEntity,
       MetalInstanceEntity,
+      WorkloadEntity,
       WorkloadEventEntity,
       WorkloadTierEntity,
     ],
@@ -64,6 +67,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       MetalInstanceArtifactVersions1758645450546,
       ArtifactVersionMandatory1758656531192,
       WorkloadHeartbeats1765485856928,
+      ApiTokensTable1771977600000,
     ],
     synchronize: false,
     logging: false,

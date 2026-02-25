@@ -9,7 +9,7 @@ export class AccountEntity {
   @Column({ type: "varchar", unique: true })
   name: string;
 
-  @Column({ type: "varchar", unique: true })
+  @Column({ type: "varchar" })
   apiToken: string;
 
   @Column({ type: "int" })

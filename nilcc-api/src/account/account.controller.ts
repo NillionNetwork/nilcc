@@ -42,9 +42,14 @@ export function create(options: ControllerOptions) {
     }),
     adminAuthentication(bindings),
     payloadValidator(CreateAccountRequest),
+    transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
-      const account = await bindings.services.account.create(bindings, payload);
+      const account = await bindings.services.account.create(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
       return c.json(accountMapper.entityToResponse(account));
     },
   );
