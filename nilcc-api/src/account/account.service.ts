@@ -1,4 +1,3 @@
-import * as crypto from "node:crypto";
 import { In, type QueryRunner, type Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -14,8 +13,6 @@ import type {
   UpdateAccountRequest,
 } from "./account.dto";
 import { AccountEntity } from "./account.entity";
-
-const API_TOKEN_BYTE_LENGTH: number = 16;
 
 export class AccountService {
   getRepository(
@@ -37,7 +34,7 @@ export class AccountService {
       return await repository.save({
         id: uuidv4(),
         name: request.name,
-        apiToken: crypto.randomBytes(API_TOKEN_BYTE_LENGTH).toString("hex"),
+        walletAddress: request.walletAddress.toLowerCase(),
         createdAt: new Date(),
         credits: request.credits,
       });
@@ -68,12 +65,33 @@ export class AccountService {
     return await repository.findOneBy({ id });
   }
 
-  async findByApiToken(
+  async findByWalletAddress(
     bindings: AppBindings,
-    apiToken: string,
+    walletAddress: string,
   ): Promise<AccountEntity | null> {
     const repository = this.getRepository(bindings);
-    return await repository.findOneBy({ apiToken });
+    return await repository.findOneBy({
+      walletAddress: walletAddress.toLowerCase(),
+    });
+  }
+
+  async findOrCreateByWallet(
+    bindings: AppBindings,
+    walletAddress: string,
+  ): Promise<AccountEntity> {
+    const normalized = walletAddress.toLowerCase();
+    const existing = await this.findByWalletAddress(bindings, normalized);
+    if (existing) {
+      return existing;
+    }
+    const repository = this.getRepository(bindings);
+    return await repository.save({
+      id: uuidv4(),
+      name: normalized.slice(0, 32),
+      walletAddress: normalized,
+      createdAt: new Date(),
+      credits: 0,
+    });
   }
 
   async list(bindings: AppBindings): Promise<AccountEntity[]> {

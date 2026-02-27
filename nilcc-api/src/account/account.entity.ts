@@ -10,7 +10,7 @@ export class AccountEntity {
   name: string;
 
   @Column({ type: "varchar", unique: true })
-  apiToken: string;
+  walletAddress: string;
 
   @Column({ type: "int" })
   credits: number;

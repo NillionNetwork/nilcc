@@ -4,9 +4,9 @@ export const Account = z
   .object({
     accountId: z.string().openapi({ description: "The account identifier." }),
     name: z.string().max(32).openapi({ description: "The account name." }),
-    apiToken: z
-      .string()
-      .openapi({ description: "The token to use when talking to the API." }),
+    walletAddress: z.string().openapi({
+      description: "The Ethereum wallet address for this account.",
+    }),
     createdAt: z
       .string()
       .datetime()
@@ -20,20 +20,19 @@ export const Account = z
   });
 export type Account = z.infer<typeof Account>;
 
-export const MyAccount = Account.omit({ apiToken: true })
-  .extend({
-    creditRate: z.number().openapi({
-      description: "The amount of credits currently being burnt per minute.",
-    }),
-  })
-  .openapi({
-    ref: "MyAccount",
-  });
+export const MyAccount = Account.extend({
+  creditRate: z.number().openapi({
+    description: "The amount of credits currently being burnt per minute.",
+  }),
+}).openapi({
+  ref: "MyAccount",
+});
 export type MyAccount = z.infer<typeof MyAccount>;
 
 export const CreateAccountRequest = z
   .object({
     name: z.string(),
+    walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
     credits: z.number().default(0),
   })
   .openapi({

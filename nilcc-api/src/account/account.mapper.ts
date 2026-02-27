@@ -7,7 +7,7 @@ export const accountMapper = {
       accountId: account.id,
       createdAt: account.createdAt.toISOString(),
       name: account.name,
-      apiToken: account.apiToken,
+      walletAddress: account.walletAddress,
       credits: account.credits,
     };
   },

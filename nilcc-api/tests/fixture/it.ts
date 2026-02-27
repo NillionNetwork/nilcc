@@ -8,6 +8,7 @@ export type FixtureContext = {
   app: App;
   bindings: AppBindings;
   clients: TestClients;
+  issueJwt: (accountId: string, walletAddress: string) => Promise<string>;
 };
 
 type TestFixtureExtension = {
@@ -32,6 +33,10 @@ export function createTestFixtureExtension(): TestFixtureExtension {
     clients: async ({}, use) => {
       if (!fixture) throw new Error("Fixture is not initialized");
       await use(fixture.clients);
+    },
+    issueJwt: async ({}, use) => {
+      if (!fixture) throw new Error("Fixture is not initialized");
+      await use(fixture.issueJwt);
     },
   });
   // biome-ignore-end lint/correctness/noEmptyPattern: Vitest fixture API requires this parameter structure

@@ -1,0 +1,304 @@
+import * as crypto from "node:crypto";
+import { describe } from "vitest";
+import { PathsV1 } from "#/common/paths";
+import type { PaymentListResponse } from "#/payment/payment.dto";
+import { PaymentService } from "#/payment/payment.service";
+import { createTestFixtureExtension } from "./fixture/it";
+
+describe("Payment", () => {
+  const { it, beforeAll, afterAll } = createTestFixtureExtension();
+
+  beforeAll(async (_ctx) => {});
+  afterAll(async (_ctx) => {});
+
+  describe("PaymentService.computeCredits", () => {
+    const service = new PaymentService();
+
+    it("should compute credits for whole tokens", async ({ expect }) => {
+      // 1 token = 10^18 wei, at 100 credits per token
+      const credits = service.computeCredits(BigInt(10 ** 18), 100);
+      expect(credits).toBe(100);
+    });
+
+    it("should compute credits for multiple tokens", async ({ expect }) => {
+      // 5 tokens
+      const credits = service.computeCredits(BigInt(5) * BigInt(10 ** 18), 100);
+      expect(credits).toBe(500);
+    });
+
+    it("should floor fractional tokens", async ({ expect }) => {
+      // 1.5 tokens should floor to 1 token = 100 credits
+      const oneAndHalf = BigInt(10 ** 18) + BigInt(10 ** 18) / BigInt(2);
+      const credits = service.computeCredits(oneAndHalf, 100);
+      expect(credits).toBe(100);
+    });
+
+    it("should return 0 for sub-token amounts", async ({ expect }) => {
+      // Less than 1 token
+      const credits = service.computeCredits(BigInt(10 ** 17), 100);
+      expect(credits).toBe(0);
+    });
+
+    it("should handle custom credits-per-token rate", async ({ expect }) => {
+      const credits = service.computeCredits(BigInt(10 ** 18), 50);
+      expect(credits).toBe(50);
+    });
+
+    it("should return 0 for zero amount", async ({ expect }) => {
+      const credits = service.computeCredits(BigInt(0), 100);
+      expect(credits).toBe(0);
+    });
+  });
+
+  describe("PaymentService.processEvent", () => {
+    it("should credit an account for a valid payment event", async ({
+      expect,
+      bindings,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "payment-test",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      const payment = await bindings.services.payment.processEvent(bindings, {
+        txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
+        logIndex: 0,
+        blockNumber: 1000,
+        fromAddress: walletAddress,
+        amount: BigInt(2) * BigInt(10 ** 18), // 2 tokens
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      expect(payment).not.toBeNull();
+      expect(payment?.creditedAmount).toBe(2 * bindings.config.creditsPerToken);
+
+      // Verify account credits were updated
+      const updatedAccount = await clients.admin
+        .getAccount(account.accountId)
+        .submit();
+      expect(updatedAccount.credits).toBe(2 * bindings.config.creditsPerToken);
+    });
+
+    it("should be idempotent for duplicate txHash", async ({
+      expect,
+      bindings,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "idempotent-test",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      const txHash = `0x${crypto.randomBytes(32).toString("hex")}`;
+      const event = {
+        txHash,
+        logIndex: 0,
+        blockNumber: 2000,
+        fromAddress: walletAddress,
+        amount: BigInt(10 ** 18), // 1 token
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      };
+
+      // Process the same event twice
+      const first = await bindings.services.payment.processEvent(
+        bindings,
+        event,
+      );
+      const second = await bindings.services.payment.processEvent(
+        bindings,
+        event,
+      );
+
+      expect(first).not.toBeNull();
+      expect(second).not.toBeNull();
+      expect(first?.id).toBe(second?.id);
+
+      // Credits should only be applied once
+      const updatedAccount = await clients.admin
+        .getAccount(account.accountId)
+        .submit();
+      expect(updatedAccount.credits).toBe(bindings.config.creditsPerToken);
+    });
+
+    it("should return null for unknown wallet address", async ({
+      expect,
+      bindings,
+    }) => {
+      const unknownWallet = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const result = await bindings.services.payment.processEvent(bindings, {
+        txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
+        logIndex: 0,
+        blockNumber: 3000,
+        fromAddress: unknownWallet,
+        amount: BigInt(10 ** 18),
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should return null for zero-credit amount", async ({
+      expect,
+      bindings,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      await clients.admin
+        .createAccount({
+          name: "zero-credit-test",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      const result = await bindings.services.payment.processEvent(bindings, {
+        txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
+        logIndex: 0,
+        blockNumber: 4000,
+        fromAddress: walletAddress,
+        amount: BigInt(10 ** 17), // 0.1 tokens, floors to 0 credits
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("GET /api/v1/payments/list", () => {
+    it("should require authentication", async ({ expect, app }) => {
+      const response = await app.request(PathsV1.payments.list, {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should return an empty list when no payments exist", async ({
+      expect,
+      app,
+      clients,
+      issueJwt,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "empty-payments",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      const jwt = await issueJwt(account.accountId, walletAddress);
+      const response = await app.request(PathsV1.payments.list, {
+        method: "GET",
+        headers: { authorization: `Bearer ${jwt}` },
+      });
+
+      expect(response.status).toBe(200);
+      const payments = (await response.json()) as PaymentListResponse;
+      expect(payments).toEqual([]);
+    });
+
+    it("should return payments for the authenticated account", async ({
+      expect,
+      app,
+      bindings,
+      clients,
+      issueJwt,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "with-payments",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      // Process a payment
+      const txHash = `0x${crypto.randomBytes(32).toString("hex")}`;
+      await bindings.services.payment.processEvent(bindings, {
+        txHash,
+        logIndex: 0,
+        blockNumber: 5000,
+        fromAddress: walletAddress,
+        amount: BigInt(3) * BigInt(10 ** 18),
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      const jwt = await issueJwt(account.accountId, walletAddress);
+      const response = await app.request(PathsV1.payments.list, {
+        method: "GET",
+        headers: { authorization: `Bearer ${jwt}` },
+      });
+
+      expect(response.status).toBe(200);
+      const payments = (await response.json()) as PaymentListResponse;
+      expect(payments).toHaveLength(1);
+      expect(payments[0].txHash).toBe(txHash);
+      expect(payments[0].blockNumber).toBe(5000);
+      expect(payments[0].fromAddress).toBe(walletAddress.toLowerCase());
+      expect(payments[0].creditedAmount).toBe(
+        3 * bindings.config.creditsPerToken,
+      );
+      expect(payments[0].paymentId).toBeDefined();
+      expect(payments[0].createdAt).toBeDefined();
+    });
+
+    it("should not return payments for other accounts", async ({
+      expect,
+      app,
+      bindings,
+      clients,
+      issueJwt,
+    }) => {
+      // Create two accounts
+      const wallet1 = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const wallet2 = `0x${crypto.randomBytes(20).toString("hex")}`;
+      await clients.admin
+        .createAccount({
+          name: "pay-owner",
+          walletAddress: wallet1,
+          credits: 0,
+        })
+        .submit();
+      const account2 = await clients.admin
+        .createAccount({
+          name: "pay-other",
+          walletAddress: wallet2,
+          credits: 0,
+        })
+        .submit();
+
+      // Process a payment for account1
+      await bindings.services.payment.processEvent(bindings, {
+        txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
+        logIndex: 0,
+        blockNumber: 6000,
+        fromAddress: wallet1,
+        amount: BigInt(10 ** 18),
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      // Account2 should see no payments
+      const jwt2 = await issueJwt(account2.accountId, wallet2);
+      const response = await app.request(PathsV1.payments.list, {
+        method: "GET",
+        headers: { authorization: `Bearer ${jwt2}` },
+      });
+
+      expect(response.status).toBe(200);
+      const payments = (await response.json()) as PaymentListResponse;
+      expect(payments).toEqual([]);
+    });
+  });
+});

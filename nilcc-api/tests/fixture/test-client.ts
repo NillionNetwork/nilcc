@@ -203,6 +203,12 @@ export class AdminClient extends TestClient {
 }
 
 export class UserClient extends TestClient {
+  override extraHeaders(): Record<string, string> {
+    return {
+      authorization: `Bearer ${this._options.apiToken}`,
+    };
+  }
+
   createWorkload(
     body: CreateWorkloadRequest,
   ): RequestPromise<CreateWorkloadResponse> {

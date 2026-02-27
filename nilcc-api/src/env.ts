@@ -2,9 +2,11 @@ import type { Logger } from "pino";
 import { Counter, Registry } from "prom-client";
 import type { DataSource, QueryRunner } from "typeorm";
 import { z } from "zod";
+import { AuthService } from "#/auth/auth.service";
 import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
+import { PaymentService } from "#/payment/payment.service";
 import { WorkloadService } from "#/workload/workload.service";
 import type { AccountEntity } from "./account/account.entity";
 import { AccountService } from "./account/account.service";
@@ -61,6 +63,8 @@ export type AppServices = {
   workload: WorkloadService;
   workloadTier: WorkloadTierService;
   account: AccountService;
+  auth: AuthService;
+  payment: PaymentService;
   artifact: ArtifactService;
   dns: DnsServices;
   time: TimeService;
@@ -105,6 +109,18 @@ export const EnvVarsSchema = z.object({
   metalInstancesIdleThresholdSeconds: z.number().default(120),
   artifactsBaseUrl: z.string(),
   requireArtifactsSemver: z.boolean(),
+  jwtSecret: z.string().min(32),
+  jwtExpirationSeconds: z.number().int().positive().default(86400),
+  rpcUrl: z.string().url().optional(),
+  burnContractAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
+  chainId: z.number().int().positive().optional(),
+  paymentStartBlock: z.number().int().nonnegative().default(0),
+  creditsPerToken: z.number().int().positive().default(100),
+  paymentPollerIntervalMs: z.number().int().positive().default(60_000),
+  paymentPollerMaxBlockRange: z.number().int().positive().default(1000),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -129,6 +145,15 @@ declare global {
       APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS?: string;
       APP_ARTIFACTS_BASE_URL: string;
       APP_REQUIRE_ARTIFACTS_SEMVER?: string;
+      APP_JWT_SECRET: string;
+      APP_JWT_EXPIRATION_SECONDS?: string;
+      APP_RPC_URL?: string;
+      APP_BURN_CONTRACT_ADDRESS?: string;
+      APP_CHAIN_ID?: string;
+      APP_PAYMENT_START_BLOCK?: string;
+      APP_CREDITS_PER_TOKEN?: string;
+      APP_PAYMENT_POLLER_INTERVAL_MS?: string;
+      APP_PAYMENT_POLLER_MAX_BLOCK_RANGE?: string;
     }
   }
 }
@@ -184,6 +209,8 @@ async function buildServices(
   const workloadService = new WorkloadService();
   const workloadTierService = new WorkloadTierService();
   const accountService = new AccountService();
+  const authService = new AuthService();
+  const paymentService = new PaymentService();
   const artifactService = new ArtifactService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
@@ -206,6 +233,8 @@ async function buildServices(
     workload: workloadService,
     workloadTier: workloadTierService,
     account: accountService,
+    auth: authService,
+    payment: paymentService,
     artifact: artifactService,
     dns,
     time: timeService,
@@ -242,6 +271,19 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     artifactsBaseUrl: process.env.APP_ARTIFACTS_BASE_URL,
     requireArtifactsSemver: tryBoolean(
       process.env.APP_REQUIRE_ARTIFACTS_SEMVER,
+    ),
+    jwtSecret: process.env.APP_JWT_SECRET,
+    jwtExpirationSeconds: tryNumber(process.env.APP_JWT_EXPIRATION_SECONDS),
+    rpcUrl: process.env.APP_RPC_URL,
+    burnContractAddress: process.env.APP_BURN_CONTRACT_ADDRESS,
+    chainId: tryNumber(process.env.APP_CHAIN_ID),
+    paymentStartBlock: tryNumber(process.env.APP_PAYMENT_START_BLOCK),
+    creditsPerToken: tryNumber(process.env.APP_CREDITS_PER_TOKEN),
+    paymentPollerIntervalMs: tryNumber(
+      process.env.APP_PAYMENT_POLLER_INTERVAL_MS,
+    ),
+    paymentPollerMaxBlockRange: tryNumber(
+      process.env.APP_PAYMENT_POLLER_MAX_BLOCK_RANGE,
     ),
   });
 

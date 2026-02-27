@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import { describe } from "vitest";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type {
@@ -266,14 +267,17 @@ services:
     app,
     bindings,
     clients,
+    issueJwt,
   }) => {
+    const walletAddress = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(20))).toString("hex")}`;
     const account = await clients.admin
-      .createAccount({ name: "cross-account", credits: 0 })
+      .createAccount({ name: "cross-account", walletAddress, credits: 0 })
       .submit();
+    const jwt = await issueJwt(account.accountId, account.walletAddress);
     const client = new UserClient({
       app,
       bindings,
-      apiToken: account.apiToken,
+      apiToken: jwt,
     });
     // Make sure there's something with the regular client, just in case the above tests are changed somehow.
     const workloads = await clients.user.listWorkloads().submit();
@@ -387,14 +391,24 @@ services:
     bindings,
     expect,
     clients,
+    issueJwt,
   }) => {
+    const heartbeatWallet = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(20))).toString("hex")}`;
     let otherAccount = await clients.admin
-      .createAccount({ name: "heartbeat-account", credits: 1500 })
+      .createAccount({
+        name: "heartbeat-account",
+        walletAddress: heartbeatWallet,
+        credits: 1500,
+      })
       .submit();
+    const heartbeatJwt = await issueJwt(
+      otherAccount.accountId,
+      otherAccount.walletAddress,
+    );
     const client = new UserClient({
       app,
       bindings,
-      apiToken: otherAccount.apiToken,
+      apiToken: heartbeatJwt,
     });
     await client.createWorkload(createWorkloadRequest).submit();
 

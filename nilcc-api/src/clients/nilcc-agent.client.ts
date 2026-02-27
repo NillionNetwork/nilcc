@@ -77,7 +77,10 @@ export class DefaultNilccAgentClient implements NilccAgentClient {
   }
 
   makeUrl(metalInstance: MetalInstanceEntity, path: string) {
-    return `${this.scheme}://${metalInstance.id}.${this.subdomain}:${this.port}${path}`;
+    const host = this.subdomain.endsWith(".localhost")
+      ? metalInstance.publicIp
+      : `${metalInstance.id}.${this.subdomain}`;
+    return `${this.scheme}://${host}:${this.port}${path}`;
   }
 
   async createWorkload(

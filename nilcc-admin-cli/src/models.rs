@@ -8,6 +8,7 @@ pub mod accounts {
     #[serde(rename_all = "camelCase")]
     pub struct CreateAccountRequest {
         pub name: String,
+        pub wallet_address: String,
         pub credits: u64,
     }
 

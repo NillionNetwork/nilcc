@@ -5,22 +5,21 @@ import type { ApiErrorResponse } from "./handler";
 
 export function adminOrUserAuthentication(bindings: AppBindings) {
   return async (c: Context, next: Next) => {
-    const apiToken = c.req.header("x-api-key");
-    if (!apiToken) {
-      return c.json(authError("unauthorized"), 401);
-    }
-    let isAuthenticated = apiToken === bindings.config.adminApiKey;
-    if (!isAuthenticated) {
-      const account = await bindings.services.account.findByApiToken(
-        bindings,
-        apiToken,
-      );
-      isAuthenticated = account !== null;
-    }
-    if (isAuthenticated) {
+    // Try admin API key first
+    const apiKey = c.req.header("x-api-key");
+    if (apiKey && apiKey === bindings.config.adminApiKey) {
       await next();
       return;
     }
+
+    // Try JWT bearer token
+    const account = await resolveAccountFromJwt(c, bindings);
+    if (account) {
+      c.set("account", account);
+      await next();
+      return;
+    }
+
     return c.json(authError("unauthorized"), 401);
   };
 }
@@ -35,21 +34,40 @@ export function metalInstanceAuthentication(bindings: AppBindings) {
 
 export function userAuthentication(bindings: AppBindings) {
   return async (c: Context, next: Next) => {
-    const apiToken = c.req.header("x-api-key");
-    if (!apiToken) {
-      return c.json(authError("no x-api-key header provided"), 401);
-    }
-    const account = await bindings.services.account.findByApiToken(
-      bindings,
-      apiToken,
-    );
-    if (account === null) {
+    const account = await resolveAccountFromJwt(c, bindings);
+    if (!account) {
       return c.json(authError("unauthorized"), 401);
     }
     c.set("account", account);
     await next();
     return;
   };
+}
+
+async function resolveAccountFromJwt(c: Context, bindings: AppBindings) {
+  const token = extractBearerToken(c);
+  if (!token) {
+    return null;
+  }
+  try {
+    const payload = await bindings.services.auth.verifyToken(bindings, token);
+    return await bindings.services.account.read(bindings, payload.sub);
+  } catch {
+    return null;
+  }
+}
+
+function extractBearerToken(c: Context): string | null {
+  const authHeader = c.req.header("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  // Fallback: check x-api-key header for JWT tokens
+  const apiKey = c.req.header("x-api-key");
+  if (apiKey?.includes(".")) {
+    return apiKey;
+  }
+  return null;
 }
 
 function authError(error: string): ApiErrorResponse {

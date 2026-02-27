@@ -12,6 +12,10 @@ export type Path = z.infer<typeof PathSchema>;
 
 export const PathsV1 = {
   docs: PathSchema.parse("/openapi.json"),
+  auth: {
+    challenge: PathSchema.parse("/api/v1/auth/challenge"),
+    login: PathSchema.parse("/api/v1/auth/login"),
+  },
   account: {
     create: PathSchema.parse("/api/v1/accounts/create"),
     update: PathSchema.parse("/api/v1/accounts/update"),
@@ -55,6 +59,9 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/metal-instances/:id"),
     list: PathSchema.parse("/api/v1/metal-instances/list"),
     delete: PathSchema.parse("/api/v1/metal-instances/delete"),
+  },
+  payments: {
+    list: PathSchema.parse("/api/v1/payments/list"),
   },
   system: {
     health: PathSchema.parse("/health"),

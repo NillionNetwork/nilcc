@@ -64,6 +64,9 @@ struct CreateAccountArgs {
     /// The account name.
     name: String,
 
+    /// The Ethereum wallet address for this account.
+    wallet_address: String,
+
     /// The initial number of credits for this account.
     #[clap(long, default_value_t = 0)]
     credits: u64,
@@ -168,8 +171,8 @@ impl Runner {
     }
 
     fn create_account(&self, args: CreateAccountArgs) -> Result<serde_json::Value, RequestError> {
-        let CreateAccountArgs { name, credits } = args;
-        let request = models::accounts::CreateAccountRequest { name, credits };
+        let CreateAccountArgs { name, wallet_address, credits } = args;
+        let request = models::accounts::CreateAccountRequest { name, wallet_address, credits };
         self.client.post("/api/v1/accounts/create", &request)
     }
 
