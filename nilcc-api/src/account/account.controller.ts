@@ -1,7 +1,12 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
-import { adminAuthentication, userAuthentication } from "#/common/auth";
+import {
+  accountIdentityAdminAuthentication,
+  adminAuthentication,
+  assertCanManageIdentityAccount,
+  jwtAuthentication,
+} from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
@@ -26,8 +31,7 @@ export function create(options: ControllerOptions) {
     describeRoute({
       tags: ["account"],
       summary: "Create a new account",
-      description:
-        "This will create an account and return its details including its API key",
+      description: "This will create an account and return its details.",
       responses: {
         200: {
           description: "Account created successfully",
@@ -52,7 +56,7 @@ export function create(options: ControllerOptions) {
 
 export function update(options: ControllerOptions) {
   const { app, bindings } = options;
-  app.post(
+  app.put(
     PathsV1.account.update,
     describeRoute({
       tags: ["account"],
@@ -70,11 +74,12 @@ export function update(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    adminAuthentication(bindings),
+    accountIdentityAdminAuthentication(bindings),
     payloadValidator(UpdateAccountRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
       const payload = c.req.valid("json");
+      assertCanManageIdentityAccount(c, payload.accountId);
       const account = await bindings.services.account.update(
         bindings,
         payload,
@@ -129,10 +134,11 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    adminAuthentication(bindings),
+    accountIdentityAdminAuthentication(bindings),
     pathValidator(idParamSchema),
     async (c) => {
       const params = c.req.valid("param");
+      assertCanManageIdentityAccount(c, params.id);
       const account = await bindings.services.account.read(bindings, params.id);
       if (!account) {
         throw new EntityNotFound("account");
@@ -162,7 +168,7 @@ export function me(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    userAuthentication(bindings),
+    jwtAuthentication(bindings),
     async (c) => {
       const account = c.get("account");
       const outputAccount = accountMapper.entityToResponse(account);
@@ -195,10 +201,11 @@ export function addCredits(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    adminAuthentication(bindings),
+    accountIdentityAdminAuthentication(bindings),
     payloadValidator(AddCreditsRequest),
     async (c) => {
       const payload = c.req.valid("json");
+      assertCanManageIdentityAccount(c, payload.accountId);
       const account = await bindings.services.account.addCredits(
         bindings,
         payload,

@@ -5,6 +5,13 @@ import {
   MyAccount,
   type UpdateAccountRequest,
 } from "#/account/account.dto";
+import {
+  ApiKey,
+  type CreateApiKeyRequest,
+  type DeleteApiKeyRequest,
+  ListApiKeysResponse,
+  type UpdateApiKeyRequest,
+} from "#/api-key/api-key.dto";
 import type { App } from "#/app";
 import { Artifact } from "#/artifact/artifact.dto";
 import { PathsV1 } from "#/common/paths";
@@ -142,7 +149,7 @@ export class AdminClient extends TestClient {
 
   updateAccount(request: UpdateAccountRequest): RequestPromise<Account> {
     const promise = this.request(PathsV1.account.update, {
-      method: "POST",
+      method: "PUT",
       body: request,
     });
     return new RequestPromise(promise, Account);
@@ -199,6 +206,38 @@ export class AdminClient extends TestClient {
       body: { version },
     });
     return new RequestPromise(promise, z.unknown());
+  }
+
+  createApiKey(request: CreateApiKeyRequest): RequestPromise<ApiKey> {
+    const promise = this.request(PathsV1.apiKeys.create, {
+      method: "POST",
+      body: request,
+    });
+    return new RequestPromise(promise, ApiKey);
+  }
+
+  listApiKeys(accountId: string): RequestPromise<ListApiKeysResponse> {
+    const promise = this.request(
+      PathsV1.apiKeys.listByAccount.replace(":accountId", accountId),
+      { method: "GET" },
+    );
+    return new RequestPromise(promise, ListApiKeysResponse);
+  }
+
+  updateApiKey(request: UpdateApiKeyRequest): RequestPromise<ApiKey> {
+    const promise = this.request(PathsV1.apiKeys.update, {
+      method: "PUT",
+      body: request,
+    });
+    return new RequestPromise(promise, ApiKey);
+  }
+
+  deleteApiKey(request: DeleteApiKeyRequest): RequestPromise<unknown> {
+    const promise = this.request(PathsV1.apiKeys.delete, {
+      method: "POST",
+      body: request,
+    });
+    return new RequestPromise(promise, z.object({}));
   }
 }
 

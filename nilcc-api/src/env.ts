@@ -2,7 +2,9 @@ import type { Logger } from "pino";
 import { Counter, Registry } from "prom-client";
 import type { DataSource, QueryRunner } from "typeorm";
 import { z } from "zod";
+import { ApiKeyService } from "#/api-key/api-key.service";
 import { AuthService } from "#/auth/auth.service";
+import type { AuthContext } from "#/common/auth";
 import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
@@ -51,6 +53,7 @@ export type AppEnv = {
 export type AppVariables = {
   txQueryRunner: QueryRunner;
   account: AccountEntity;
+  auth: AuthContext;
 };
 
 export type DnsServices = {
@@ -59,6 +62,7 @@ export type DnsServices = {
 };
 
 export type AppServices = {
+  apiKey: ApiKeyService;
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
   workloadTier: WorkloadTierService;
@@ -209,6 +213,7 @@ async function buildServices(
   const workloadService = new WorkloadService();
   const workloadTierService = new WorkloadTierService();
   const accountService = new AccountService();
+  const apiKeyService = new ApiKeyService();
   const authService = new AuthService();
   const paymentService = new PaymentService();
   const artifactService = new ArtifactService();
@@ -229,6 +234,7 @@ async function buildServices(
   })();
 
   return {
+    apiKey: apiKeyService,
     metalInstance: metalInstanceService,
     workload: workloadService,
     workloadTier: workloadTierService,

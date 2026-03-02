@@ -294,7 +294,7 @@ describe("Auth", () => {
       expect(response.status).toBe(401);
     });
 
-    it("should accept JWT via x-api-key header if it looks like a JWT", async ({
+    it("should reject JWT via x-api-key header", async ({
       expect,
       app,
       issueJwt,
@@ -308,15 +308,78 @@ describe("Auth", () => {
 
       const jwt = await issueJwt(account.accountId, walletAddress);
 
-      // Send JWT via x-api-key header (it contains dots, so it's detected as JWT)
+      // JWT is only accepted via Authorization: Bearer now.
       const response = await app.request(PathsV1.account.me, {
         method: "GET",
         headers: { "x-api-key": jwt },
       });
 
+      expect(response.status).toBe(401);
+    });
+
+    it("should allow valid JWT even when x-api-key header is invalid", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "jwt-with-garbage-apikey",
+          walletAddress,
+          credits: 1,
+        })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const response = await app.request(PathsV1.account.me, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          "x-api-key": "not-a-valid-admin-key",
+        },
+      });
+
       expect(response.status).toBe(200);
-      const me = (await response.json()) as MeResponseBody;
-      expect(me.walletAddress).toBe(walletAddress.toLowerCase());
+    });
+
+    it("should prioritize global admin x-api-key over invalid bearer token", async ({
+      expect,
+      app,
+      bindings,
+    }) => {
+      const response = await app.request(PathsV1.account.list, {
+        method: "GET",
+        headers: {
+          "x-api-key": bindings.config.adminApiKey,
+          authorization: "Bearer invalid.jwt.token",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject malformed authorization schemes", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({ name: "malformed-auth", walletAddress, credits: 1 })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const response = await app.request(PathsV1.account.me, {
+        method: "GET",
+        headers: {
+          authorization: `Token ${jwt}`,
+        },
+      });
+
+      expect(response.status).toBe(401);
     });
   });
 });

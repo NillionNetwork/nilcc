@@ -24,6 +24,12 @@ export const PathsV1 = {
     me: PathSchema.parse("/api/v1/accounts/me"),
     addCredits: PathSchema.parse("/api/v1/accounts/add-credits"),
   },
+  apiKeys: {
+    create: PathSchema.parse("/api/v1/api-keys/create"),
+    listByAccount: PathSchema.parse("/api/v1/api-keys/account/:accountId"),
+    update: PathSchema.parse("/api/v1/api-keys/update"),
+    delete: PathSchema.parse("/api/v1/api-keys/delete"),
+  },
   artifacts: {
     enable: PathSchema.parse("/api/v1/artifacts/enable"),
     list: PathSchema.parse("/api/v1/artifacts/list"),

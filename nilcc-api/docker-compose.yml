@@ -11,6 +11,8 @@ services:
         condition: service_healthy
       localstack:
         condition: service_started
+    env_file:
+      - .env.dev
   postgres:
     image: postgres:latest
     container_name: postgres
@@ -36,3 +38,8 @@ services:
       - "4510-4559:4510-4559" # External services port range
     volumes:
       - "./localstack_data:/var/lib/localstack" # For persistence of data
+
+  anvil:
+    image: ghcr.io/nillionnetwork/nil-anvil:d0788f3
+    ports:
+      - "8545:8545"
