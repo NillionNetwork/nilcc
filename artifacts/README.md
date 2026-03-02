@@ -18,7 +18,7 @@ The initramfs can be built by running:
 A base VM disk image can be created by running:
 
 ```bash
-./vm_image/build.sh <cpu|gpu>
+./cvm-image/build.sh <cpu|gpu>
 ```
 
 This will take some time but in the end will generate:

@@ -179,6 +179,36 @@ Once this request is handled successfully, the docker compose setup will be ran 
 every baremetal host.
 * `nilcc-agent` to report events and errors in CVMs.
 
-# Build process
+# Release process
 
-See more about the build process in [here](artifacts/README.md).
+Releases of every individual component can be done by pushing a tag with a name like `<component>-<semver-version>` 
+(e.g. `nilcc-agent-0.42.8`). Component names can be the following:
+
+* heartbeat-funder
+* nilcc-admin-cli
+* nilcc-agent
+* nilcc-artifacts
+* nilcc-attester
+* nilcc-verifier
+
+## Artifact version management
+
+Any change to the `artifacts` directory or any code change that affects the `cvm-agent` will cause artifacts to be built 
+and published to s3. On `main` branch builds, the artifacts will use the short git hash as a version (e.g. `6a40845`), 
+while builds triggered by a git tag will use semver format.
+
+Every `nilcc-agent` is told by `nilcc-api` in every heartbeat which artifacts versions it should support. This causes 
+the agent to:
+
+* Install any versions is doesn't already have installed. Note that "installing" simply means to download the artifacts 
+into the right path and mark them as supported in a sqlite table.
+* Uninstall any versions that were supported by the agent but no longer are required. This can only be done if that 
+artifact version is not in use by any workloads, so it's possible for a version to still be in use by some particular 
+agents even after `nilcc-api` does not support it. Once all workloads are shutdown, the artifacts will be removed 
+automatically on the next heartbeat.
+
+`nilcc-api` can be instructed to enable/disable specific artifact versions by using the `artifacts` command in 
+`nilcc-admin-cli`. This automatically causes all `nilcc-agent` instances hooked up to `nilcc-api` to install this 
+version after the next heartbeat, which should take about a minute total.
+
+See more about the artifacts build process in [here](artifacts/README.md).
