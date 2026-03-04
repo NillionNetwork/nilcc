@@ -14,7 +14,7 @@ services:
     env_file:
       - .env.dev
   postgres:
-    image: postgres:latest
+    image: postgres:16-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -23,7 +23,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -37,9 +37,13 @@ services:
       - "4566:4566"
       - "4510-4559:4510-4559" # External services port range
     volumes:
-      - "./localstack_data:/var/lib/localstack" # For persistence of data
+      - "localstack_data:/var/lib/localstack" # For persistence of data
 
   anvil:
     image: ghcr.io/nillionnetwork/nil-anvil:d0788f3
     ports:
       - "8545:8545"
+
+volumes:
+  postgres_data:
+  localstack_data:

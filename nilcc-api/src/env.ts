@@ -151,11 +151,11 @@ declare global {
       APP_REQUIRE_ARTIFACTS_SEMVER?: string;
       APP_JWT_SECRET: string;
       APP_JWT_EXPIRATION_SECONDS?: string;
-      APP_RPC_URL?: string;
-      APP_BURN_CONTRACT_ADDRESS?: string;
-      APP_CHAIN_ID?: string;
+      APP_RPC_URL: string;
+      APP_BURN_CONTRACT_ADDRESS: string;
+      APP_CHAIN_ID: string;
       APP_PAYMENT_START_BLOCK?: string;
-      APP_CREDITS_PER_TOKEN?: string;
+      APP_CREDITS_PER_TOKEN: string;
       APP_PAYMENT_POLLER_INTERVAL_MS?: string;
       APP_PAYMENT_POLLER_MAX_BLOCK_RANGE?: string;
     }

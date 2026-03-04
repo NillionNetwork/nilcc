@@ -106,7 +106,7 @@ export class PaymentService {
   }
 
   computeCredits(amountInWei: bigint, creditsPerToken: number): number {
-    const tokens = amountInWei / BigInt(10 ** 18);
+    const tokens = amountInWei / BigInt(10 ** 6);
     return Number(tokens) * creditsPerToken;
   }
 

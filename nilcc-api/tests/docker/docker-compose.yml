@@ -11,6 +11,11 @@ services:
     ports:
       - "4566:4566"
 
+  anvil:
+    image: ghcr.io/nillionnetwork/nil-anvil:d0788f3
+    ports:
+      - "38545:8545"
+
   agent:
     image: caddy:2
     ports:

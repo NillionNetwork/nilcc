@@ -15,32 +15,32 @@ describe("Payment", () => {
     const service = new PaymentService();
 
     it("should compute credits for whole tokens", async ({ expect }) => {
-      // 1 token = 10^18 wei, at 100 credits per token
-      const credits = service.computeCredits(BigInt(10 ** 18), 100);
+      // 1 token = 10^6 base units, at 100 credits per token
+      const credits = service.computeCredits(BigInt(10 ** 6), 100);
       expect(credits).toBe(100);
     });
 
     it("should compute credits for multiple tokens", async ({ expect }) => {
       // 5 tokens
-      const credits = service.computeCredits(BigInt(5) * BigInt(10 ** 18), 100);
+      const credits = service.computeCredits(BigInt(5) * BigInt(10 ** 6), 100);
       expect(credits).toBe(500);
     });
 
     it("should floor fractional tokens", async ({ expect }) => {
       // 1.5 tokens should floor to 1 token = 100 credits
-      const oneAndHalf = BigInt(10 ** 18) + BigInt(10 ** 18) / BigInt(2);
+      const oneAndHalf = BigInt(10 ** 6) + BigInt(10 ** 6) / BigInt(2);
       const credits = service.computeCredits(oneAndHalf, 100);
       expect(credits).toBe(100);
     });
 
     it("should return 0 for sub-token amounts", async ({ expect }) => {
       // Less than 1 token
-      const credits = service.computeCredits(BigInt(10 ** 17), 100);
+      const credits = service.computeCredits(BigInt(10 ** 5), 100);
       expect(credits).toBe(0);
     });
 
     it("should handle custom credits-per-token rate", async ({ expect }) => {
-      const credits = service.computeCredits(BigInt(10 ** 18), 50);
+      const credits = service.computeCredits(BigInt(10 ** 6), 50);
       expect(credits).toBe(50);
     });
 
@@ -70,7 +70,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 1000,
         fromAddress: walletAddress,
-        amount: BigInt(2) * BigInt(10 ** 18), // 2 tokens
+        amount: BigInt(2) * BigInt(10 ** 6), // 2 tokens
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
@@ -104,7 +104,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 2000,
         fromAddress: walletAddress,
-        amount: BigInt(10 ** 18), // 1 token
+        amount: BigInt(10 ** 6), // 1 token
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       };
 
@@ -139,7 +139,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 3000,
         fromAddress: unknownWallet,
-        amount: BigInt(10 ** 18),
+        amount: BigInt(10 ** 6),
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
@@ -165,7 +165,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 4000,
         fromAddress: walletAddress,
-        amount: BigInt(10 ** 17), // 0.1 tokens, floors to 0 credits
+        amount: BigInt(10 ** 5), // 0.1 tokens, floors to 0 credits
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
@@ -231,7 +231,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 5000,
         fromAddress: walletAddress,
-        amount: BigInt(3) * BigInt(10 ** 18),
+        amount: BigInt(3) * BigInt(10 ** 6),
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
@@ -285,7 +285,7 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 6000,
         fromAddress: wallet1,
-        amount: BigInt(10 ** 18),
+        amount: BigInt(10 ** 6),
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 

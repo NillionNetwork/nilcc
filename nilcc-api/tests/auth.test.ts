@@ -283,6 +283,18 @@ describe("Auth", () => {
       expect(response.status).toBe(401);
     });
 
+    it("should reject invalid JWT-like bearer token on mixed-auth routes", async ({
+      expect,
+      app,
+    }) => {
+      const response = await app.request(PathsV1.workloadTiers.list, {
+        method: "GET",
+        headers: { authorization: "Bearer invalid.jwt.token" },
+      });
+
+      expect(response.status).toBe(401);
+    });
+
     it("should reject requests with no authorization", async ({
       expect,
       app,

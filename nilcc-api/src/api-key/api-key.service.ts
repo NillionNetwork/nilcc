@@ -5,6 +5,9 @@ import type { AppBindings } from "#/env";
 import type { CreateApiKeyRequest, UpdateApiKeyRequest } from "./api-key.dto";
 import { ApiKeyEntity } from "./api-key.entity";
 
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export class ApiKeyService {
   getRepository(
     bindings: AppBindings,
@@ -94,6 +97,9 @@ export class ApiKeyService {
     bindings: AppBindings,
     id: string,
   ): Promise<ApiKeyEntity | null> {
+    if (!UUID_V4_PATTERN.test(id)) {
+      return null;
+    }
     const repository = this.getRepository(bindings);
     return await repository.findOne({
       where: { id, active: true },
