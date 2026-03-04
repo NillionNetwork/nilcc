@@ -78,8 +78,8 @@ sudo qemu-system-x86_64 \
   -no-reboot \
   -cpu EPYC-v4 \
   -machine q35 \
-  -smp 12,maxcpus=31 \
-  -m 16G,slots=5,maxmem=120G \
+  -smp 4 \
+  -m 4G \
   -device virtio-net-pci,disable-legacy=on,iommu_platform=true,netdev=vmnic,romfile= \
   -netdev user,id=vmnic \
   -drive if=pflash,format=raw,unit=0,file=$OVMF_PATH,readonly=on \

@@ -6,6 +6,9 @@ SCRIPT_PATH=$(dirname $(realpath $0))
 BUILD_DIR="${SCRIPT_PATH}/build"
 OUT="$BUILD_DIR/initramfs.cpio.gz"
 
+DOCKERFILE=${DOCKERFILE:-$SCRIPT_PATH/Dockerfile}
+OUTPUT_FILENAME=${OUTPUT_FILENAME:-$SCRIPT_PATH/../dist/initramfs.cpio.gz}
+
 source "$SCRIPT_PATH/../versions.sh"
 
 echo "Preparing directories.."
@@ -28,7 +31,7 @@ cleanup() {
 # Build our docker image.
 docker build \
   -t $DOCKER_IMG \
-  -f $SCRIPT_PATH/Dockerfile \
+  -f "$DOCKERFILE" \
   --build-arg KERNEL_VERSION=${KERNEL_VERSION} \
   $SCRIPT_PATH/../../
 
@@ -70,4 +73,4 @@ INITRD_SIZE=$(du -h $OUT | cut -f1)
 echo "initrd image generated at ${OUT}, size: ${INITRD_SIZE}"
 
 mkdir -p "$SCRIPT_PATH/../dist"
-cp "$OUT" "$SCRIPT_PATH/../dist/initramfs.cpio.gz"
+cp "$OUT" "$OUTPUT_FILENAME"

@@ -70,3 +70,23 @@ As part of the artifacts build, a specific build of the core artifacts is downlo
 the build. This means that an artifact build "includes" both the artifacts and the core ones in whatever path they're 
 uploaded in S3. This allows us to split the build only for CI speedup purposes but the end result is the same for anyone 
 using a concrete artifact version build.
+
+# Debugging cvm-image
+
+Because the disk image for the CVM uses squashfs, a read-only filesystem, it can be tricky to test it. A script is 
+provided in [cvm-image/debug](cvm-image/debug) to start a cvm-image in debug mode:
+
+```bash
+# Start the cpu cvm-image in debug mode
+artifacts/cvm-image/debug/run.sh cpu
+```
+
+This will:
+
+* Transform the squashfs disk image into a qcow2 formatted one.
+* Create a custom initrd that will create a `nillion:nillion` user and perform a few changes necessary for the VM to 
+boot.
+* Start the VM using qemu.
+* Destroy the qcow2 image on exit.
+
+This allows making changes to the disk image without going through a full disk build cycle.
