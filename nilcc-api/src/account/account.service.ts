@@ -1,6 +1,7 @@
 import * as crypto from "node:crypto";
 import { In, type QueryRunner, type Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
+import { ApiTokenEntity } from "#/api-token/api-token.entity";
 import {
   EntityAlreadyExists,
   EntityNotFound,
@@ -31,16 +32,26 @@ export class AccountService {
   async create(
     bindings: AppBindings,
     request: CreateAccountRequest,
+    tx: QueryRunner,
   ): Promise<AccountEntity> {
-    const repository = this.getRepository(bindings);
+    const accountRepository = this.getRepository(bindings, tx);
+    const apiTokensRepository = tx.manager.getRepository(ApiTokenEntity);
     try {
-      return await repository.save({
+      const token = crypto.randomBytes(API_TOKEN_BYTE_LENGTH).toString("hex");
+      const account = await accountRepository.save({
         id: uuidv4(),
         name: request.name,
-        apiToken: crypto.randomBytes(API_TOKEN_BYTE_LENGTH).toString("hex"),
+        apiToken: token,
         createdAt: new Date(),
         credits: request.credits,
       });
+      await apiTokensRepository.save({
+        id: uuidv4(),
+        token,
+        account,
+        createdAt: bindings.services.time.getTime(),
+      });
+      return account;
     } catch (e: unknown) {
       if (isUniqueConstraint(e)) {
         throw new EntityAlreadyExists("account");
@@ -72,8 +83,15 @@ export class AccountService {
     bindings: AppBindings,
     apiToken: string,
   ): Promise<AccountEntity | null> {
-    const repository = this.getRepository(bindings);
-    return await repository.findOneBy({ apiToken });
+    const tokenRepository = bindings.dataSource.getRepository(ApiTokenEntity);
+    const tokens = await tokenRepository.find({
+      where: { token: apiToken },
+      relations: ["account"],
+    });
+    if (tokens.length === 0) {
+      return null;
+    }
+    return tokens[0].account;
   }
 
   async list(bindings: AppBindings): Promise<AccountEntity[]> {
