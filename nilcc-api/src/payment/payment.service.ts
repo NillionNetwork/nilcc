@@ -50,10 +50,7 @@ export class PaymentService {
     }
 
     // Compute credits
-    const creditedAmount = this.computeCredits(
-      event.amount,
-      bindings.config.creditsPerToken,
-    );
+    const creditedAmount = this.computeCredits(event.amount);
     if (creditedAmount <= 0) {
       bindings.log.warn(
         `Payment ${event.txHash} resulted in 0 credits, skipping`,
@@ -105,9 +102,8 @@ export class PaymentService {
     }
   }
 
-  computeCredits(amountInWei: bigint, creditsPerToken: number): number {
-    const tokens = amountInWei / BigInt(10 ** 6);
-    return Number(tokens) * creditsPerToken;
+  computeCredits(amountInWei: bigint): number {
+    return Number(amountInWei / BigInt(10 ** 6));
   }
 
   async listByAccount(

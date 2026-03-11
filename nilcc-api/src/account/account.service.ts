@@ -118,6 +118,14 @@ export class AccountService {
     workloads: WorkloadEntity[],
     tx: QueryRunner,
   ): Promise<WorkloadEntity[]> {
+    const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
+    if (nilPrice === null) {
+      bindings.log.warn(
+        "NIL price unavailable, skipping credit deduction this tick",
+      );
+      return [];
+    }
+
     const accountCredits: Record<string, number> = {};
     for (const workload of workloads) {
       if (workload.status === "stopped") {
@@ -126,12 +134,12 @@ export class AccountService {
         );
         continue;
       }
+      const creditCost = Math.ceil(workload.creditRate / nilPrice);
       const existingCredits = accountCredits[workload.account.id];
       if (existingCredits === undefined) {
-        accountCredits[workload.account.id] = workload.creditRate;
+        accountCredits[workload.account.id] = creditCost;
       } else {
-        accountCredits[workload.account.id] =
-          existingCredits + workload.creditRate;
+        accountCredits[workload.account.id] = existingCredits + creditCost;
       }
     }
     const repository = this.getRepository(bindings, tx);

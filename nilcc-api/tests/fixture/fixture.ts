@@ -12,6 +12,7 @@ import {
   loadBindings,
   type TimeService,
 } from "#/env";
+import { NilPriceService } from "#/payment/nil-price.service";
 import { AdminClient, MetalInstanceClient, UserClient } from "./test-client";
 
 export type TestClients = {
@@ -27,6 +28,23 @@ export type TestFixture = {
   clients: TestClients;
   issueJwt: (accountId: string, walletAddress: string) => Promise<string>;
 };
+
+export class MockNilPriceService extends NilPriceService {
+  private price: number;
+
+  constructor(price = 1.0) {
+    super("mock");
+    this.price = price;
+  }
+
+  override async fetchNilPrice(): Promise<number | null> {
+    return this.price;
+  }
+
+  setPrice(price: number): void {
+    this.price = price;
+  }
+}
 
 export class MockTimeService implements TimeService {
   private time: Date;
@@ -72,6 +90,7 @@ export async function buildFixture(): Promise<TestFixture> {
     dbUri: thisDescribeDBUri,
   })) as AppBindings;
   bindings.services.time = new MockTimeService();
+  bindings.services.nilPrice = new MockNilPriceService();
 
   log.info("Creating app");
   const { app } = await buildApp(bindings);
