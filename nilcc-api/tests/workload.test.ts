@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import { describe } from "vitest";
+import { CREDITS_PER_NIL } from "#/common/credits";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type {
   CreateWorkloadRequest,
@@ -50,7 +51,7 @@ services:
     metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
-    token: "my_token",
+    token: "mock-agent-token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
@@ -337,7 +338,9 @@ services:
     expect(account.creditRate).toBe(totalUsage);
 
     // Compute how much is the maximum credits we can spend per minute
-    const maxCredits = Math.floor((account.credits - totalUsage * 5) / 5);
+    const maxCredits = Math.floor(
+      (account.credits / CREDITS_PER_NIL - totalUsage * 5) / 5,
+    );
     // Create 2 tiers: one with that value + 1 (too expensive), and another one with that value
     await clients.admin
       .createTier({
@@ -398,7 +401,7 @@ services:
       .createAccount({
         name: "heartbeat-account",
         walletAddress: heartbeatWallet,
-        credits: 1500,
+        credits: 15000,
       })
       .submit();
     const heartbeatJwt = await issueJwt(
@@ -429,7 +432,9 @@ services:
     const updatedAccount = await clients.admin
       .getAccount(workloads[0].accountId)
       .submit();
-    expect(updatedAccount.credits).toBe(account.credits - creditRate);
+    expect(updatedAccount.credits).toBe(
+      account.credits - creditRate * CREDITS_PER_NIL,
+    );
 
     // Heartbeat again, this shouldn't do anything.
     await clients.metalInstance
@@ -444,6 +449,6 @@ services:
       .getAccount(otherAccount.accountId)
       .submit();
     // should be the original minus 1 credit taken by the one workload we're running
-    expect(otherAccount.credits).toBe(1500 - 1);
+    expect(otherAccount.credits).toBe(15000 - CREDITS_PER_NIL);
   });
 });

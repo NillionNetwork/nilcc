@@ -27,10 +27,10 @@ describe("Payment", () => {
     });
 
     it("should floor fractional tokens", async ({ expect }) => {
-      // 1.5 tokens should floor to 1500 credits
+      // 1.5 tokens should floor to 1 whole token => 1000 credits
       const oneAndHalf = BigInt(10 ** 6) + BigInt(10 ** 6) / BigInt(2);
       const credits = service.computeCredits(oneAndHalf);
-      expect(credits).toBe(1500);
+      expect(credits).toBe(1000);
     });
 
     it("should return 0 for sub-token amounts", async ({ expect }) => {
