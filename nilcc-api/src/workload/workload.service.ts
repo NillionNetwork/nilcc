@@ -6,6 +6,7 @@ import type {
   Container,
   SystemStatsResponse,
 } from "#/clients/nilcc-agent.client";
+import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   AccessDenied,
   EntityNotFound,
@@ -78,9 +79,12 @@ export class WorkloadService {
     }
     const totalAccountSpend =
       await bindings.services.account.getAccountSpending(bindings, account.id);
-    const nilCreditsNeeded =
-      ((totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION) / nilPrice;
-    if (nilCreditsNeeded > account.credits) {
+    const creditsNeeded = Math.ceil(
+      (((totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION) /
+        nilPrice) *
+        CREDITS_PER_NIL,
+    );
+    if (creditsNeeded > account.credits) {
       throw new NotEnoughCredits();
     }
     const repository = this.getRepository(bindings, tx);

@@ -1,5 +1,6 @@
 import { In, type QueryRunner, type Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
+import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   EntityAlreadyExists,
   EntityNotFound,
@@ -134,7 +135,9 @@ export class AccountService {
         );
         continue;
       }
-      const creditCost = Math.ceil(workload.creditRate / nilPrice);
+      const creditCost = Math.ceil(
+        (workload.creditRate / nilPrice) * CREDITS_PER_NIL,
+      );
       const existingCredits = accountCredits[workload.account.id];
       if (existingCredits === undefined) {
         accountCredits[workload.account.id] = creditCost;

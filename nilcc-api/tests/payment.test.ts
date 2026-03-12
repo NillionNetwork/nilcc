@@ -14,23 +14,23 @@ describe("Payment", () => {
   describe("PaymentService.computeCredits", () => {
     const service = new PaymentService();
 
-    it("should compute credits for whole tokens (1:1)", async ({ expect }) => {
-      // 1 token = 10^6 base units = 1 credit
+    it("should compute credits for whole tokens", async ({ expect }) => {
+      // 1 token = 10^6 base units = 1000 credits
       const credits = service.computeCredits(BigInt(10 ** 6));
-      expect(credits).toBe(1);
+      expect(credits).toBe(1000);
     });
 
     it("should compute credits for multiple tokens", async ({ expect }) => {
-      // 5 tokens = 5 credits
+      // 5 tokens = 5000 credits
       const credits = service.computeCredits(BigInt(5) * BigInt(10 ** 6));
-      expect(credits).toBe(5);
+      expect(credits).toBe(5000);
     });
 
     it("should floor fractional tokens", async ({ expect }) => {
-      // 1.5 tokens should floor to 1 token = 1 credit
+      // 1.5 tokens should floor to 1500 credits
       const oneAndHalf = BigInt(10 ** 6) + BigInt(10 ** 6) / BigInt(2);
       const credits = service.computeCredits(oneAndHalf);
-      expect(credits).toBe(1);
+      expect(credits).toBe(1500);
     });
 
     it("should return 0 for sub-token amounts", async ({ expect }) => {
@@ -70,13 +70,13 @@ describe("Payment", () => {
       });
 
       expect(payment).not.toBeNull();
-      expect(payment?.creditedAmount).toBe(2); // 2 tokens = 2 credits (1:1)
+      expect(payment?.creditedAmount).toBe(2000); // 2 tokens = 2000 credits
 
       // Verify account credits were updated
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(2);
+      expect(updatedAccount.credits).toBe(2000);
     });
 
     it("should be idempotent for duplicate txHash", async ({
@@ -117,11 +117,11 @@ describe("Payment", () => {
       expect(second).not.toBeNull();
       expect(first?.id).toBe(second?.id);
 
-      // Credits should only be applied once (1 token = 1 credit)
+      // Credits should only be applied once (1 token = 1000 credits)
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(1);
+      expect(updatedAccount.credits).toBe(1000);
     });
 
     it("should return null for unknown wallet address", async ({
@@ -242,7 +242,7 @@ describe("Payment", () => {
       expect(payments[0].txHash).toBe(txHash);
       expect(payments[0].blockNumber).toBe(5000);
       expect(payments[0].fromAddress).toBe(walletAddress.toLowerCase());
-      expect(payments[0].creditedAmount).toBe(3); // 3 tokens = 3 credits (1:1)
+      expect(payments[0].creditedAmount).toBe(3000); // 3 tokens = 3000 credits
       expect(payments[0].paymentId).toBeDefined();
       expect(payments[0].createdAt).toBeDefined();
     });
