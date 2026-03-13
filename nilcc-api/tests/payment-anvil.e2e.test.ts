@@ -154,7 +154,7 @@ describe("Payment - Anvil burn detection e2e", () => {
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(1); // 1 NIL token = 1 credit (1:1)
+      expect(updatedAccount.credits).toBe(1000); // 1 NIL token = 1000 credits
     },
   );
 });

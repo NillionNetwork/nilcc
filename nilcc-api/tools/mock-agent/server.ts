@@ -44,7 +44,7 @@ import { bearerAuth } from "hono/bearer-auth";
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
-  const parsed = parseInt(raw, 10);
+  const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -72,16 +72,13 @@ const HEARTBEAT_INTERVAL_MS = readIntEnv("HEARTBEAT_INTERVAL_MS", 30000);
 const RECONCILE_INTERVAL_MS = readIntEnv("RECONCILE_INTERVAL_MS", 5000);
 
 const SEED_TIER_NAME = process.env.SEED_TIER_NAME ?? "mock-standard";
-const SEED_TIER_CPUS = Math.max(1, readIntEnv("SEED_TIER_CPUS", CPUS - 1));
+const SEED_TIER_CPUS = Math.max(1, readIntEnv("SEED_TIER_CPUS", 1));
 const SEED_TIER_MEMORY_MB = Math.max(
   256,
-  readIntEnv("SEED_TIER_MEMORY_MB", MEMORY_MB - 256),
+  readIntEnv("SEED_TIER_MEMORY_MB", 8192),
 );
-const SEED_TIER_DISK_GB = Math.max(
-  5,
-  readIntEnv("SEED_TIER_DISK_GB", DISK_GB - 5),
-);
-const SEED_TIER_GPUS = Math.max(0, readIntEnv("SEED_TIER_GPUS", GPUS));
+const SEED_TIER_DISK_GB = Math.max(5, readIntEnv("SEED_TIER_DISK_GB", 5));
+const SEED_TIER_GPUS = Math.max(0, readIntEnv("SEED_TIER_GPUS", 0));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -210,11 +207,11 @@ authenticated.post("/api/v1/workloads/create", async (c) => {
   if (!id) {
     return c.json(agentError("MALFORMED_REQUEST", "Missing workload id"), 400);
   }
-  if (!workloads.has(id)) {
+  const existing = workloads.get(id);
+  if (!existing) {
     workloads.set(id, { id, domain, enabled: true, createRequest: body });
     log(`Created workload ${id} (domain: ${domain})`);
   } else {
-    const existing = workloads.get(id)!;
     existing.domain = domain;
     existing.enabled = true;
     existing.createRequest = body;
@@ -286,7 +283,7 @@ authenticated.get("/api/v1/workloads/:workloadId/containers/logs", (c) => {
   const result = requireWorkload(c.req.param("workloadId"));
   if (!isWorkload(result)) return c.json(result, 404);
   const maxLines = Math.min(
-    parseInt(c.req.query("maxLines") ?? "10", 10),
+    Number.parseInt(c.req.query("maxLines") ?? "10", 10),
     1000,
   );
   const lines = Array.from(
@@ -300,7 +297,7 @@ authenticated.get("/api/v1/workloads/:workloadId/system/logs", (c) => {
   const result = requireWorkload(c.req.param("workloadId"));
   if (!isWorkload(result)) return c.json(result, 404);
   const maxLines = Math.min(
-    parseInt(c.req.query("maxLines") ?? "10", 10),
+    Number.parseInt(c.req.query("maxLines") ?? "10", 10),
     1000,
   );
   const lines = Array.from(
@@ -367,10 +364,9 @@ async function registerWithApi(publicIp: string): Promise<boolean> {
     if (res.ok) {
       log(`Registered with nilcc-api at ${NILCC_API_URL}`);
       return true;
-    } else {
-      log(`Registration failed (${res.status}): ${await res.text()}`);
-      return false;
     }
+    log(`Registration failed (${res.status}): ${await res.text()}`);
+    return false;
   } catch (err) {
     log(`Registration error: ${err}`);
     return false;
@@ -399,14 +395,13 @@ async function sendHeartbeat(): Promise<{
     if (res.ok) {
       log("Heartbeat sent");
       return { ok: true, shouldReregister: false };
-    } else {
-      const body = await res.text();
-      log(`Heartbeat failed (${res.status}): ${body}`);
-      return {
-        ok: false,
-        shouldReregister: res.status === 404,
-      };
     }
+    const body = await res.text();
+    log(`Heartbeat failed (${res.status}): ${body}`);
+    return {
+      ok: false,
+      shouldReregister: res.status === 404,
+    };
   } catch (err) {
     log(`Heartbeat error: ${err}`);
     return { ok: false, shouldReregister: false };
@@ -452,7 +447,9 @@ async function seedApi(): Promise<void> {
       } else {
         const body = await res.text();
         if (res.status !== 409) {
-          log(`Artifact enable failed for "${version}" (${res.status}): ${body}`);
+          log(
+            `Artifact enable failed for "${version}" (${res.status}): ${body}`,
+          );
         }
       }
     } catch (err) {

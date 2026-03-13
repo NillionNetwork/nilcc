@@ -1,6 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
+import { CREDITS_PER_NIL, NIL_BASE_UNITS } from "#/common/credits";
 import type { AppBindings } from "#/env";
 import { PaymentEntity } from "./payment.entity";
 
@@ -103,7 +104,7 @@ export class PaymentService {
   }
 
   computeCredits(amountInWei: bigint): number {
-    return Number(amountInWei / BigInt(10 ** 6));
+    return Number((amountInWei * BigInt(CREDITS_PER_NIL)) / NIL_BASE_UNITS);
   }
 
   async listByAccount(
