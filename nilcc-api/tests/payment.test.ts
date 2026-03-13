@@ -26,16 +26,22 @@ describe("Payment", () => {
       expect(credits).toBe(5000);
     });
 
-    it("should floor fractional tokens", async ({ expect }) => {
-      // 1.5 tokens should floor to 1500 credits
+    it("should compute credits for fractional tokens", async ({ expect }) => {
+      // 1.5 tokens = 1500 credits
       const oneAndHalf = BigInt(10 ** 6) + BigInt(10 ** 6) / BigInt(2);
       const credits = service.computeCredits(oneAndHalf);
       expect(credits).toBe(1500);
     });
 
-    it("should return 0 for sub-token amounts", async ({ expect }) => {
-      // Less than 1 token
+    it("should compute credits down to 0.001 token", async ({ expect }) => {
+      // 0.1 token = 100 credits
       const credits = service.computeCredits(BigInt(10 ** 5));
+      expect(credits).toBe(100);
+    });
+
+    it("should return 0 for sub-credit amounts", async ({ expect }) => {
+      // Less than 0.001 token
+      const credits = service.computeCredits(BigInt(10 ** 2));
       expect(credits).toBe(0);
     });
 
@@ -141,6 +147,38 @@ describe("Payment", () => {
       expect(result).toBeNull();
     });
 
+    it("should credit fractional-token amounts", async ({
+      expect,
+      bindings,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "fractional-credit-test",
+          walletAddress,
+          credits: 0,
+        })
+        .submit();
+
+      const result = await bindings.services.payment.processEvent(bindings, {
+        txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
+        logIndex: 0,
+        blockNumber: 4000,
+        fromAddress: walletAddress,
+        amount: BigInt(10 ** 5), // 0.1 token = 100 credits
+        digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.creditedAmount).toBe(100);
+
+      const updatedAccount = await clients.admin
+        .getAccount(account.accountId)
+        .submit();
+      expect(updatedAccount.credits).toBe(100);
+    });
+
     it("should return null for zero-credit amount", async ({
       expect,
       bindings,
@@ -158,9 +196,9 @@ describe("Payment", () => {
       const result = await bindings.services.payment.processEvent(bindings, {
         txHash: `0x${crypto.randomBytes(32).toString("hex")}`,
         logIndex: 0,
-        blockNumber: 4000,
+        blockNumber: 4001,
         fromAddress: walletAddress,
-        amount: BigInt(10 ** 5), // 0.1 tokens, floors to 0 credits
+        amount: BigInt(10 ** 2), // 0.0001 token, below 1 credit
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
