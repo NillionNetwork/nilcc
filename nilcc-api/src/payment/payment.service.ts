@@ -104,8 +104,7 @@ export class PaymentService {
   }
 
   computeCredits(amountInWei: bigint): number {
-    const wholeTokens = amountInWei / NIL_BASE_UNITS;
-    return Number(wholeTokens * BigInt(CREDITS_PER_NIL));
+    return Number((amountInWei * BigInt(CREDITS_PER_NIL)) / NIL_BASE_UNITS);
   }
 
   async listByAccount(
