@@ -19,24 +19,31 @@ type TestFixtureExtension = {
 
 export function createTestFixtureExtension(): TestFixtureExtension {
   let fixture: TestFixture | null = null;
+  let setupError: unknown = null;
+
+  const requireFixture = (): TestFixture => {
+    if (fixture) {
+      return fixture;
+    }
+    if (setupError) {
+      throw setupError;
+    }
+    throw new Error("Fixture is not initialized");
+  };
 
   // biome-ignore-start lint/correctness/noEmptyPattern: Vitest fixture API requires this parameter structure
   const it = vitest.test.extend<FixtureContext>({
     app: async ({}, use) => {
-      if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.app);
+      await use(requireFixture().app);
     },
     bindings: async ({}, use) => {
-      if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.bindings);
+      await use(requireFixture().bindings);
     },
     clients: async ({}, use) => {
-      if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.clients);
+      await use(requireFixture().clients);
     },
     issueJwt: async ({}, use) => {
-      if (!fixture) throw new Error("Fixture is not initialized");
-      await use(fixture.issueJwt);
+      await use(requireFixture().issueJwt);
     },
   });
   // biome-ignore-end lint/correctness/noEmptyPattern: Vitest fixture API requires this parameter structure
@@ -47,6 +54,7 @@ export function createTestFixtureExtension(): TestFixtureExtension {
         fixture = await buildFixture();
         await fn(fixture);
       } catch (error) {
+        setupError = error;
         console.error("Fixture setup failed:", error);
         throw error;
       }
@@ -54,7 +62,9 @@ export function createTestFixtureExtension(): TestFixtureExtension {
 
   const afterAll = (fn: (ctx: FixtureContext) => Promise<void>) =>
     vitest.afterAll(async () => {
-      if (!fixture) throw new Error("Fixture is not initialized");
+      if (!fixture) {
+        return;
+      }
       const { bindings, log } = fixture;
       const { dataSource } = bindings;
 
