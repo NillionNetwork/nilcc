@@ -54,16 +54,10 @@ export class InvalidWorkloadTier extends AppError {
     "no matching workload tier for the requested resources";
 }
 
-export class NotEnoughCredits extends AppError {
-  override kind = "NOT_ENOUGH_CREDITS";
+export class NotEnoughBalance extends AppError {
+  override kind = "NOT_ENOUGH_BALANCE";
   override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
-  override description = "not enough credits in account to run workload";
-}
-
-export class PriceUnavailable extends AppError {
-  override kind = "PRICE_UNAVAILABLE";
-  override statusCode: ContentfulStatusCode = StatusCodes.SERVICE_UNAVAILABLE;
-  override description = "NIL token price is currently unavailable";
+  override description = "not enough balance in account to run workload";
 }
 
 export class AgentRequestError extends AppError {

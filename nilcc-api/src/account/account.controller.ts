@@ -8,6 +8,7 @@ import {
   jwtAuthentication,
 } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
+import { microdollarsToUsd } from "#/common/nil";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -15,7 +16,7 @@ import { pathValidator, payloadValidator } from "#/common/zod-utils";
 import { transactionMiddleware } from "#/data-source";
 import {
   Account,
-  AddCreditsRequest,
+  AddBalanceRequest,
   CreateAccountRequest,
   MyAccount,
   UpdateAccountRequest,
@@ -172,26 +173,28 @@ export function me(options: ControllerOptions) {
     async (c) => {
       const account = c.get("account");
       const outputAccount = accountMapper.entityToResponse(account);
-      const creditRate = await bindings.services.account.getAccountSpending(
-        bindings,
-        account.id,
-      );
-      return c.json(MyAccount.parse({ creditRate, ...outputAccount }));
+      const spendingMicrodollars =
+        await bindings.services.account.getAccountUsdSpending(
+          bindings,
+          account.id,
+        );
+      const burnRatePerMin = microdollarsToUsd(spendingMicrodollars);
+      return c.json(MyAccount.parse({ burnRatePerMin, ...outputAccount }));
     },
   );
 }
 
-export function addCredits(options: ControllerOptions) {
+export function addBalance(options: ControllerOptions) {
   const { app, bindings } = options;
   app.post(
-    PathsV1.account.addCredits,
+    PathsV1.account.addBalance,
     describeRoute({
       tags: ["account"],
-      summary: "Add credits to an account.",
-      description: "This will add credits to the given account.",
+      summary: "Add USD balance to an account.",
+      description: "This will add USD balance to the given account.",
       responses: {
         200: {
-          description: "The credits were added successfully",
+          description: "The balance was added successfully",
           content: {
             "application/json": {
               schema: resolver(Account),
@@ -202,11 +205,11 @@ export function addCredits(options: ControllerOptions) {
       },
     }),
     accountIdentityAdminAuthentication(bindings),
-    payloadValidator(AddCreditsRequest),
+    payloadValidator(AddBalanceRequest),
     async (c) => {
       const payload = c.req.valid("json");
       assertCanManageIdentityAccount(c, payload.accountId);
-      const account = await bindings.services.account.addCredits(
+      const account = await bindings.services.account.addBalance(
         bindings,
         payload,
       );

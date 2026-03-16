@@ -1,6 +1,7 @@
 import { Column, Entity, ManyToOne, OneToMany, PrimaryColumn } from "typeorm";
 import { z } from "zod";
 import { AccountEntity } from "#/account/account.entity";
+import { bigintNumberTransformer } from "#/common/nil";
 import { MetalInstanceEntity } from "#/metal-instance/metal-instance.entity";
 import type { DockerCredentials } from "./workload.dto";
 
@@ -90,8 +91,8 @@ export class WorkloadEntity {
   @Column({ type: "int" })
   disk: number;
 
-  @Column({ type: "int" })
-  creditRate: number;
+  @Column({ type: "bigint", transformer: bigintNumberTransformer })
+  usdCostPerMin: number; // microdollars
 
   @Column({ type: "varchar", default: "scheduled" })
   status:

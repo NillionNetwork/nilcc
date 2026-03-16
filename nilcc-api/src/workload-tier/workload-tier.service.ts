@@ -1,6 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import { EntityAlreadyExists, isUniqueConstraint } from "#/common/errors";
+import { usdToMicrodollars } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import type { CreateWorkloadTierRequest } from "./workload-tier.dto";
 import { WorkloadTierEntity } from "./workload-tier.entity";
@@ -29,7 +30,7 @@ export class WorkloadTierService {
         gpus: request.gpus,
         memory: request.memoryMb,
         disk: request.diskGb,
-        cost: request.cost,
+        cost: usdToMicrodollars(request.cost),
       });
     } catch (e: unknown) {
       if (isUniqueConstraint(e)) {

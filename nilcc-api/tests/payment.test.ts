@@ -1,8 +1,8 @@
 import * as crypto from "node:crypto";
-import { describe } from "vitest";
+import { describe, vi } from "vitest";
 import { PathsV1 } from "#/common/paths";
 import type { PaymentListResponse } from "#/payment/payment.dto";
-import { PaymentService } from "#/payment/payment.service";
+import { PaymentEntity } from "#/payment/payment.entity";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("Payment", () => {
@@ -10,46 +10,6 @@ describe("Payment", () => {
 
   beforeAll(async (_ctx) => {});
   afterAll(async (_ctx) => {});
-
-  describe("PaymentService.computeCredits", () => {
-    const service = new PaymentService();
-
-    it("should compute credits for whole tokens", async ({ expect }) => {
-      // 1 token = 10^6 base units = 1000 credits
-      const credits = service.computeCredits(BigInt(10 ** 6));
-      expect(credits).toBe(1000);
-    });
-
-    it("should compute credits for multiple tokens", async ({ expect }) => {
-      // 5 tokens = 5000 credits
-      const credits = service.computeCredits(BigInt(5) * BigInt(10 ** 6));
-      expect(credits).toBe(5000);
-    });
-
-    it("should compute credits for fractional tokens", async ({ expect }) => {
-      // 1.5 tokens = 1500 credits
-      const oneAndHalf = BigInt(10 ** 6) + BigInt(10 ** 6) / BigInt(2);
-      const credits = service.computeCredits(oneAndHalf);
-      expect(credits).toBe(1500);
-    });
-
-    it("should compute credits down to 0.001 token", async ({ expect }) => {
-      // 0.1 token = 100 credits
-      const credits = service.computeCredits(BigInt(10 ** 5));
-      expect(credits).toBe(100);
-    });
-
-    it("should return 0 for sub-credit amounts", async ({ expect }) => {
-      // Less than 0.001 token
-      const credits = service.computeCredits(BigInt(10 ** 2));
-      expect(credits).toBe(0);
-    });
-
-    it("should return 0 for zero amount", async ({ expect }) => {
-      const credits = service.computeCredits(BigInt(0));
-      expect(credits).toBe(0);
-    });
-  });
 
   describe("PaymentService.processEvent", () => {
     it("should credit an account for a valid payment event", async ({
@@ -62,7 +22,7 @@ describe("Payment", () => {
         .createAccount({
           name: "payment-test",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -76,13 +36,15 @@ describe("Payment", () => {
       });
 
       expect(payment).not.toBeNull();
-      expect(payment?.creditedAmount).toBe(2000); // 2 tokens = 2000 credits
+      expect(payment?.nilAmount).toBe(2); // 2 tokens = 2 NIL
+      expect(payment?.nilPriceAtDeposit).toBe(1.0);
+      expect(payment?.depositedAmountUsd).toBe(2_000_000); // 2 NIL @ $1.0 = $2.00 = 2M microdollars
 
-      // Verify account credits were updated
+      // Verify account balance was updated in USD
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(2000);
+      expect(updatedAccount.balance).toBe(2);
     });
 
     it("should be idempotent for duplicate txHash", async ({
@@ -95,7 +57,7 @@ describe("Payment", () => {
         .createAccount({
           name: "idempotent-test",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -123,11 +85,11 @@ describe("Payment", () => {
       expect(second).not.toBeNull();
       expect(first?.id).toBe(second?.id);
 
-      // Credits should only be applied once (1 token = 1000 credits)
+      // Balance should only be applied once (1 token = 1 NIL = $1 USD at price 1.0)
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(1000);
+      expect(updatedAccount.balance).toBe(1);
     });
 
     it("should return null for unknown wallet address", async ({
@@ -157,7 +119,7 @@ describe("Payment", () => {
         .createAccount({
           name: "fractional-credit-test",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -166,30 +128,31 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 4000,
         fromAddress: walletAddress,
-        amount: BigInt(10 ** 5), // 0.1 token = 100 credits
+        amount: BigInt(10 ** 5), // 0.1 token = 100000 base units
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
       expect(result).not.toBeNull();
-      expect(result?.creditedAmount).toBe(100);
+      expect(result?.nilAmount).toBe(0.1);
+      expect(result?.depositedAmountUsd).toBe(100_000); // 0.1 NIL @ $1.0 = $0.10 = 100k microdollars
 
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(100);
+      expect(updatedAccount.balance).toBe(0.1);
     });
 
-    it("should return null for zero-credit amount", async ({
+    it("should still deposit very small amounts", async ({
       expect,
       bindings,
       clients,
     }) => {
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
-      await clients.admin
+      const account = await clients.admin
         .createAccount({
-          name: "zero-credit-test",
+          name: "small-amount-test",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -198,11 +161,62 @@ describe("Payment", () => {
         logIndex: 0,
         blockNumber: 4001,
         fromAddress: walletAddress,
-        amount: BigInt(10 ** 2), // 0.0001 token, below 1 credit
+        amount: BigInt(10 ** 2), // 100 base units = 0.0001 NIL = 100 microdollars
         digest: `0x${crypto.randomBytes(32).toString("hex")}`,
       });
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result?.nilAmount).toBe(0.0001);
+      // 0.0001 NIL @ $1.0 = 100 microdollars
+      expect(result?.depositedAmountUsd).toBe(100);
+
+      const updatedAccount = await clients.admin
+        .getAccount(account.accountId)
+        .submit();
+      expect(updatedAccount.balance).toBe(0.0001); // 100 microdollars = $0.0001
+    });
+
+    it("should retry when the NIL price is unavailable", async ({
+      expect,
+      bindings,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "nil-price-unavailable",
+          walletAddress,
+          balance: 0,
+        })
+        .submit();
+
+      const txHash = `0x${crypto.randomBytes(32).toString("hex")}`;
+      const priceSpy = vi
+        .spyOn(bindings.services.nilPrice, "fetchNilPrice")
+        .mockResolvedValueOnce(null);
+
+      await expect(
+        bindings.services.payment.processEvent(bindings, {
+          txHash,
+          logIndex: 0,
+          blockNumber: 4002,
+          fromAddress: walletAddress,
+          amount: BigInt(10 ** 6),
+          digest: `0x${crypto.randomBytes(32).toString("hex")}`,
+        }),
+      ).rejects.toThrow(/NIL price unavailable/);
+
+      const payment = await bindings.dataSource
+        .getRepository(PaymentEntity)
+        .findOneBy({ txHash });
+      expect(payment).toBeNull();
+
+      const updatedAccount = await clients.admin
+        .getAccount(account.accountId)
+        .submit();
+      expect(updatedAccount.balance).toBe(0);
+
+      priceSpy.mockRestore();
     });
   });
 
@@ -226,7 +240,7 @@ describe("Payment", () => {
         .createAccount({
           name: "empty-payments",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -253,7 +267,7 @@ describe("Payment", () => {
         .createAccount({
           name: "with-payments",
           walletAddress,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -280,7 +294,7 @@ describe("Payment", () => {
       expect(payments[0].txHash).toBe(txHash);
       expect(payments[0].blockNumber).toBe(5000);
       expect(payments[0].fromAddress).toBe(walletAddress.toLowerCase());
-      expect(payments[0].creditedAmount).toBe(3000); // 3 tokens = 3000 credits
+      expect(payments[0].depositedAmountUsd).toBe(3); // 3 NIL @ $1.0 = $3.00
       expect(payments[0].paymentId).toBeDefined();
       expect(payments[0].createdAt).toBeDefined();
     });
@@ -299,14 +313,14 @@ describe("Payment", () => {
         .createAccount({
           name: "pay-owner",
           walletAddress: wallet1,
-          credits: 0,
+          balance: 0,
         })
         .submit();
       const account2 = await clients.admin
         .createAccount({
           name: "pay-other",
           walletAddress: wallet2,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 

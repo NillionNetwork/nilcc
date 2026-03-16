@@ -7,5 +7,5 @@ export function buildAccountRouter(options: ControllerOptions): void {
   AccountController.list(options);
   AccountController.me(options);
   AccountController.read(options);
-  AccountController.addCredits(options);
+  AccountController.addBalance(options);
 }
