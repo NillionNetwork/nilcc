@@ -5,7 +5,7 @@ import {
   EntityNotFound,
   isUniqueConstraint,
 } from "#/common/errors";
-import { usdToNil } from "#/common/nil";
+import { isBalanceDepleted, usdToNil } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import { WorkloadEntity } from "#/workload/workload.entity";
 import type {
@@ -156,7 +156,8 @@ export class AccountService {
       }
       bindings.log.info(`Deducting ${delta} NIL from account ${account.id}`);
       account.balance = Math.max(0, account.balance - delta);
-      if (account.balance === 0) {
+      if (isBalanceDepleted(account.balance)) {
+        account.balance = 0;
         const accountWorkloads = workloads.filter(
           (w) => w.account.id === account.id && w.status !== "stopped",
         );

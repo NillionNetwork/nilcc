@@ -52,8 +52,8 @@ enum AccountsCommand {
     /// List the existing accounts.
     List,
 
-    /// Add credits to an account.
-    AddCredits(AddCreditsArgs),
+    /// Add NIL balance to an account.
+    AddBalance(AddBalanceArgs),
 
     /// Rename an account.
     Rename(RenameAccountArgs),
@@ -67,18 +67,18 @@ struct CreateAccountArgs {
     /// The Ethereum wallet address for this account.
     wallet_address: String,
 
-    /// The initial number of credits for this account.
-    #[clap(long, default_value_t = 0)]
-    credits: u64,
+    /// The initial NIL balance for this account.
+    #[clap(long, default_value_t = 0.0)]
+    balance: f64,
 }
 
 #[derive(Args)]
-struct AddCreditsArgs {
+struct AddBalanceArgs {
     /// The account id.
     id: Uuid,
 
-    /// The number of credits to grant to this account.
-    credits: u64,
+    /// The amount of NIL to add to this account.
+    balance: f64,
 }
 
 #[derive(Args)]
@@ -110,9 +110,9 @@ struct CreateTierArgs {
     /// The tier name.
     name: String,
 
-    /// The tier cost, expressed in credits/minute.
+    /// The tier cost in USD/minute.
     #[clap(long)]
-    cost: u64,
+    cost: f64,
 
     /// The number of CPUs that are granted with this tier.
     #[clap(long)]
@@ -171,8 +171,8 @@ impl Runner {
     }
 
     fn create_account(&self, args: CreateAccountArgs) -> Result<serde_json::Value, RequestError> {
-        let CreateAccountArgs { name, wallet_address, credits } = args;
-        let request = models::accounts::CreateAccountRequest { name, wallet_address, credits };
+        let CreateAccountArgs { name, wallet_address, balance } = args;
+        let request = models::accounts::CreateAccountRequest { name, wallet_address, balance };
         self.client.post("/api/v1/accounts/create", &request)
     }
 
@@ -180,10 +180,10 @@ impl Runner {
         self.client.get("/api/v1/accounts/list")
     }
 
-    fn add_credits(&self, args: AddCreditsArgs) -> Result<serde_json::Value, RequestError> {
-        let AddCreditsArgs { id, credits } = args;
-        let request = models::accounts::AddCreditsRequest { account_id: id, credits };
-        self.client.post("/api/v1/accounts/add-credits", &request)
+    fn add_balance(&self, args: AddBalanceArgs) -> Result<serde_json::Value, RequestError> {
+        let AddBalanceArgs { id, balance } = args;
+        let request = models::accounts::AddBalanceRequest { account_id: id, balance };
+        self.client.post("/api/v1/accounts/add-balance", &request)
     }
 
     fn rename(&self, args: RenameAccountArgs) -> Result<serde_json::Value, RequestError> {
@@ -237,7 +237,7 @@ fn main() {
     let result = match cli.command {
         Command::Accounts(AccountsCommand::Create(args)) => runner.create_account(args),
         Command::Accounts(AccountsCommand::List) => runner.list_accounts(),
-        Command::Accounts(AccountsCommand::AddCredits(args)) => runner.add_credits(args),
+        Command::Accounts(AccountsCommand::AddBalance(args)) => runner.add_balance(args),
         Command::Accounts(AccountsCommand::Rename(args)) => runner.rename(args),
         Command::Tiers(TiersCommand::Create(args)) => runner.create_tier(args),
         Command::Tiers(TiersCommand::List) => runner.list_tiers(),

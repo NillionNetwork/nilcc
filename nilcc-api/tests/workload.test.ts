@@ -1,12 +1,12 @@
 import * as crypto from "node:crypto";
 import { describe } from "vitest";
-import { usdToNil } from "#/common/nil";
+import { MINIMUM_SPENDABLE_BALANCE_NIL, usdToNil } from "#/common/nil";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type {
   CreateWorkloadRequest,
   CreateWorkloadResponse,
 } from "#/workload/workload.dto";
-import type { MockTimeService } from "./fixture/fixture";
+import type { MockNilPriceService, MockTimeService } from "./fixture/fixture";
 import { createTestFixtureExtension } from "./fixture/it";
 import { UserClient } from "./fixture/test-client";
 
@@ -547,5 +547,79 @@ services:
     // With nilPrice=1.0 and cost=1 USD/min, that's 1 NIL
     const expectedBalance = 15000 - usdToNil(1, 1.0);
     expect(otherAccount.balance).toBe(expectedBalance);
+  });
+
+  it("should stop workloads when heartbeat leaves less than one cent of NIL", async ({
+    app,
+    bindings,
+    expect,
+    clients,
+    issueJwt,
+  }) => {
+    const nilPrice = bindings.services.nilPrice as MockNilPriceService;
+    nilPrice.setPrice(3.0);
+    const secondMetalInstance: RegisterMetalInstanceRequest = {
+      ...myMetalInstance,
+      metalInstanceId: "f42c86e4-c7e5-4bb3-a5f5-45945b5593e4",
+      hostname: "my-second-metal-instance",
+    };
+    await clients.metalInstance.register(secondMetalInstance).submit();
+    await clients.metalInstance
+      .heartbeat(secondMetalInstance.metalInstanceId, ["aaa"])
+      .submit();
+
+    const heartbeatWallet = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(20))).toString("hex")}`;
+    const usdCostPerMin = 0.2;
+    const minuteNilCost = usdToNil(usdCostPerMin, 3.0);
+    const startingBalance = minuteNilCost * 5 + 1e-16;
+    expect(startingBalance - minuteNilCost * 5).toBeLessThan(
+      MINIMUM_SPENDABLE_BALANCE_NIL,
+    );
+    await clients.admin
+      .createTier({
+        name: "sub-cent-heartbeat-tier",
+        cost: usdCostPerMin,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 13,
+      })
+      .submit();
+    const account = await clients.admin
+      .createAccount({
+        name: "sub-cent-heartbeat-account",
+        walletAddress: heartbeatWallet,
+        balance: startingBalance,
+      })
+      .submit();
+    const heartbeatJwt = await issueJwt(
+      account.accountId,
+      account.walletAddress,
+    );
+    const client = new UserClient({
+      app,
+      bindings,
+      apiToken: heartbeatJwt,
+    });
+    await client
+      .createWorkload({
+        ...createWorkloadRequest,
+        disk: 13,
+      })
+      .submit();
+
+    const timeService = bindings.services.time as MockTimeService;
+    for (let i = 0; i < 5; i++) {
+      timeService.advance(61);
+      await clients.metalInstance
+        .heartbeat(secondMetalInstance.metalInstanceId, [])
+        .submit();
+    }
+
+    const updatedAccount = await clients.admin
+      .getAccount(account.accountId)
+      .submit();
+    expect(updatedAccount.balance).toBe(0);
+    expect(updatedAccount.balance).toBeLessThan(MINIMUM_SPENDABLE_BALANCE_NIL);
   });
 });

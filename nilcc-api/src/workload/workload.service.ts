@@ -14,7 +14,7 @@ import {
   NotEnoughBalance,
   PriceUnavailable,
 } from "#/common/errors";
-import { usdToNil } from "#/common/nil";
+import { isBalanceDepleted, usdToNil } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import type {
   ListContainersRequest,
@@ -224,7 +224,7 @@ export class WorkloadService {
       throw new EntityNotFound("workload");
     }
     // Don't allow restarting if we don't have enough balance
-    if (account.balance === 0) {
+    if (isBalanceDepleted(account.balance)) {
       throw new NotEnoughBalance();
     }
 
