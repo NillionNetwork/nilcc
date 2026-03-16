@@ -6,12 +6,14 @@ import type {
   Container,
   SystemStatsResponse,
 } from "#/clients/nilcc-agent.client";
+import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   AccessDenied,
   EntityNotFound,
   InvalidWorkloadTier,
   NoInstancesAvailable,
   NotEnoughCredits,
+  PriceUnavailable,
 } from "#/common/errors";
 import type { AppBindings } from "#/env";
 import type {
@@ -70,13 +72,19 @@ export class WorkloadService {
       }
     }
 
-    // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
+    // Make sure the account has enough credits to run this and all the existing workloads for 5 minutes.
+    const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
+    if (nilPrice === null) {
+      throw new PriceUnavailable();
+    }
     const totalAccountSpend =
       await bindings.services.account.getAccountSpending(bindings, account.id);
-    if (
-      (totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION >
-      account.credits
-    ) {
+    const creditsNeeded = Math.ceil(
+      (((totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION) /
+        nilPrice) *
+        CREDITS_PER_NIL,
+    );
+    if (creditsNeeded > account.credits) {
       throw new NotEnoughCredits();
     }
     const repository = this.getRepository(bindings, tx);

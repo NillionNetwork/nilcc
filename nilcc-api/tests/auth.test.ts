@@ -393,5 +393,60 @@ describe("Auth", () => {
 
       expect(response.status).toBe(401);
     });
+
+    it("should authenticate workload route requests with JWT", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({ name: "jwt-workload-auth", walletAddress, credits: 1 })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const requestCreate = (authorization: string) =>
+        app.request(PathsV1.workload.create, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestDelete = (authorization: string) =>
+        app.request(PathsV1.workload.delete, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestRestart = (authorization: string) =>
+        app.request(PathsV1.workload.restart, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+
+      expect((await requestCreate(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestDelete(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestRestart(`Bearer ${jwt}`)).status).toBe(400);
+
+      expect(
+        (await requestCreate("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestDelete("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestRestart("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+    });
   });
 });

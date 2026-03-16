@@ -8,6 +8,7 @@ import type { AuthContext } from "#/common/auth";
 import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
+import { NilPriceService } from "#/payment/nil-price.service";
 import { PaymentService } from "#/payment/payment.service";
 import { WorkloadService } from "#/workload/workload.service";
 import type { AccountEntity } from "./account/account.entity";
@@ -72,6 +73,7 @@ export type AppServices = {
   artifact: ArtifactService;
   dns: DnsServices;
   time: TimeService;
+  nilPrice: NilPriceService;
   nilccAgentClient: NilccAgentClient;
   artifactsClient: ArtifactClient;
 };
@@ -122,7 +124,7 @@ export const EnvVarsSchema = z.object({
     .optional(),
   chainId: z.number().int().positive().optional(),
   paymentStartBlock: z.number().int().nonnegative().default(0),
-  creditsPerToken: z.number().int().positive().default(100),
+  coingeckoApiKey: z.string(),
   paymentPollerIntervalMs: z.number().int().positive().default(60_000),
   paymentPollerMaxBlockRange: z.number().int().positive().default(1000),
 });
@@ -155,7 +157,7 @@ declare global {
       APP_BURN_CONTRACT_ADDRESS: string;
       APP_CHAIN_ID: string;
       APP_PAYMENT_START_BLOCK?: string;
-      APP_CREDITS_PER_TOKEN: string;
+      APP_COINGECKO_API_KEY: string;
       APP_PAYMENT_POLLER_INTERVAL_MS?: string;
       APP_PAYMENT_POLLER_MAX_BLOCK_RANGE?: string;
     }
@@ -216,6 +218,7 @@ async function buildServices(
   const apiKeyService = new ApiKeyService();
   const authService = new AuthService();
   const paymentService = new PaymentService();
+  const nilPriceService = new NilPriceService(config.coingeckoApiKey);
   const artifactService = new ArtifactService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
@@ -244,6 +247,7 @@ async function buildServices(
     artifact: artifactService,
     dns,
     time: timeService,
+    nilPrice: nilPriceService,
     nilccAgentClient,
     artifactsClient,
   };
@@ -284,7 +288,7 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     burnContractAddress: process.env.APP_BURN_CONTRACT_ADDRESS,
     chainId: tryNumber(process.env.APP_CHAIN_ID),
     paymentStartBlock: tryNumber(process.env.APP_PAYMENT_START_BLOCK),
-    creditsPerToken: tryNumber(process.env.APP_CREDITS_PER_TOKEN),
+    coingeckoApiKey: process.env.APP_COINGECKO_API_KEY,
     paymentPollerIntervalMs: tryNumber(
       process.env.APP_PAYMENT_POLLER_INTERVAL_MS,
     ),

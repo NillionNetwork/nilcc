@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import { describe } from "vitest";
+import { CREDITS_PER_NIL } from "#/common/credits";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type {
   CreateWorkloadRequest,
@@ -50,7 +51,7 @@ services:
     metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
-    token: "my_token",
+    token: "mock-agent-token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
@@ -295,6 +296,99 @@ services:
     expect(await client.logs(workload.workloadId).status()).toBe(401);
   });
 
+  it("should deny cross-account workload access between two workload owners", async ({
+    expect,
+    app,
+    bindings,
+    clients,
+    issueJwt,
+  }) => {
+    const walletA = `0x${crypto.randomBytes(20).toString("hex")}`;
+    const accountA = await clients.admin
+      .createAccount({
+        name: "owner-a",
+        walletAddress: walletA,
+        credits: 100_000,
+      })
+      .submit();
+    const jwtA = await issueJwt(accountA.accountId, accountA.walletAddress);
+    const ownerA = new UserClient({
+      app,
+      bindings,
+      apiToken: jwtA,
+    });
+
+    const walletB = `0x${crypto.randomBytes(20).toString("hex")}`;
+    const accountB = await clients.admin
+      .createAccount({
+        name: "owner-b",
+        walletAddress: walletB,
+        credits: 100_000,
+      })
+      .submit();
+    const jwtB = await issueJwt(accountB.accountId, accountB.walletAddress);
+    const ownerB = new UserClient({
+      app,
+      bindings,
+      apiToken: jwtB,
+    });
+
+    const workloadA = await ownerA
+      .createWorkload({
+        ...createWorkloadRequest,
+        name: "owner-a-workload",
+      })
+      .submit();
+    const workloadB = await ownerB
+      .createWorkload({
+        ...createWorkloadRequest,
+        name: "owner-b-workload",
+      })
+      .submit();
+
+    const listA = await ownerA.listWorkloads().submit();
+    const listB = await ownerB.listWorkloads().submit();
+    expect(listA.map((w) => w.workloadId)).toContain(workloadA.workloadId);
+    expect(listA.map((w) => w.workloadId)).not.toContain(workloadB.workloadId);
+    expect(listB.map((w) => w.workloadId)).toContain(workloadB.workloadId);
+    expect(listB.map((w) => w.workloadId)).not.toContain(workloadA.workloadId);
+
+    expect(await ownerB.getWorkload(workloadA.workloadId).status()).toBe(401);
+    expect(await ownerB.deleteWorkload(workloadA.workloadId).status()).toBe(
+      401,
+    );
+    expect(await ownerB.restartWorkload(workloadA.workloadId).status()).toBe(
+      401,
+    );
+    expect(await ownerB.listEvents(workloadA.workloadId).status()).toBe(401);
+    expect(await ownerB.listContainers(workloadA.workloadId).status()).toBe(
+      401,
+    );
+    expect(
+      await ownerB.containerLogs(workloadA.workloadId, "app").status(),
+    ).toBe(401);
+    expect(await ownerB.logs(workloadA.workloadId).status()).toBe(401);
+
+    expect(await ownerA.getWorkload(workloadB.workloadId).status()).toBe(401);
+    expect(await ownerA.deleteWorkload(workloadB.workloadId).status()).toBe(
+      401,
+    );
+    expect(await ownerA.restartWorkload(workloadB.workloadId).status()).toBe(
+      401,
+    );
+    expect(await ownerA.listEvents(workloadB.workloadId).status()).toBe(401);
+    expect(await ownerA.listContainers(workloadB.workloadId).status()).toBe(
+      401,
+    );
+    expect(
+      await ownerA.containerLogs(workloadB.workloadId, "app").status(),
+    ).toBe(401);
+    expect(await ownerA.logs(workloadB.workloadId).status()).toBe(401);
+
+    await ownerA.deleteWorkload(workloadA.workloadId).submit();
+    await ownerB.deleteWorkload(workloadB.workloadId).submit();
+  });
+
   it("should allow performing workload actions", async ({
     expect,
     clients,
@@ -337,7 +431,9 @@ services:
     expect(account.creditRate).toBe(totalUsage);
 
     // Compute how much is the maximum credits we can spend per minute
-    const maxCredits = Math.floor((account.credits - totalUsage * 5) / 5);
+    const maxCredits = Math.floor(
+      (account.credits / CREDITS_PER_NIL - totalUsage * 5) / 5,
+    );
     // Create 2 tiers: one with that value + 1 (too expensive), and another one with that value
     await clients.admin
       .createTier({
@@ -398,7 +494,7 @@ services:
       .createAccount({
         name: "heartbeat-account",
         walletAddress: heartbeatWallet,
-        credits: 1500,
+        credits: 15000,
       })
       .submit();
     const heartbeatJwt = await issueJwt(
@@ -429,7 +525,9 @@ services:
     const updatedAccount = await clients.admin
       .getAccount(workloads[0].accountId)
       .submit();
-    expect(updatedAccount.credits).toBe(account.credits - creditRate);
+    expect(updatedAccount.credits).toBe(
+      account.credits - creditRate * CREDITS_PER_NIL,
+    );
 
     // Heartbeat again, this shouldn't do anything.
     await clients.metalInstance
@@ -444,6 +542,6 @@ services:
       .getAccount(otherAccount.accountId)
       .submit();
     // should be the original minus 1 credit taken by the one workload we're running
-    expect(otherAccount.credits).toBe(1500 - 1);
+    expect(otherAccount.credits).toBe(15000 - CREDITS_PER_NIL);
   });
 });

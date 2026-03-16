@@ -1,6 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
+import { CREDITS_PER_NIL, NIL_BASE_UNITS } from "#/common/credits";
 import type { AppBindings } from "#/env";
 import { PaymentEntity } from "./payment.entity";
 
@@ -50,10 +51,7 @@ export class PaymentService {
     }
 
     // Compute credits
-    const creditedAmount = this.computeCredits(
-      event.amount,
-      bindings.config.creditsPerToken,
-    );
+    const creditedAmount = this.computeCredits(event.amount);
     if (creditedAmount <= 0) {
       bindings.log.warn(
         `Payment ${event.txHash} resulted in 0 credits, skipping`,
@@ -105,9 +103,8 @@ export class PaymentService {
     }
   }
 
-  computeCredits(amountInWei: bigint, creditsPerToken: number): number {
-    const tokens = amountInWei / BigInt(10 ** 6);
-    return Number(tokens) * creditsPerToken;
+  computeCredits(amountInWei: bigint): number {
+    return Number((amountInWei * BigInt(CREDITS_PER_NIL)) / NIL_BASE_UNITS);
   }
 
   async listByAccount(

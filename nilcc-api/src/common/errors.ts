@@ -60,6 +60,12 @@ export class NotEnoughCredits extends AppError {
   override description = "not enough credits in account to run workload";
 }
 
+export class PriceUnavailable extends AppError {
+  override kind = "PRICE_UNAVAILABLE";
+  override statusCode: ContentfulStatusCode = StatusCodes.SERVICE_UNAVAILABLE;
+  override description = "NIL token price is currently unavailable";
+}
+
 export class AgentRequestError extends AppError {
   override kind = "AGENT_COMMUNICATION";
   agentErrorKind: string;

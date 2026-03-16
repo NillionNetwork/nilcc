@@ -14,7 +14,7 @@ describe("Metal Instance", () => {
     metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
-    token: "my_token",
+    token: "mock-agent-token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
