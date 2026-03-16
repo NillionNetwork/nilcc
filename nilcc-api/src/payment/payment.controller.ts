@@ -41,7 +41,7 @@ export function list(options: ControllerOptions) {
           blockNumber: p.blockNumber,
           fromAddress: p.fromAddress,
           amount: p.amount,
-          creditedAmount: p.creditedAmount,
+          depositedAmount: p.depositedAmount,
           createdAt: p.createdAt.toISOString(),
         })),
       );

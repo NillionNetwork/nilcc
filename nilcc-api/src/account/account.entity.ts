@@ -13,8 +13,8 @@ export class AccountEntity {
   @Column({ type: "varchar", unique: true })
   walletAddress: string;
 
-  @Column({ type: "int" })
-  credits: number;
+  @Column({ type: "float" })
+  balance: number;
 
   @OneToMany(
     () => WorkloadEntity,

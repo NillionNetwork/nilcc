@@ -323,7 +323,7 @@ function createMetrics(registry: Registry): Metrics {
   const metrics: Metrics = {
     deactivatedWorkloads: new Counter({
       name: "deactivated_workloads_total",
-      help: "The total number of workloads deactivated because an account ran out of credits",
+      help: "The total number of workloads deactivated because an account ran out of NIL balance",
       registers,
     }),
     metalInstanceHeartbeats: new Counter({

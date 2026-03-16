@@ -27,8 +27,8 @@ export class PaymentEntity {
   @ManyToOne(() => AccountEntity)
   account: AccountEntity;
 
-  @Column({ type: "int" })
-  creditedAmount: number;
+  @Column({ type: "float" })
+  depositedAmount: number;
 
   @Column({ type: "timestamp" })
   createdAt: Date;

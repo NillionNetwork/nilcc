@@ -8,7 +8,7 @@ export const accountMapper = {
       createdAt: account.createdAt.toISOString(),
       name: account.name,
       walletAddress: account.walletAddress,
-      credits: account.credits,
+      balance: account.balance,
     };
   },
 };

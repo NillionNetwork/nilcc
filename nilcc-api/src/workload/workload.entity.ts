@@ -90,8 +90,8 @@ export class WorkloadEntity {
   @Column({ type: "int" })
   disk: number;
 
-  @Column({ type: "int" })
-  creditRate: number;
+  @Column({ type: "float" })
+  usdCostPerMin: number;
 
   @Column({ type: "varchar", default: "scheduled" })
   status:

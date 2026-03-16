@@ -1,7 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
-import { CREDITS_PER_NIL, NIL_BASE_UNITS } from "#/common/credits";
+import { uint256ToNil } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import { PaymentEntity } from "./payment.entity";
 
@@ -50,16 +50,15 @@ export class PaymentService {
       return null;
     }
 
-    // Compute credits
-    const creditedAmount = this.computeCredits(event.amount);
-    if (creditedAmount <= 0) {
-      bindings.log.warn(
-        `Payment ${event.txHash} resulted in 0 credits, skipping`,
-      );
+    if (event.amount === 0n) {
+      bindings.log.warn(`Payment ${event.txHash} has zero amount, skipping`);
       return null;
     }
 
-    // Save payment and credit account in a transaction
+    // Convert uint256 to decimal NIL at the boundary
+    const depositedAmount = uint256ToNil(event.amount);
+
+    // Save payment and update account balance in a transaction
     const queryRunner = bindings.dataSource.createQueryRunner();
     try {
       await queryRunner.connect();
@@ -75,7 +74,7 @@ export class PaymentService {
         amount: event.amount.toString(),
         digest: event.digest,
         account: { id: account.id } as AccountEntity,
-        creditedAmount,
+        depositedAmount,
         createdAt: new Date(),
       });
 
@@ -85,14 +84,16 @@ export class PaymentService {
       await accountRepo
         .createQueryBuilder()
         .update()
-        .set({ credits: () => `credits + ${creditedAmount}` })
+        .set({
+          balance: () => `balance + ${depositedAmount}`,
+        })
         .where("id = :id", { id: account.id })
         .execute();
 
       await queryRunner.commitTransaction();
 
       bindings.log.info(
-        `Credited ${creditedAmount} credits to account ${account.id} from tx ${event.txHash}`,
+        `Deposited ${depositedAmount} NIL to account ${account.id} from tx ${event.txHash}`,
       );
       return payment;
     } catch (e) {
@@ -101,10 +102,6 @@ export class PaymentService {
     } finally {
       await queryRunner.release();
     }
-  }
-
-  computeCredits(amountInWei: bigint): number {
-    return Number((amountInWei * BigInt(CREDITS_PER_NIL)) / NIL_BASE_UNITS);
   }
 
   async listByAccount(

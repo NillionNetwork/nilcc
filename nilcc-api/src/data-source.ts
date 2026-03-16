@@ -27,6 +27,7 @@ import { WorkloadHeartbeats1765485856928 } from "migrations/1765485856928-Worklo
 import { WalletAuth1772193140109 } from "migrations/1772193140109-WalletAuth";
 import { Payments1772193140110 } from "migrations/1772193140110-Payments";
 import { ApiKeys1773000000000 } from "migrations/1773000000000-ApiKeys";
+import { NilBasedPricing1774000000000 } from "migrations/1774000000000-NilBasedPricing";
 import { DataSource } from "typeorm";
 import { ApiKeyEntity } from "#/api-key/api-key.entity";
 import { NonceEntity } from "#/auth/nonce.entity";
@@ -78,6 +79,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       WalletAuth1772193140109,
       Payments1772193140110,
       ApiKeys1773000000000,
+      NilBasedPricing1774000000000,
     ],
     synchronize: false,
     logging: false,

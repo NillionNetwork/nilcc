@@ -1,15 +1,15 @@
 import { In, type QueryRunner, type Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
-import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   EntityAlreadyExists,
   EntityNotFound,
   isUniqueConstraint,
 } from "#/common/errors";
+import { usdToNil } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import { WorkloadEntity } from "#/workload/workload.entity";
 import type {
-  AddCreditsRequest,
+  AddBalanceRequest,
   CreateAccountRequest,
   UpdateAccountRequest,
 } from "./account.dto";
@@ -37,7 +37,7 @@ export class AccountService {
         name: request.name,
         walletAddress: request.walletAddress.toLowerCase(),
         createdAt: new Date(),
-        credits: request.credits,
+        balance: request.balance,
       });
     } catch (e: unknown) {
       if (isUniqueConstraint(e)) {
@@ -91,7 +91,7 @@ export class AccountService {
       name: normalized.slice(0, 32),
       walletAddress: normalized,
       createdAt: new Date(),
-      credits: 0,
+      balance: 0,
     });
   }
 
@@ -100,21 +100,21 @@ export class AccountService {
     return await repository.find();
   }
 
-  async addCredits(
+  async addBalance(
     bindings: AppBindings,
-    request: AddCreditsRequest,
+    request: AddBalanceRequest,
   ): Promise<AccountEntity> {
     const repository = this.getRepository(bindings);
     const account = await repository.findOneBy({ id: request.accountId });
     if (account === null) {
       throw new EntityNotFound("account");
     }
-    account.credits += request.credits;
+    account.balance += request.balance;
     await repository.save(account);
     return account;
   }
 
-  async deductCredits(
+  async deductBalance(
     bindings: AppBindings,
     workloads: WorkloadEntity[],
     tx: QueryRunner,
@@ -122,12 +122,12 @@ export class AccountService {
     const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
     if (nilPrice === null) {
       bindings.log.warn(
-        "NIL price unavailable, skipping credit deduction this tick",
+        "NIL price unavailable, skipping balance deduction this tick",
       );
       return [];
     }
 
-    const accountCredits: Record<string, number> = {};
+    const accountCosts: Record<string, number> = {};
     for (const workload of workloads) {
       if (workload.status === "stopped") {
         bindings.log.debug(
@@ -135,38 +135,34 @@ export class AccountService {
         );
         continue;
       }
-      const creditCost = Math.ceil(
-        (workload.creditRate / nilPrice) * CREDITS_PER_NIL,
-      );
-      const existingCredits = accountCredits[workload.account.id];
-      if (existingCredits === undefined) {
-        accountCredits[workload.account.id] = creditCost;
+      const nilCost = usdToNil(workload.usdCostPerMin, nilPrice);
+      const existing = accountCosts[workload.account.id];
+      if (existing === undefined) {
+        accountCosts[workload.account.id] = nilCost;
       } else {
-        accountCredits[workload.account.id] = existingCredits + creditCost;
+        accountCosts[workload.account.id] = existing + nilCost;
       }
     }
     const repository = this.getRepository(bindings, tx);
     const accounts = await repository.findBy({
-      id: In(Object.keys(accountCredits)),
+      id: In(Object.keys(accountCosts)),
     });
     const offenders = [];
     for (const account of accounts) {
-      const delta = accountCredits[account.id];
+      const delta = accountCosts[account.id];
       if (delta === undefined) {
         bindings.log.error(`Account ${account.id} was not in map`);
         continue;
       }
-      bindings.log.info(
-        `Deducting ${delta} credits from account ${account.id}`,
-      );
-      account.credits = Math.max(0, account.credits - delta);
-      if (account.credits === 0) {
+      bindings.log.info(`Deducting ${delta} NIL from account ${account.id}`);
+      account.balance = Math.max(0, account.balance - delta);
+      if (account.balance === 0) {
         const accountWorkloads = workloads.filter(
           (w) => w.account.id === account.id && w.status !== "stopped",
         );
         if (accountWorkloads.length > 0) {
           bindings.log.info(
-            `Need to shutdown ${accountWorkloads.length} workloads for account ${account.id} because it no longer has credits`,
+            `Need to shutdown ${accountWorkloads.length} workloads for account ${account.id} because it no longer has balance`,
           );
           offenders.push(...accountWorkloads);
         }
@@ -176,7 +172,7 @@ export class AccountService {
     return offenders;
   }
 
-  async getAccountSpending(
+  async getAccountUsdSpending(
     bindings: AppBindings,
     accountId: string,
   ): Promise<number> {
@@ -185,7 +181,7 @@ export class AccountService {
       .createQueryBuilder("workload")
       .where("workload.account_id = :accountId", { accountId })
       .andWhere("workload.status != 'stopped'")
-      .select("SUM(workload.creditRate) as sum")
+      .select("SUM(workload.usd_cost_per_min) as sum")
       .getRawOne();
     return Number(row.sum || 0);
   }

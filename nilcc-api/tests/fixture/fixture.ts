@@ -105,7 +105,7 @@ export async function buildFixture(): Promise<TestFixture> {
     .createAccount({
       name: "default account",
       walletAddress,
-      credits: 50000,
+      balance: 50000,
     })
     .submit();
 

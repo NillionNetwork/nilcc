@@ -48,7 +48,7 @@ export const LoginResponse = z
       .object({
         accountId: z.string(),
         walletAddress: z.string(),
-        credits: z.number(),
+        balance: z.number(),
       })
       .openapi({ description: "The authenticated account." }),
   })

@@ -6,15 +6,15 @@ import type {
   Container,
   SystemStatsResponse,
 } from "#/clients/nilcc-agent.client";
-import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   AccessDenied,
   EntityNotFound,
   InvalidWorkloadTier,
   NoInstancesAvailable,
-  NotEnoughCredits,
+  NotEnoughBalance,
   PriceUnavailable,
 } from "#/common/errors";
+import { usdToNil } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import type {
   ListContainersRequest,
@@ -72,20 +72,22 @@ export class WorkloadService {
       }
     }
 
-    // Make sure the account has enough credits to run this and all the existing workloads for 5 minutes.
+    // Make sure the account has enough balance to run this and all the existing workloads for 5 minutes.
     const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
     if (nilPrice === null) {
       throw new PriceUnavailable();
     }
     const totalAccountSpend =
-      await bindings.services.account.getAccountSpending(bindings, account.id);
-    const creditsNeeded = Math.ceil(
-      (((totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION) /
-        nilPrice) *
-        CREDITS_PER_NIL,
+      await bindings.services.account.getAccountUsdSpending(
+        bindings,
+        account.id,
+      );
+    const nilNeeded = usdToNil(
+      (totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION,
+      nilPrice,
     );
-    if (creditsNeeded > account.credits) {
-      throw new NotEnoughCredits();
+    if (nilNeeded > account.balance) {
+      throw new NotEnoughBalance();
     }
     const repository = this.getRepository(bindings, tx);
 
@@ -124,7 +126,7 @@ export class WorkloadService {
       domain: request.domain,
       createdAt: now,
       updatedAt: now,
-      creditRate: tier.cost,
+      usdCostPerMin: tier.cost,
     });
     const createdWorkload = await repository.save(entity);
     bindings.log.info(
@@ -221,9 +223,9 @@ export class WorkloadService {
     if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    // Don't allow restarting if we don't have enough credits
-    if (account.credits === 0) {
-      throw new NotEnoughCredits();
+    // Don't allow restarting if we don't have enough balance
+    if (account.balance === 0) {
+      throw new NotEnoughBalance();
     }
 
     if (request.envVars !== undefined) {

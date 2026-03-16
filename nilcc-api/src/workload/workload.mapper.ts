@@ -22,7 +22,7 @@ export const workloadMapper = {
       cpus: workload.cpus,
       gpus: workload.gpus,
       disk: workload.disk,
-      creditRate: workload.creditRate,
+      usdCostPerMin: workload.usdCostPerMin,
       status: workload.status,
       domain,
       heartbeat: workload.heartbeat,

@@ -90,7 +90,7 @@ describe("Payment - Anvil burn detection e2e", () => {
         .createAccount({
           name: "anvil-burn-e2e",
           walletAddress: TEST_USER_ADDRESS,
-          credits: 0,
+          balance: 0,
         })
         .submit();
 
@@ -154,7 +154,7 @@ describe("Payment - Anvil burn detection e2e", () => {
       const updatedAccount = await clients.admin
         .getAccount(account.accountId)
         .submit();
-      expect(updatedAccount.credits).toBe(1000); // 1 NIL token = 1000 credits
+      expect(updatedAccount.balance).toBe(1); // 1 NIL token = 1 NIL
     },
   );
 });

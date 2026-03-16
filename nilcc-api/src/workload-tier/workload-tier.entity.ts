@@ -20,6 +20,6 @@ export class WorkloadTierEntity {
   @Column({ type: "int" })
   disk: number;
 
-  @Column({ type: "int" })
+  @Column({ type: "float" })
   cost: number;
 }

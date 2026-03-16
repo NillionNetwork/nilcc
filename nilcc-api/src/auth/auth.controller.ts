@@ -89,7 +89,7 @@ export function login(options: ControllerOptions) {
           account: {
             accountId: account?.id,
             walletAddress: account?.walletAddress,
-            credits: account?.credits,
+            balance: account?.balance ?? 0,
           },
         });
       } catch (e) {
