@@ -7,7 +7,9 @@ import { timeout } from "hono/timeout";
 import { Temporal } from "temporal-polyfill";
 import { errorHandler } from "#/common/handler";
 import { buildAccountRouter } from "./account/account.router";
+import { buildApiKeyRouter } from "./api-key/api-key.router";
 import { buildArtifactRouter } from "./artifact/artifact.router";
+import { buildAuthRouter } from "./auth/auth.router";
 import {
   type AppBindings,
   type AppEnv,
@@ -16,6 +18,7 @@ import {
 } from "./env";
 import { buildMetalInstanceRouter } from "./metal-instance/metal-instance.router";
 import { createOpenApiRouter } from "./openapi/openapi.router";
+import { buildPaymentRouter } from "./payment/payment.router";
 import { buildSystemRouter } from "./system/system.router";
 import { buildWorkloadRouter } from "./workload/workload.router";
 import { buildWorkloadContainerRouter } from "./workload-container/workload-container.router";
@@ -47,13 +50,16 @@ export async function buildApp(
     createOpenApiRouter({ app, bindings });
   }
 
+  buildAuthRouter({ app, bindings });
   buildAccountRouter({ app, bindings });
+  buildApiKeyRouter({ app, bindings });
   buildArtifactRouter({ app, bindings });
   buildWorkloadRouter({ app, bindings });
   buildWorkloadContainerRouter({ app, bindings });
   buildWorkloadEventRouter({ app, bindings });
   buildWorkloadTierRouter({ app, bindings });
   buildMetalInstanceRouter({ app, bindings });
+  buildPaymentRouter({ app, bindings });
   buildSystemRouter({ app, bindings });
 
   metricsApp.get("/metrics", printMetrics);

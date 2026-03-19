@@ -1,6 +1,8 @@
+import * as crypto from "node:crypto";
 import { faker } from "@faker-js/faker";
 import dotenv from "dotenv";
 import type { Hono } from "hono";
+import { SignJWT } from "jose";
 import { type Logger, pino } from "pino";
 import { DataSource } from "typeorm";
 import { buildApp } from "#/app";
@@ -10,6 +12,7 @@ import {
   loadBindings,
   type TimeService,
 } from "#/env";
+import { NilPriceService } from "#/payment/nil-price.service";
 import { AdminClient, MetalInstanceClient, UserClient } from "./test-client";
 
 export type TestClients = {
@@ -23,7 +26,25 @@ export type TestFixture = {
   log: Logger;
   bindings: AppBindings;
   clients: TestClients;
+  issueJwt: (accountId: string, walletAddress: string) => Promise<string>;
 };
+
+export class MockNilPriceService extends NilPriceService {
+  private price: number;
+
+  constructor(price = 1.0) {
+    super("mock");
+    this.price = price;
+  }
+
+  override async fetchNilPrice(): Promise<number | null> {
+    return this.price;
+  }
+
+  setPrice(price: number): void {
+    this.price = price;
+  }
+}
 
 export class MockTimeService implements TimeService {
   private time: Date;
@@ -69,6 +90,7 @@ export async function buildFixture(): Promise<TestFixture> {
     dbUri: thisDescribeDBUri,
   })) as AppBindings;
   bindings.services.time = new MockTimeService();
+  bindings.services.nilPrice = new MockNilPriceService();
 
   log.info("Creating app");
   const { app } = await buildApp(bindings);
@@ -78,15 +100,32 @@ export async function buildFixture(): Promise<TestFixture> {
     bindings,
     apiToken: bindings.config.adminApiKey,
   });
+  const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
   const account = await admin
-    .createAccount({ name: "default account", credits: 1000 })
+    .createAccount({
+      name: "default account",
+      walletAddress,
+      balance: 50000,
+    })
     .submit();
+
+  // Issue a JWT for the user client
+  const secret = new TextEncoder().encode(bindings.config.jwtSecret);
+  const jwt = await new SignJWT({
+    sub: account.accountId,
+    wallet: account.walletAddress,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .sign(secret);
+
   const clients = {
     admin,
     user: new UserClient({
       app,
       bindings,
-      apiToken: account.apiToken,
+      apiToken: jwt,
     }),
     metalInstance: new MetalInstanceClient({
       app,
@@ -94,8 +133,19 @@ export async function buildFixture(): Promise<TestFixture> {
       apiToken: bindings.config.metalInstanceApiKey,
     }),
   };
+  const issueJwt = async (
+    accountId: string,
+    walletAddress: string,
+  ): Promise<string> => {
+    return new SignJWT({ sub: accountId, wallet: walletAddress })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("24h")
+      .sign(secret);
+  };
+
   log.info("Test suite ready");
-  return { app, log, bindings, clients };
+  return { app, log, bindings, clients, issueJwt };
 }
 
 async function createDatabase(dbUri: string, log: Logger): Promise<void> {

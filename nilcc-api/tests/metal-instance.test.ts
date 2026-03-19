@@ -14,7 +14,7 @@ describe("Metal Instance", () => {
     metalInstanceId: "c92c86e4-c7e5-4bb3-a5f5-45945b5593e4",
     agentVersion: "v0.1.0",
     publicIp: "127.0.0.1",
-    token: "my_token",
+    token: "mock-agent-token",
     hostname: "my-metal-instance",
     memoryMb: {
       total: 8192,
@@ -114,6 +114,22 @@ describe("Metal Instance", () => {
       .submit();
     const currentLastSeen = new Date(updatedInstance.lastSeenAt);
     expect(currentLastSeen.getTime()).toBe(lastSeen.getTime() + 1000);
+  });
+
+  it("should handle a heartbeat after a minute rollover with no workloads", async ({
+    bindings,
+    expect,
+    clients,
+  }) => {
+    const timeService = bindings.services.time as MockTimeService;
+    timeService.advance(61);
+
+    const response = await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, [])
+      .submit();
+
+    expect(response.metalInstanceId).toBe(myMetalInstance.metalInstanceId);
+    expect(response.expectedArtifactVersions).toEqual([]);
   });
 
   it("should update the artifacts versions", async ({ expect, clients }) => {

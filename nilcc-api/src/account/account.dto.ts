@@ -4,37 +4,36 @@ export const Account = z
   .object({
     accountId: z.string().openapi({ description: "The account identifier." }),
     name: z.string().max(32).openapi({ description: "The account name." }),
-    apiToken: z
-      .string()
-      .openapi({ description: "The token to use when talking to the API." }),
-    createdAt: z
-      .string()
-      .datetime()
-      .openapi({ description: "The timestamp when this account was created." }),
-    credits: z
-      .number()
-      .openapi({ description: "The number of credits this account has." }),
+    walletAddress: z.string().openapi({
+      description: "The Ethereum wallet address for this account.",
+    }),
+    createdAt: z.string().datetime().openapi({
+      description: "The timestamp when this account was created.",
+    }),
+    balance: z.number().openapi({
+      description: "The USD balance (decimal, e.g. 5.50 means $5.50).",
+    }),
   })
   .openapi({
     ref: "Account",
   });
 export type Account = z.infer<typeof Account>;
 
-export const MyAccount = Account.omit({ apiToken: true })
-  .extend({
-    creditRate: z.number().openapi({
-      description: "The amount of credits currently being burnt per minute.",
-    }),
-  })
-  .openapi({
-    ref: "MyAccount",
-  });
+export const MyAccount = Account.extend({
+  burnRatePerMin: z.number().openapi({
+    description:
+      "The USD amount being spent per minute across all running workloads.",
+  }),
+}).openapi({
+  ref: "MyAccount",
+});
 export type MyAccount = z.infer<typeof MyAccount>;
 
 export const CreateAccountRequest = z
   .object({
     name: z.string(),
-    credits: z.number().default(0),
+    walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    balance: z.number().default(0),
   })
   .openapi({
     ref: "CreateAccountRequest",
@@ -51,22 +50,22 @@ export const UpdateAccountRequest = z
   });
 export type UpdateAccountRequest = z.infer<typeof UpdateAccountRequest>;
 
-export const AddCreditsRequest = z
+export const AddBalanceRequest = z
   .object({
     accountId: z.string(),
-    credits: z.number(),
+    balance: z.number(),
   })
   .openapi({
-    ref: "AddCreditsRequest",
+    ref: "AddBalanceRequest",
   });
-export type AddCreditsRequest = z.infer<typeof AddCreditsRequest>;
+export type AddBalanceRequest = z.infer<typeof AddBalanceRequest>;
 
-export const AccountCreditsResponse = z
+export const AccountBalanceResponse = z
   .object({
     accountId: z.string(),
-    credits: z.number(),
+    balance: z.number(),
   })
   .openapi({
-    ref: "AccountCreditsResponse",
+    ref: "AccountBalanceResponse",
   });
-export type AccountCreditsResponse = z.infer<typeof AccountCreditsResponse>;
+export type AccountBalanceResponse = z.infer<typeof AccountBalanceResponse>;

@@ -2,9 +2,14 @@ import type { Logger } from "pino";
 import { Counter, Registry } from "prom-client";
 import type { DataSource, QueryRunner } from "typeorm";
 import { z } from "zod";
+import { ApiKeyService } from "#/api-key/api-key.service";
+import { AuthService } from "#/auth/auth.service";
+import type { AuthContext } from "#/common/auth";
 import { createLogger } from "#/common/logger";
 import { buildDataSource } from "#/data-source";
 import { MetalInstanceService } from "#/metal-instance/metal-instance.service";
+import { NilPriceService } from "#/payment/nil-price.service";
+import { PaymentService } from "#/payment/payment.service";
 import { WorkloadService } from "#/workload/workload.service";
 import type { AccountEntity } from "./account/account.entity";
 import { AccountService } from "./account/account.service";
@@ -49,6 +54,7 @@ export type AppEnv = {
 export type AppVariables = {
   txQueryRunner: QueryRunner;
   account: AccountEntity;
+  auth: AuthContext;
 };
 
 export type DnsServices = {
@@ -57,13 +63,17 @@ export type DnsServices = {
 };
 
 export type AppServices = {
+  apiKey: ApiKeyService;
   metalInstance: MetalInstanceService;
   workload: WorkloadService;
   workloadTier: WorkloadTierService;
   account: AccountService;
+  auth: AuthService;
+  payment: PaymentService;
   artifact: ArtifactService;
   dns: DnsServices;
   time: TimeService;
+  nilPrice: NilPriceService;
   nilccAgentClient: NilccAgentClient;
   artifactsClient: ArtifactClient;
 };
@@ -105,6 +115,18 @@ export const EnvVarsSchema = z.object({
   metalInstancesIdleThresholdSeconds: z.number().default(120),
   artifactsBaseUrl: z.string(),
   requireArtifactsSemver: z.boolean(),
+  jwtSecret: z.string().min(32),
+  jwtExpirationSeconds: z.number().int().positive().default(86400),
+  rpcUrl: z.string().url().optional(),
+  burnContractAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
+  chainId: z.number().int().positive().optional(),
+  paymentStartBlock: z.number().int().nonnegative().default(0),
+  coingeckoApiKey: z.string(),
+  paymentPollerIntervalMs: z.number().int().positive().default(60_000),
+  paymentPollerMaxBlockRange: z.number().int().positive().default(1000),
 });
 
 export type EnvVars = z.infer<typeof EnvVarsSchema>;
@@ -129,6 +151,15 @@ declare global {
       APP_METAL_INSTANCES_IDLE_THRESHOLD_SECONDS?: string;
       APP_ARTIFACTS_BASE_URL: string;
       APP_REQUIRE_ARTIFACTS_SEMVER?: string;
+      APP_JWT_SECRET: string;
+      APP_JWT_EXPIRATION_SECONDS?: string;
+      APP_RPC_URL: string;
+      APP_BURN_CONTRACT_ADDRESS: string;
+      APP_CHAIN_ID: string;
+      APP_PAYMENT_START_BLOCK?: string;
+      APP_COINGECKO_API_KEY: string;
+      APP_PAYMENT_POLLER_INTERVAL_MS?: string;
+      APP_PAYMENT_POLLER_MAX_BLOCK_RANGE?: string;
     }
   }
 }
@@ -184,6 +215,10 @@ async function buildServices(
   const workloadService = new WorkloadService();
   const workloadTierService = new WorkloadTierService();
   const accountService = new AccountService();
+  const apiKeyService = new ApiKeyService();
+  const authService = new AuthService();
+  const paymentService = new PaymentService();
+  const nilPriceService = new NilPriceService(config.coingeckoApiKey);
   const artifactService = new ArtifactService();
   const nilccAgentClient = new DefaultNilccAgentClient(
     config.metalInstancesEndpointScheme,
@@ -202,13 +237,17 @@ async function buildServices(
   })();
 
   return {
+    apiKey: apiKeyService,
     metalInstance: metalInstanceService,
     workload: workloadService,
     workloadTier: workloadTierService,
     account: accountService,
+    auth: authService,
+    payment: paymentService,
     artifact: artifactService,
     dns,
     time: timeService,
+    nilPrice: nilPriceService,
     nilccAgentClient,
     artifactsClient,
   };
@@ -243,6 +282,19 @@ export function parseConfigFromEnv(overrides: Partial<EnvVars>): EnvVars {
     requireArtifactsSemver: tryBoolean(
       process.env.APP_REQUIRE_ARTIFACTS_SEMVER,
     ),
+    jwtSecret: process.env.APP_JWT_SECRET,
+    jwtExpirationSeconds: tryNumber(process.env.APP_JWT_EXPIRATION_SECONDS),
+    rpcUrl: process.env.APP_RPC_URL,
+    burnContractAddress: process.env.APP_BURN_CONTRACT_ADDRESS,
+    chainId: tryNumber(process.env.APP_CHAIN_ID),
+    paymentStartBlock: tryNumber(process.env.APP_PAYMENT_START_BLOCK),
+    coingeckoApiKey: process.env.APP_COINGECKO_API_KEY,
+    paymentPollerIntervalMs: tryNumber(
+      process.env.APP_PAYMENT_POLLER_INTERVAL_MS,
+    ),
+    paymentPollerMaxBlockRange: tryNumber(
+      process.env.APP_PAYMENT_POLLER_MAX_BLOCK_RANGE,
+    ),
   });
 
   return {
@@ -271,7 +323,7 @@ function createMetrics(registry: Registry): Metrics {
   const metrics: Metrics = {
     deactivatedWorkloads: new Counter({
       name: "deactivated_workloads_total",
-      help: "The total number of workloads deactivated because an account ran out of credits",
+      help: "The total number of workloads deactivated because an account ran out of USD",
       registers,
     }),
     metalInstanceHeartbeats: new Counter({

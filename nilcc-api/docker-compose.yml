@@ -11,8 +11,12 @@ services:
         condition: service_healthy
       localstack:
         condition: service_started
+    env_file:
+      - .env
+    environment:
+      APP_ARTIFACTS_BASE_URL: http://mock-agent:35433
   postgres:
-    image: postgres:latest
+    image: postgres:16-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -21,9 +25,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,4 +39,38 @@ services:
       - "4566:4566"
       - "4510-4559:4510-4559" # External services port range
     volumes:
-      - "./localstack_data:/var/lib/localstack" # For persistence of data
+      - "localstack_data:/var/lib/localstack" # For persistence of data
+
+  anvil:
+    image: ghcr.io/nillionnetwork/nil-anvil:d0788f3
+    ports:
+      - "8545:8545"
+
+  mock-agent:
+    build:
+      context: ./tools/mock-agent
+      dockerfile: Dockerfile
+    container_name: mock_agent
+    ports:
+      - "35433:35433"
+    depends_on:
+      - nilcc-api
+    environment:
+      NILCC_API_URL: http://nilcc-api:8080
+      METAL_INSTANCE_ID: "00000000-0000-0000-0000-000000000001"
+      METAL_INSTANCE_API_KEY: your-metal-instance-api-key
+      ADMIN_API_KEY: admin-api-key
+      AGENT_TOKEN: mock-agent-token
+      HOSTNAME_: mock-agent-01
+      PORT: "35433"
+      MEMORY_MB: "262144"
+      CPUS: "128"
+      DISK_GB: "2048"
+      GPUS: "4"
+      AGENT_VERSION: "mock-1.0.0"
+      ARTIFACTS_VERSION: "1.0.0"
+      HEARTBEAT_INTERVAL_MS: "30000"
+
+volumes:
+  postgres_data:
+  localstack_data:

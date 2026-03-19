@@ -1,4 +1,5 @@
 import { Column, Entity, PrimaryColumn } from "typeorm";
+import { bigintNumberTransformer } from "#/common/nil";
 
 @Entity({ name: "workload_tiers" })
 export class WorkloadTierEntity {
@@ -20,6 +21,6 @@ export class WorkloadTierEntity {
   @Column({ type: "int" })
   disk: number;
 
-  @Column({ type: "int" })
-  cost: number;
+  @Column({ type: "bigint", transformer: bigintNumberTransformer })
+  cost: number; // microdollars
 }

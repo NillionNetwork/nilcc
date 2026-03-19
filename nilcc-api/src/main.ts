@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import packageJson from "../package.json";
 import { buildApp } from "./app";
 import { loadBindings } from "./env";
+import { PaymentPoller } from "./payment/payment-poller";
 
 export type CliOptions = {
   envFile: string;
@@ -13,8 +14,8 @@ async function main() {
   const program = new Command();
 
   program
-    .name("@nillion/nildb-api")
-    .description("nilDB API server cli")
+    .name("@nillion/nilcc-api")
+    .description("nilCC API server cli")
     .version(packageJson.version)
     .option("--env-file [path]", "Path to the env file (default .env)", ".env")
     .parse(process.argv);
@@ -29,6 +30,9 @@ async function main() {
 
   bindings.log.info("Building app ...");
   const { app, metrics } = await buildApp(bindings);
+
+  const paymentPoller = new PaymentPoller(bindings, bindings.services.payment);
+  paymentPoller.start();
 
   bindings.log.info("Starting servers ...");
   const appServer = serve(
@@ -57,6 +61,7 @@ async function main() {
     );
 
     try {
+      paymentPoller.stop();
       const promises = [
         new Promise((resolve) => appServer.close(resolve)),
         new Promise((resolve) => metricsServer.close(resolve)),

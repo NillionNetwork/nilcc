@@ -12,13 +12,23 @@ export type Path = z.infer<typeof PathSchema>;
 
 export const PathsV1 = {
   docs: PathSchema.parse("/openapi.json"),
+  auth: {
+    challenge: PathSchema.parse("/api/v1/auth/challenge"),
+    login: PathSchema.parse("/api/v1/auth/login"),
+  },
   account: {
     create: PathSchema.parse("/api/v1/accounts/create"),
     update: PathSchema.parse("/api/v1/accounts/update"),
     list: PathSchema.parse("/api/v1/accounts/list"),
     read: PathSchema.parse("/api/v1/accounts/:id"),
     me: PathSchema.parse("/api/v1/accounts/me"),
-    addCredits: PathSchema.parse("/api/v1/accounts/add-credits"),
+    addBalance: PathSchema.parse("/api/v1/accounts/add-balance"),
+  },
+  apiKeys: {
+    create: PathSchema.parse("/api/v1/api-keys/create"),
+    listByAccount: PathSchema.parse("/api/v1/api-keys/account/:accountId"),
+    update: PathSchema.parse("/api/v1/api-keys/update"),
+    delete: PathSchema.parse("/api/v1/api-keys/delete"),
   },
   artifacts: {
     enable: PathSchema.parse("/api/v1/artifacts/enable"),
@@ -55,6 +65,9 @@ export const PathsV1 = {
     read: PathSchema.parse("/api/v1/metal-instances/:id"),
     list: PathSchema.parse("/api/v1/metal-instances/list"),
     delete: PathSchema.parse("/api/v1/metal-instances/delete"),
+  },
+  payments: {
+    list: PathSchema.parse("/api/v1/payments/list"),
   },
   system: {
     health: PathSchema.parse("/health"),
