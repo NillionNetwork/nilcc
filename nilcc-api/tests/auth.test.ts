@@ -103,7 +103,7 @@ describe("Auth", () => {
       expect(loginBody.account.walletAddress).toBe(
         account.address.toLowerCase(),
       );
-      expect(loginBody.account.credits).toBe(0);
+      expect(loginBody.account.balance).toBe(0);
       expect(loginBody.account.accountId).toBeDefined();
     });
 
@@ -147,7 +147,7 @@ describe("Auth", () => {
           account.address.toLowerCase(),
         );
       expect(createdAccount).not.toBeNull();
-      expect(createdAccount?.credits).toBe(0);
+      expect(createdAccount?.balance).toBe(0);
     });
 
     it("should reject an invalid signature", async ({ expect, app }) => {
@@ -315,7 +315,11 @@ describe("Auth", () => {
       // Create an account and get a JWT
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "jwt-via-apikey", walletAddress, credits: 50 })
+        .createAccount({
+          name: "jwt-via-apikey",
+          walletAddress,
+          balance: 50,
+        })
         .submit();
 
       const jwt = await issueJwt(account.accountId, walletAddress);
@@ -340,7 +344,7 @@ describe("Auth", () => {
         .createAccount({
           name: "jwt-with-garbage-apikey",
           walletAddress,
-          credits: 1,
+          balance: 1,
         })
         .submit();
       const jwt = await issueJwt(account.accountId, walletAddress);
@@ -380,7 +384,11 @@ describe("Auth", () => {
     }) => {
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "malformed-auth", walletAddress, credits: 1 })
+        .createAccount({
+          name: "malformed-auth",
+          walletAddress,
+          balance: 1,
+        })
         .submit();
       const jwt = await issueJwt(account.accountId, walletAddress);
 
@@ -402,7 +410,11 @@ describe("Auth", () => {
     }) => {
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "jwt-workload-auth", walletAddress, credits: 1 })
+        .createAccount({
+          name: "jwt-workload-auth",
+          walletAddress,
+          balance: 1,
+        })
         .submit();
       const jwt = await issueJwt(account.accountId, walletAddress);
 

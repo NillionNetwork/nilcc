@@ -1,6 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { StatusCodes } from "http-status-codes";
+import { microdollarsToUsd } from "#/common/nil";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -89,7 +90,7 @@ export function login(options: ControllerOptions) {
           account: {
             accountId: account?.id,
             walletAddress: account?.walletAddress,
-            credits: account?.credits,
+            balance: account ? microdollarsToUsd(account.balance) : 0,
           },
         });
       } catch (e) {

@@ -1,9 +1,19 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
-import { CREDITS_PER_NIL, NIL_BASE_UNITS } from "#/common/credits";
+import {
+  microdollarsToUsd,
+  nilToMicrodollars,
+  uint256ToNil,
+} from "#/common/nil";
 import type { AppBindings } from "#/env";
 import { PaymentEntity } from "./payment.entity";
+
+export class NilPriceUnavailableError extends Error {
+  constructor(txHash: string) {
+    super(`NIL price unavailable, cannot process payment ${txHash}`);
+  }
+}
 
 export class PaymentService {
   getRepository(
@@ -50,16 +60,28 @@ export class PaymentService {
       return null;
     }
 
-    // Compute credits
-    const creditedAmount = this.computeCredits(event.amount);
-    if (creditedAmount <= 0) {
+    if (event.amount === 0n) {
+      bindings.log.warn(`Payment ${event.txHash} has zero amount, skipping`);
+      return null;
+    }
+
+    // Convert uint256 to decimal NIL at the boundary
+    const nilAmount = uint256ToNil(event.amount);
+
+    // Fetch live NIL price and convert to integer microdollars
+    const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
+    if (nilPrice === null) {
+      throw new NilPriceUnavailableError(event.txHash);
+    }
+    const depositedMicrodollars = nilToMicrodollars(nilAmount, nilPrice);
+    if (depositedMicrodollars <= 0) {
       bindings.log.warn(
-        `Payment ${event.txHash} resulted in 0 credits, skipping`,
+        `Payment ${event.txHash} converts to $0 USD (${nilAmount} NIL @ $${nilPrice}), skipping`,
       );
       return null;
     }
 
-    // Save payment and credit account in a transaction
+    // Save payment and update account balance in a transaction
     const queryRunner = bindings.dataSource.createQueryRunner();
     try {
       await queryRunner.connect();
@@ -75,24 +97,21 @@ export class PaymentService {
         amount: event.amount.toString(),
         digest: event.digest,
         account: { id: account.id } as AccountEntity,
-        creditedAmount,
+        nilAmount,
+        nilPriceAtDeposit: nilPrice,
+        depositedAmountUsd: depositedMicrodollars,
         createdAt: new Date(),
       });
 
-      const accountRepo = queryRunner.manager.getRepository(
-        (await import("#/account/account.entity")).AccountEntity,
+      await queryRunner.query(
+        `UPDATE "accounts" SET "balance" = "balance" + $1 WHERE "id" = $2`,
+        [depositedMicrodollars, account.id],
       );
-      await accountRepo
-        .createQueryBuilder()
-        .update()
-        .set({ credits: () => `credits + ${creditedAmount}` })
-        .where("id = :id", { id: account.id })
-        .execute();
 
       await queryRunner.commitTransaction();
 
       bindings.log.info(
-        `Credited ${creditedAmount} credits to account ${account.id} from tx ${event.txHash}`,
+        `Deposited $${microdollarsToUsd(depositedMicrodollars)} USD (${nilAmount} NIL @ $${nilPrice}) to account ${account.id} from tx ${event.txHash}`,
       );
       return payment;
     } catch (e) {
@@ -101,10 +120,6 @@ export class PaymentService {
     } finally {
       await queryRunner.release();
     }
-  }
-
-  computeCredits(amountInWei: bigint): number {
-    return Number((amountInWei * BigInt(CREDITS_PER_NIL)) / NIL_BASE_UNITS);
   }
 
   async listByAccount(

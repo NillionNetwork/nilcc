@@ -94,9 +94,9 @@ export class MetalInstanceService {
     bindings.metrics.metalInstanceHeartbeats.labels({ id: instance.id }).inc();
     if (now.getMinutes() !== instance.lastSeenAt.getMinutes()) {
       bindings.log.info(
-        `Need to deduct credits for ${instance.workloads.length} workloads running on agent ${instance.id}`,
+        `Need to deduct balance for ${instance.workloads.length} workloads running on agent ${instance.id}`,
       );
-      const offendingWorkloads = await bindings.services.account.deductCredits(
+      const offendingWorkloads = await bindings.services.account.deductBalance(
         bindings,
         instance.workloads,
         tx,

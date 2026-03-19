@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import { describe } from "vitest";
-import { CREDITS_PER_NIL } from "#/common/credits";
+import { MINIMUM_SPENDABLE_BALANCE_USD } from "#/common/nil";
 import type { RegisterMetalInstanceRequest } from "#/metal-instance/metal-instance.dto";
 import type {
   CreateWorkloadRequest,
@@ -106,7 +106,7 @@ services:
     expect(workload.metalInstanceDomain).equals(
       `${myMetalInstance.metalInstanceId}.agents.private.localhost`,
     );
-    expect(workload.creditRate).toBe(1);
+    expect(workload.usdCostPerMin).toBe(1);
     // store it for other tests to re-use it
     myWorkload = workload;
   });
@@ -272,7 +272,7 @@ services:
   }) => {
     const walletAddress = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(20))).toString("hex")}`;
     const account = await clients.admin
-      .createAccount({ name: "cross-account", walletAddress, credits: 0 })
+      .createAccount({ name: "cross-account", walletAddress, balance: 0 })
       .submit();
     const jwt = await issueJwt(account.accountId, account.walletAddress);
     const client = new UserClient({
@@ -308,7 +308,7 @@ services:
       .createAccount({
         name: "owner-a",
         walletAddress: walletA,
-        credits: 100_000,
+        balance: 100000,
       })
       .submit();
     const jwtA = await issueJwt(accountA.accountId, accountA.walletAddress);
@@ -323,7 +323,7 @@ services:
       .createAccount({
         name: "owner-b",
         walletAddress: walletB,
-        credits: 100_000,
+        balance: 100000,
       })
       .submit();
     const jwtB = await issueJwt(accountB.accountId, accountB.walletAddress);
@@ -421,18 +421,20 @@ services:
     await clients.user.deleteWorkload(workloadId).submit();
   });
 
-  it("should not allow overcommitting credits", async ({ expect, clients }) => {
+  it("should not allow overcommitting balance", async ({ expect, clients }) => {
     const workloads = await clients.user.listWorkloads().submit();
     const totalUsage = workloads
-      .map((w) => w.creditRate)
+      .map((w) => w.usdCostPerMin)
       .reduce((a, b) => a + b, 0);
 
     const account = await clients.user.myAccount().submit();
-    expect(account.creditRate).toBe(totalUsage);
+    const burnRate = account.burnRatePerMin;
+    expect(burnRate).toBe(totalUsage);
 
-    // Compute how much is the maximum credits we can spend per minute
+    // Compute the maximum burn rate we can afford while still reserving the
+    // minimum spendable balance enforced during heartbeats.
     const maxCredits = Math.floor(
-      (account.credits / CREDITS_PER_NIL - totalUsage * 5) / 5,
+      (account.balance - MINIMUM_SPENDABLE_BALANCE_USD) / 5 - totalUsage,
     );
     // Create 2 tiers: one with that value + 1 (too expensive), and another one with that value
     await clients.admin
@@ -482,7 +484,51 @@ services:
     ).toBe(200);
   });
 
-  it("should subtract credits on heartbeat", async ({
+  it("should reserve the minimum spendable balance when admitting cheap workloads", async ({
+    app,
+    bindings,
+    expect,
+    clients,
+    issueJwt,
+  }) => {
+    const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+    const usdCostPerMin = 0.001;
+    const startingBalance = usdCostPerMin * 5;
+    await clients.admin
+      .createTier({
+        name: "cheap-tier-floor-check",
+        cost: usdCostPerMin,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 14,
+      })
+      .submit();
+    const account = await clients.admin
+      .createAccount({
+        name: "cheap-tier-account",
+        walletAddress,
+        balance: startingBalance,
+      })
+      .submit();
+    const jwt = await issueJwt(account.accountId, account.walletAddress);
+    const client = new UserClient({
+      app,
+      bindings,
+      apiToken: jwt,
+    });
+
+    expect(
+      await client
+        .createWorkload({
+          ...createWorkloadRequest,
+          disk: 14,
+        })
+        .status(),
+    ).toBe(412);
+  });
+
+  it("should subtract balance on heartbeat", async ({
     app,
     bindings,
     expect,
@@ -494,7 +540,7 @@ services:
       .createAccount({
         name: "heartbeat-account",
         walletAddress: heartbeatWallet,
-        credits: 15000,
+        balance: 15000,
       })
       .submit();
     const heartbeatJwt = await issueJwt(
@@ -508,9 +554,9 @@ services:
     });
     await client.createWorkload(createWorkloadRequest).submit();
 
-    const workloads = await clients.user.listWorkloads().submit();
-    const creditRate = workloads
-      .map((w) => w.creditRate)
+    const workloads = await client.listWorkloads().submit();
+    const usdCostPerMin = workloads
+      .map((w) => w.usdCostPerMin)
       .reduce((a, b) => a + b, 0);
     const account = await clients.admin
       .getAccount(workloads[0].accountId)
@@ -518,16 +564,14 @@ services:
     const timeService = bindings.services.time as MockTimeService;
     timeService.advance(61);
 
-    // Heartbeat once, this should subtract the credit rate.
+    // Heartbeat once, this should subtract the USD cost directly.
     await clients.metalInstance
       .heartbeat(myMetalInstance.metalInstanceId, [])
       .submit();
     const updatedAccount = await clients.admin
       .getAccount(workloads[0].accountId)
       .submit();
-    expect(updatedAccount.credits).toBe(
-      account.credits - creditRate * CREDITS_PER_NIL,
-    );
+    expect(updatedAccount.balance).toBe(account.balance - usdCostPerMin);
 
     // Heartbeat again, this shouldn't do anything.
     await clients.metalInstance
@@ -536,12 +580,84 @@ services:
     const latestAccount = await clients.admin
       .getAccount(workloads[0].accountId)
       .submit();
-    expect(latestAccount.credits).toBe(updatedAccount.credits);
+    expect(latestAccount.balance).toBe(updatedAccount.balance);
 
     otherAccount = await clients.admin
       .getAccount(otherAccount.accountId)
       .submit();
-    // should be the original minus 1 credit taken by the one workload we're running
-    expect(otherAccount.credits).toBe(15000 - CREDITS_PER_NIL);
+    // should be the original minus 1 minute of USD cost for the one workload we're running
+    // cost=1 USD/min, so deduct $1
+    const expectedBalance = 15000 - 1;
+    expect(otherAccount.balance).toBe(expectedBalance);
+  });
+
+  it("should stop workloads when heartbeat leaves less than one cent of USD", async ({
+    app,
+    bindings,
+    expect,
+    clients,
+    issueJwt,
+  }) => {
+    const secondMetalInstance: RegisterMetalInstanceRequest = {
+      ...myMetalInstance,
+      metalInstanceId: "f42c86e4-c7e5-4bb3-a5f5-45945b5593e4",
+      hostname: "my-second-metal-instance",
+    };
+    await clients.metalInstance.register(secondMetalInstance).submit();
+    await clients.metalInstance
+      .heartbeat(secondMetalInstance.metalInstanceId, ["aaa"])
+      .submit();
+
+    const heartbeatWallet = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(20))).toString("hex")}`;
+    const usdCostPerMin = 0.2;
+    // Give exactly enough balance for 5 minutes — with integer microdollars
+    // there is no float dust, so after 5 deductions the balance is exactly 0.
+    const startingBalance = usdCostPerMin * 5 + MINIMUM_SPENDABLE_BALANCE_USD;
+    await clients.admin
+      .createTier({
+        name: "sub-cent-heartbeat-tier",
+        cost: usdCostPerMin,
+        cpus: 1,
+        gpus: 0,
+        memoryMb: 1024,
+        diskGb: 13,
+      })
+      .submit();
+    const account = await clients.admin
+      .createAccount({
+        name: "sub-cent-heartbeat-account",
+        walletAddress: heartbeatWallet,
+        balance: startingBalance,
+      })
+      .submit();
+    const heartbeatJwt = await issueJwt(
+      account.accountId,
+      account.walletAddress,
+    );
+    const client = new UserClient({
+      app,
+      bindings,
+      apiToken: heartbeatJwt,
+    });
+    await client
+      .createWorkload({
+        ...createWorkloadRequest,
+        disk: 13,
+      })
+      .submit();
+
+    const timeService = bindings.services.time as MockTimeService;
+    for (let i = 0; i < 6; i++) {
+      timeService.advance(61);
+      await clients.metalInstance
+        .heartbeat(secondMetalInstance.metalInstanceId, [])
+        .submit();
+    }
+
+    const updatedAccount = await clients.admin
+      .getAccount(account.accountId)
+      .submit();
+    expect(updatedAccount.balance).toBe(0);
+    expect(updatedAccount.balance).toBeLessThan(MINIMUM_SPENDABLE_BALANCE_USD);
   });
 });

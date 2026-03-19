@@ -6,15 +6,14 @@ import type {
   Container,
   SystemStatsResponse,
 } from "#/clients/nilcc-agent.client";
-import { CREDITS_PER_NIL } from "#/common/credits";
 import {
   AccessDenied,
   EntityNotFound,
   InvalidWorkloadTier,
   NoInstancesAvailable,
-  NotEnoughCredits,
-  PriceUnavailable,
+  NotEnoughBalance,
 } from "#/common/errors";
+import { isBalanceDepleted, MINIMUM_SPENDABLE_BALANCE } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import type {
   ListContainersRequest,
@@ -72,20 +71,17 @@ export class WorkloadService {
       }
     }
 
-    // Make sure the account has enough credits to run this and all the existing workloads for 5 minutes.
-    const nilPrice = await bindings.services.nilPrice.fetchNilPrice();
-    if (nilPrice === null) {
-      throw new PriceUnavailable();
-    }
-    const totalAccountSpend =
-      await bindings.services.account.getAccountSpending(bindings, account.id);
-    const creditsNeeded = Math.ceil(
-      (((totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION) /
-        nilPrice) *
-        CREDITS_PER_NIL,
+    // Make sure the account has enough balance to run this and all existing
+    // workloads for 5 minutes while keeping the minimum spendable reserve.
+    const currentSpend = await bindings.services.account.getAccountUsdSpending(
+      bindings,
+      account.id,
     );
-    if (creditsNeeded > account.credits) {
-      throw new NotEnoughCredits();
+    const balanceNeeded =
+      (currentSpend + tier.cost) * MINIMUM_EXECUTION_DURATION +
+      MINIMUM_SPENDABLE_BALANCE;
+    if (balanceNeeded > account.balance) {
+      throw new NotEnoughBalance();
     }
     const repository = this.getRepository(bindings, tx);
 
@@ -124,7 +120,7 @@ export class WorkloadService {
       domain: request.domain,
       createdAt: now,
       updatedAt: now,
-      creditRate: tier.cost,
+      usdCostPerMin: tier.cost,
     });
     const createdWorkload = await repository.save(entity);
     bindings.log.info(
@@ -221,9 +217,9 @@ export class WorkloadService {
     if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    // Don't allow restarting if we don't have enough credits
-    if (account.credits === 0) {
-      throw new NotEnoughCredits();
+    // Don't allow restarting if we don't have enough balance
+    if (isBalanceDepleted(account.balance)) {
+      throw new NotEnoughBalance();
     }
 
     if (request.envVars !== undefined) {

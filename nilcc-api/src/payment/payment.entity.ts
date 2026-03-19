@@ -1,5 +1,6 @@
 import { Column, Entity, ManyToOne, PrimaryColumn } from "typeorm";
 import { AccountEntity } from "#/account/account.entity";
+import { bigintNumberTransformer } from "#/common/nil";
 
 @Entity({ name: "payments" })
 export class PaymentEntity {
@@ -27,8 +28,18 @@ export class PaymentEntity {
   @ManyToOne(() => AccountEntity)
   account: AccountEntity;
 
-  @Column({ type: "int" })
-  creditedAmount: number;
+  @Column({ type: "float" })
+  nilAmount: number;
+
+  @Column({ type: "float" })
+  nilPriceAtDeposit: number;
+
+  @Column({
+    type: "bigint",
+    name: "deposited_amount_usd",
+    transformer: bigintNumberTransformer,
+  })
+  depositedAmountUsd: number; // microdollars
 
   @Column({ type: "timestamp" })
   createdAt: Date;

@@ -1,3 +1,4 @@
+import { microdollarsToUsd } from "#/common/nil";
 import type { Account } from "./account.dto";
 import type { AccountEntity } from "./account.entity";
 
@@ -8,7 +9,7 @@ export const accountMapper = {
       createdAt: account.createdAt.toISOString(),
       name: account.name,
       walletAddress: account.walletAddress,
-      credits: account.credits,
+      balance: microdollarsToUsd(account.balance),
     };
   },
 };

@@ -116,6 +116,22 @@ describe("Metal Instance", () => {
     expect(currentLastSeen.getTime()).toBe(lastSeen.getTime() + 1000);
   });
 
+  it("should handle a heartbeat after a minute rollover with no workloads", async ({
+    bindings,
+    expect,
+    clients,
+  }) => {
+    const timeService = bindings.services.time as MockTimeService;
+    timeService.advance(61);
+
+    const response = await clients.metalInstance
+      .heartbeat(myMetalInstance.metalInstanceId, [])
+      .submit();
+
+    expect(response.metalInstanceId).toBe(myMetalInstance.metalInstanceId);
+    expect(response.expectedArtifactVersions).toEqual([]);
+  });
+
   it("should update the artifacts versions", async ({ expect, clients }) => {
     const firstResponse = await clients.metalInstance
       .heartbeat(myMetalInstance.metalInstanceId, [])

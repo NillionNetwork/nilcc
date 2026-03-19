@@ -96,6 +96,14 @@ interface AgentError {
   message: string;
 }
 
+interface SeededWorkloadTier {
+  name: string;
+}
+
+interface SeededArtifact {
+  version: string;
+}
+
 // ---------------------------------------------------------------------------
 // In-memory workload store
 // ---------------------------------------------------------------------------
@@ -142,6 +150,15 @@ function adminPost(path: string, body: unknown): Promise<Response> {
       "x-api-key": ADMIN_API_KEY,
     },
     body: JSON.stringify(body),
+  });
+}
+
+function adminGet(path: string): Promise<Response> {
+  return fetch(`${NILCC_API_URL}${path}`, {
+    method: "GET",
+    headers: {
+      "x-api-key": ADMIN_API_KEY,
+    },
   });
 }
 
@@ -415,23 +432,35 @@ async function sendHeartbeat(): Promise<{
 async function seedApi(): Promise<void> {
   // Workload tier
   try {
-    const res = await adminPost("/api/v1/workload-tiers/create", {
-      name: SEED_TIER_NAME,
-      cpus: SEED_TIER_CPUS,
-      gpus: SEED_TIER_GPUS,
-      memoryMb: SEED_TIER_MEMORY_MB,
-      diskGb: SEED_TIER_DISK_GB,
-      cost: 1,
-    });
-    if (res.ok) {
+    const tiersResponse = await adminGet("/api/v1/workload-tiers/list");
+    if (!tiersResponse.ok) {
       log(
-        `Seeded workload tier "${SEED_TIER_NAME}" (${SEED_TIER_CPUS} cpu, ${SEED_TIER_MEMORY_MB} MB, ${SEED_TIER_DISK_GB} GB, ${SEED_TIER_GPUS} gpu)`,
+        `Failed to list workload tiers before seeding (${tiersResponse.status}): ${await tiersResponse.text()}`,
       );
     } else {
-      const body = await res.text();
-      // Conflict means it already exists — that's fine
-      if (res.status !== 409) {
-        log(`Workload tier seed failed (${res.status}): ${body}`);
+      const tiers = (await tiersResponse.json()) as SeededWorkloadTier[];
+      if (tiers.some((tier) => tier.name === SEED_TIER_NAME)) {
+        log(`Workload tier "${SEED_TIER_NAME}" already present`);
+      } else {
+        const res = await adminPost("/api/v1/workload-tiers/create", {
+          name: SEED_TIER_NAME,
+          cpus: SEED_TIER_CPUS,
+          gpus: SEED_TIER_GPUS,
+          memoryMb: SEED_TIER_MEMORY_MB,
+          diskGb: SEED_TIER_DISK_GB,
+          cost: 1,
+        });
+        if (res.ok) {
+          log(
+            `Seeded workload tier "${SEED_TIER_NAME}" (${SEED_TIER_CPUS} cpu, ${SEED_TIER_MEMORY_MB} MB, ${SEED_TIER_DISK_GB} GB, ${SEED_TIER_GPUS} gpu)`,
+          );
+        } else {
+          const body = await res.text();
+          // Conflict means it already exists — that's fine
+          if (res.status !== 409) {
+            log(`Workload tier seed failed (${res.status}): ${body}`);
+          }
+        }
       }
     }
   } catch (err) {
@@ -439,22 +468,42 @@ async function seedApi(): Promise<void> {
   }
 
   // Artifact versions
-  for (const version of ARTIFACTS_VERSIONS) {
-    try {
-      const res = await adminPost("/api/v1/artifacts/enable", { version });
-      if (res.ok) {
-        log(`Enabled artifact version "${version}"`);
-      } else {
-        const body = await res.text();
-        if (res.status !== 409) {
-          log(
-            `Artifact enable failed for "${version}" (${res.status}): ${body}`,
-          );
-        }
-      }
-    } catch (err) {
-      log(`Artifact enable error for "${version}": ${err}`);
+  try {
+    const artifactsResponse = await adminGet("/api/v1/artifacts/list");
+    if (!artifactsResponse.ok) {
+      log(
+        `Failed to list artifact versions before seeding (${artifactsResponse.status}): ${await artifactsResponse.text()}`,
+      );
+      return;
     }
+    const artifacts = (await artifactsResponse.json()) as SeededArtifact[];
+    const enabledVersions = new Set(
+      artifacts.map((artifact) => artifact.version),
+    );
+
+    for (const version of ARTIFACTS_VERSIONS) {
+      if (enabledVersions.has(version)) {
+        log(`Artifact version "${version}" already enabled`);
+        continue;
+      }
+      try {
+        const res = await adminPost("/api/v1/artifacts/enable", { version });
+        if (res.ok) {
+          log(`Enabled artifact version "${version}"`);
+        } else {
+          const body = await res.text();
+          if (res.status !== 409) {
+            log(
+              `Artifact enable failed for "${version}" (${res.status}): ${body}`,
+            );
+          }
+        }
+      } catch (err) {
+        log(`Artifact enable error for "${version}": ${err}`);
+      }
+    }
+  } catch (err) {
+    log(`Artifact seed error: ${err}`);
   }
 }
 
