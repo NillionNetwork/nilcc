@@ -1,8 +1,8 @@
 {
-  "name": "@nillion/nildb-api",
+  "name": "@nillion/nilcc-api",
   "private": true,
   "version": "1.0.0-preview.0",
-  "repository": "https://github.com/NillionNetwork/nildb",
+  "repository": "https://github.com/NillionNetwork/nilcc",
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",

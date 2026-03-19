@@ -11,8 +11,9 @@ import {
   EntityNotFound,
   InvalidWorkloadTier,
   NoInstancesAvailable,
-  NotEnoughCredits,
+  NotEnoughBalance,
 } from "#/common/errors";
+import { isBalanceDepleted, MINIMUM_SPENDABLE_BALANCE } from "#/common/nil";
 import type { AppBindings } from "#/env";
 import type {
   ListContainersRequest,
@@ -70,14 +71,17 @@ export class WorkloadService {
       }
     }
 
-    // Make sure the account has enough credits to run this and all the existing workoads for 5 minutes.
-    const totalAccountSpend =
-      await bindings.services.account.getAccountSpending(bindings, account.id);
-    if (
-      (totalAccountSpend + tier.cost) * MINIMUM_EXECUTION_DURATION >
-      account.credits
-    ) {
-      throw new NotEnoughCredits();
+    // Make sure the account has enough balance to run this and all existing
+    // workloads for 5 minutes while keeping the minimum spendable reserve.
+    const currentSpend = await bindings.services.account.getAccountUsdSpending(
+      bindings,
+      account.id,
+    );
+    const balanceNeeded =
+      (currentSpend + tier.cost) * MINIMUM_EXECUTION_DURATION +
+      MINIMUM_SPENDABLE_BALANCE;
+    if (balanceNeeded > account.balance) {
+      throw new NotEnoughBalance();
     }
     const repository = this.getRepository(bindings, tx);
 
@@ -116,7 +120,7 @@ export class WorkloadService {
       domain: request.domain,
       createdAt: now,
       updatedAt: now,
-      creditRate: tier.cost,
+      usdCostPerMin: tier.cost,
     });
     const createdWorkload = await repository.save(entity);
     bindings.log.info(
@@ -213,9 +217,9 @@ export class WorkloadService {
     if (workload === null) {
       throw new EntityNotFound("workload");
     }
-    // Don't allow restarting if we don't have enough credits
-    if (account.credits === 0) {
-      throw new NotEnoughCredits();
+    // Don't allow restarting if we don't have enough balance
+    if (isBalanceDepleted(account.balance)) {
+      throw new NotEnoughBalance();
     }
 
     if (request.envVars !== undefined) {

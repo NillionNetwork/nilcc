@@ -1,3 +1,4 @@
+import { microdollarsToUsd } from "#/common/nil";
 import type { WorkloadTier } from "./workload-tier.dto";
 import type { WorkloadTierEntity } from "./workload-tier.entity";
 
@@ -10,7 +11,7 @@ export const workloadTierMapper = {
       gpus: tier.gpus,
       memoryMb: tier.memory,
       diskGb: tier.disk,
-      cost: tier.cost,
+      cost: microdollarsToUsd(tier.cost),
     };
   },
 };

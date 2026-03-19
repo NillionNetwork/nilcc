@@ -18,7 +18,7 @@ export const WorkloadTier = z
       description: "The amount of GB of disk included in this tier.",
     }),
     cost: z.number().openapi({
-      description: "The cost per minute in credits for this tier.",
+      description: "The cost per minute in USD for this tier.",
     }),
   })
   .openapi({ description: "A workload tier." });
@@ -42,7 +42,7 @@ export const CreateWorkloadTierRequest = z
     cost: z
       .number()
       .positive()
-      .openapi({ description: "The cost per minute in credits for the tier." }),
+      .openapi({ description: "The cost per minute in USD for the tier." }),
   })
   .openapi({ description: "A request to create a tier." });
 export type CreateWorkloadTierRequest = z.infer<

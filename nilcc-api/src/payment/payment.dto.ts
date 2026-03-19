@@ -15,9 +15,15 @@ export const PaymentResponse = z
     amount: z
       .string()
       .openapi({ description: "The amount of tokens burned (in wei)." }),
-    creditedAmount: z
-      .number()
-      .openapi({ description: "The number of API credits added." }),
+    nilAmount: z.number().openapi({
+      description: "The amount of NIL tokens deposited (decimal).",
+    }),
+    nilPriceAtDeposit: z.number().openapi({
+      description: "The NIL/USD exchange rate at the time of deposit.",
+    }),
+    depositedAmountUsd: z.number().openapi({
+      description: "The USD value credited to the account.",
+    }),
     createdAt: z
       .string()
       .datetime()
