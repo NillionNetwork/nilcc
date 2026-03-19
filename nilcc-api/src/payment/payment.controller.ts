@@ -1,6 +1,7 @@
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { userAuthentication } from "#/common/auth";
+import { microdollarsToUsd } from "#/common/nil";
 import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
@@ -41,7 +42,9 @@ export function list(options: ControllerOptions) {
           blockNumber: p.blockNumber,
           fromAddress: p.fromAddress,
           amount: p.amount,
-          creditedAmount: p.creditedAmount,
+          nilAmount: p.nilAmount,
+          nilPriceAtDeposit: p.nilPriceAtDeposit,
+          depositedAmountUsd: microdollarsToUsd(p.depositedAmountUsd),
           createdAt: p.createdAt.toISOString(),
         })),
       );

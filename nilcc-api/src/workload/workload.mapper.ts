@@ -1,3 +1,4 @@
+import { microdollarsToUsd } from "#/common/nil";
 import type { CreateWorkloadResponse } from "#/workload/workload.dto";
 import type { WorkloadEntity } from "#/workload/workload.entity";
 
@@ -22,7 +23,7 @@ export const workloadMapper = {
       cpus: workload.cpus,
       gpus: workload.gpus,
       disk: workload.disk,
-      creditRate: workload.creditRate,
+      usdCostPerMin: microdollarsToUsd(workload.usdCostPerMin),
       status: workload.status,
       domain,
       heartbeat: workload.heartbeat,

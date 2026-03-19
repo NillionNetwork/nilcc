@@ -12,7 +12,7 @@ describe("API keys", () => {
   it("supports CRUD from global admin", async ({ expect, clients }) => {
     const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
     const account = await clients.admin
-      .createAccount({ name: "api-key-admin", walletAddress, credits: 10 })
+      .createAccount({ name: "api-key-admin", walletAddress, balance: 10 })
       .submit();
 
     const created = await clients.admin
@@ -55,7 +55,7 @@ describe("API keys", () => {
   }) => {
     const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
     const account = await clients.admin
-      .createAccount({ name: "jwt-owner", walletAddress, credits: 10 })
+      .createAccount({ name: "jwt-owner", walletAddress, balance: 10 })
       .submit();
     const jwt = await issueJwt(account.accountId, walletAddress);
 
@@ -233,7 +233,7 @@ describe("API keys", () => {
       .createAccount({
         name: "source",
         walletAddress: sourceWallet,
-        credits: 1,
+        balance: 1,
       })
       .submit();
     const targetWallet = `0x${crypto.randomBytes(20).toString("hex")}`;
@@ -241,7 +241,7 @@ describe("API keys", () => {
       .createAccount({
         name: "target",
         walletAddress: targetWallet,
-        credits: 1,
+        balance: 1,
       })
       .submit();
 
@@ -297,7 +297,7 @@ describe("API keys", () => {
       body: JSON.stringify({
         name: "not-allowed",
         walletAddress: `0x${crypto.randomBytes(20).toString("hex")}`,
-        credits: 0,
+        balance: 0,
       }),
     });
     expect(createResponse.status).toBe(401);
@@ -364,7 +364,7 @@ describe("API keys", () => {
       .createAccount({
         name: "source-jwt",
         walletAddress: sourceWallet,
-        credits: 1,
+        balance: 1,
       })
       .submit();
     const sourceJwt = await issueJwt(source.accountId, sourceWallet);
@@ -374,7 +374,7 @@ describe("API keys", () => {
       .createAccount({
         name: "target-jwt",
         walletAddress: targetWallet,
-        credits: 1,
+        balance: 1,
       })
       .submit();
     const targetKey = await clients.admin
@@ -409,5 +409,107 @@ describe("API keys", () => {
       }),
     });
     expect(deleteResponse.status).toBe(401);
+  });
+
+  it("enforces workload route access by api key type", async ({
+    expect,
+    clients,
+    app,
+    bindings,
+  }) => {
+    const me = await clients.user.myAccount().submit();
+    const userKey = await clients.admin
+      .createApiKey({
+        accountId: me.accountId,
+        type: "user",
+        active: true,
+      })
+      .submit();
+    const accountAdminKey = await clients.admin
+      .createApiKey({
+        accountId: me.accountId,
+        type: "account-admin",
+        active: true,
+      })
+      .submit();
+
+    const requestCreate = (authorization: string) =>
+      app.request(PathsV1.workload.create, {
+        method: "POST",
+        headers: {
+          authorization,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+    const requestDelete = (authorization: string) =>
+      app.request(PathsV1.workload.delete, {
+        method: "POST",
+        headers: {
+          authorization,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+    const requestRestart = (authorization: string) =>
+      app.request(PathsV1.workload.restart, {
+        method: "POST",
+        headers: {
+          authorization,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+    expect((await requestCreate(`Bearer ${userKey.id}`)).status).toBe(400);
+    expect((await requestDelete(`Bearer ${userKey.id}`)).status).toBe(400);
+    expect((await requestRestart(`Bearer ${userKey.id}`)).status).toBe(400);
+
+    expect((await requestCreate(`Bearer ${accountAdminKey.id}`)).status).toBe(
+      400,
+    );
+    expect((await requestDelete(`Bearer ${accountAdminKey.id}`)).status).toBe(
+      400,
+    );
+    expect((await requestRestart(`Bearer ${accountAdminKey.id}`)).status).toBe(
+      400,
+    );
+
+    expect(
+      (
+        await app.request(PathsV1.workload.create, {
+          method: "POST",
+          headers: {
+            "x-api-key": bindings.config.adminApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request(PathsV1.workload.delete, {
+          method: "POST",
+          headers: {
+            "x-api-key": bindings.config.adminApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request(PathsV1.workload.restart, {
+          method: "POST",
+          headers: {
+            "x-api-key": bindings.config.adminApiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        })
+      ).status,
+    ).toBe(401);
   });
 });

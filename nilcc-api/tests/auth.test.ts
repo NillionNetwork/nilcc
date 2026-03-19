@@ -103,7 +103,7 @@ describe("Auth", () => {
       expect(loginBody.account.walletAddress).toBe(
         account.address.toLowerCase(),
       );
-      expect(loginBody.account.credits).toBe(0);
+      expect(loginBody.account.balance).toBe(0);
       expect(loginBody.account.accountId).toBeDefined();
     });
 
@@ -147,7 +147,7 @@ describe("Auth", () => {
           account.address.toLowerCase(),
         );
       expect(createdAccount).not.toBeNull();
-      expect(createdAccount?.credits).toBe(0);
+      expect(createdAccount?.balance).toBe(0);
     });
 
     it("should reject an invalid signature", async ({ expect, app }) => {
@@ -315,7 +315,11 @@ describe("Auth", () => {
       // Create an account and get a JWT
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "jwt-via-apikey", walletAddress, credits: 50 })
+        .createAccount({
+          name: "jwt-via-apikey",
+          walletAddress,
+          balance: 50,
+        })
         .submit();
 
       const jwt = await issueJwt(account.accountId, walletAddress);
@@ -340,7 +344,7 @@ describe("Auth", () => {
         .createAccount({
           name: "jwt-with-garbage-apikey",
           walletAddress,
-          credits: 1,
+          balance: 1,
         })
         .submit();
       const jwt = await issueJwt(account.accountId, walletAddress);
@@ -380,7 +384,11 @@ describe("Auth", () => {
     }) => {
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "malformed-auth", walletAddress, credits: 1 })
+        .createAccount({
+          name: "malformed-auth",
+          walletAddress,
+          balance: 1,
+        })
         .submit();
       const jwt = await issueJwt(account.accountId, walletAddress);
 
@@ -392,6 +400,65 @@ describe("Auth", () => {
       });
 
       expect(response.status).toBe(401);
+    });
+
+    it("should authenticate workload route requests with JWT", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "jwt-workload-auth",
+          walletAddress,
+          balance: 1,
+        })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const requestCreate = (authorization: string) =>
+        app.request(PathsV1.workload.create, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestDelete = (authorization: string) =>
+        app.request(PathsV1.workload.delete, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestRestart = (authorization: string) =>
+        app.request(PathsV1.workload.restart, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+
+      expect((await requestCreate(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestDelete(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestRestart(`Bearer ${jwt}`)).status).toBe(400);
+
+      expect(
+        (await requestCreate("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestDelete("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestRestart("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
     });
   });
 });

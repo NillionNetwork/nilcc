@@ -9,7 +9,7 @@ services:
   localstack:
     image: localstack/localstack
     ports:
-      - "4566:4566"
+      - "14566:4566"
 
   anvil:
     image: ghcr.io/nillionnetwork/nil-anvil:d0788f3
@@ -19,13 +19,13 @@ services:
   agent:
     image: caddy:2
     ports:
-      - "35433:80"
+      - "35435:80"
     command: |
       caddy respond --listen :80 --body '{}' --header "Content-Type: application/json" 
 
   artifacts:
     image: caddy:2
     ports:
-      - "35434:80"
+      - "35436:80"
     command: |
       caddy respond --listen :80 --body '{"built_at": 1758561580}' --header "Content-Type: application/json" 
