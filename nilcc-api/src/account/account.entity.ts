@@ -1,4 +1,6 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from "typeorm";
+import { ApiKeyEntity } from "#/api-key/api-key.entity";
+import { bigintNumberTransformer } from "#/common/nil";
 import { WorkloadEntity } from "#/workload/workload.entity";
 
 @Entity({ name: "accounts" })
@@ -12,14 +14,20 @@ export class AccountEntity {
   @Column({ type: "varchar", unique: true })
   walletAddress: string;
 
-  @Column({ type: "int" })
-  credits: number;
+  @Column({ type: "bigint", transformer: bigintNumberTransformer })
+  balance: number; // microdollars
 
   @OneToMany(
     () => WorkloadEntity,
     (workload) => workload.account,
   )
   workloads: WorkloadEntity[];
+
+  @OneToMany(
+    () => ApiKeyEntity,
+    (apiKey) => apiKey.account,
+  )
+  apiKeys: ApiKeyEntity[];
 
   @Column({ type: "timestamp" })
   createdAt: Date;

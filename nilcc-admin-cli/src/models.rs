@@ -9,14 +9,14 @@ pub mod accounts {
     pub struct CreateAccountRequest {
         pub name: String,
         pub wallet_address: String,
-        pub credits: u64,
+        pub balance: f64,
     }
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct AddCreditsRequest {
+    pub struct AddBalanceRequest {
         pub account_id: Uuid,
-        pub credits: u64,
+        pub balance: f64,
     }
 
     #[derive(Serialize)]
@@ -34,7 +34,7 @@ pub mod tiers {
     #[serde(rename_all = "camelCase")]
     pub struct CreateTierRequest {
         pub name: String,
-        pub cost: u64,
+        pub cost: f64,
         pub cpus: u64,
         pub gpus: u64,
         pub memory_mb: u64,

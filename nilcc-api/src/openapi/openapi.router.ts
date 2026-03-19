@@ -15,8 +15,6 @@ export function createOpenApiRouter(options: ControllerOptions): void {
           title: "nilcc-api",
           version: "0.1.0-beta.1",
           description: `This API lets users create and manipulate workloads in nilcc.
-
-All endpoints require the \`x-api-key\` header set to a valid API key.
 `,
         },
         servers: [
@@ -27,14 +25,18 @@ All endpoints require the \`x-api-key\` header set to a valid API key.
         ],
         components: {
           securitySchemes: {
-            ApiKeyAuth: {
+            BearerAuth: {
+              type: "http",
+              scheme: "bearer",
+            },
+            AdminApiKeyAuth: {
               type: "apiKey",
               in: "header",
               name: "x-api-key",
             },
           },
         },
-        security: [{ ApiKeyAuth: [] }],
+        security: [{ BearerAuth: [] }, { AdminApiKeyAuth: [] }],
       },
     }),
   );

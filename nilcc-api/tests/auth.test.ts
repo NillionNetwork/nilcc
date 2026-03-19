@@ -103,7 +103,7 @@ describe("Auth", () => {
       expect(loginBody.account.walletAddress).toBe(
         account.address.toLowerCase(),
       );
-      expect(loginBody.account.credits).toBe(0);
+      expect(loginBody.account.balance).toBe(0);
       expect(loginBody.account.accountId).toBeDefined();
     });
 
@@ -147,7 +147,7 @@ describe("Auth", () => {
           account.address.toLowerCase(),
         );
       expect(createdAccount).not.toBeNull();
-      expect(createdAccount?.credits).toBe(0);
+      expect(createdAccount?.balance).toBe(0);
     });
 
     it("should reject an invalid signature", async ({ expect, app }) => {
@@ -283,6 +283,18 @@ describe("Auth", () => {
       expect(response.status).toBe(401);
     });
 
+    it("should reject invalid JWT-like bearer token on mixed-auth routes", async ({
+      expect,
+      app,
+    }) => {
+      const response = await app.request(PathsV1.workloadTiers.list, {
+        method: "GET",
+        headers: { authorization: "Bearer invalid.jwt.token" },
+      });
+
+      expect(response.status).toBe(401);
+    });
+
     it("should reject requests with no authorization", async ({
       expect,
       app,
@@ -294,7 +306,7 @@ describe("Auth", () => {
       expect(response.status).toBe(401);
     });
 
-    it("should accept JWT via x-api-key header if it looks like a JWT", async ({
+    it("should reject JWT via x-api-key header", async ({
       expect,
       app,
       issueJwt,
@@ -303,20 +315,150 @@ describe("Auth", () => {
       // Create an account and get a JWT
       const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
       const account = await clients.admin
-        .createAccount({ name: "jwt-via-apikey", walletAddress, credits: 50 })
+        .createAccount({
+          name: "jwt-via-apikey",
+          walletAddress,
+          balance: 50,
+        })
         .submit();
 
       const jwt = await issueJwt(account.accountId, walletAddress);
 
-      // Send JWT via x-api-key header (it contains dots, so it's detected as JWT)
+      // JWT is only accepted via Authorization: Bearer now.
       const response = await app.request(PathsV1.account.me, {
         method: "GET",
         headers: { "x-api-key": jwt },
       });
 
+      expect(response.status).toBe(401);
+    });
+
+    it("should allow valid JWT even when x-api-key header is invalid", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "jwt-with-garbage-apikey",
+          walletAddress,
+          balance: 1,
+        })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const response = await app.request(PathsV1.account.me, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          "x-api-key": "not-a-valid-admin-key",
+        },
+      });
+
       expect(response.status).toBe(200);
-      const me = (await response.json()) as MeResponseBody;
-      expect(me.walletAddress).toBe(walletAddress.toLowerCase());
+    });
+
+    it("should prioritize global admin x-api-key over invalid bearer token", async ({
+      expect,
+      app,
+      bindings,
+    }) => {
+      const response = await app.request(PathsV1.account.list, {
+        method: "GET",
+        headers: {
+          "x-api-key": bindings.config.adminApiKey,
+          authorization: "Bearer invalid.jwt.token",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject malformed authorization schemes", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "malformed-auth",
+          walletAddress,
+          balance: 1,
+        })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const response = await app.request(PathsV1.account.me, {
+        method: "GET",
+        headers: {
+          authorization: `Token ${jwt}`,
+        },
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should authenticate workload route requests with JWT", async ({
+      expect,
+      app,
+      issueJwt,
+      clients,
+    }) => {
+      const walletAddress = `0x${crypto.randomBytes(20).toString("hex")}`;
+      const account = await clients.admin
+        .createAccount({
+          name: "jwt-workload-auth",
+          walletAddress,
+          balance: 1,
+        })
+        .submit();
+      const jwt = await issueJwt(account.accountId, walletAddress);
+
+      const requestCreate = (authorization: string) =>
+        app.request(PathsV1.workload.create, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestDelete = (authorization: string) =>
+        app.request(PathsV1.workload.delete, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      const requestRestart = (authorization: string) =>
+        app.request(PathsV1.workload.restart, {
+          method: "POST",
+          headers: {
+            authorization,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+
+      expect((await requestCreate(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestDelete(`Bearer ${jwt}`)).status).toBe(400);
+      expect((await requestRestart(`Bearer ${jwt}`)).status).toBe(400);
+
+      expect(
+        (await requestCreate("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestDelete("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
+      expect(
+        (await requestRestart("Bearer invalid.jwt.token.for.workload")).status,
+      ).toBe(401);
     });
   });
 });

@@ -54,10 +54,10 @@ export class InvalidWorkloadTier extends AppError {
     "no matching workload tier for the requested resources";
 }
 
-export class NotEnoughCredits extends AppError {
-  override kind = "NOT_ENOUGH_CREDITS";
+export class NotEnoughBalance extends AppError {
+  override kind = "NOT_ENOUGH_BALANCE";
   override statusCode: ContentfulStatusCode = StatusCodes.PRECONDITION_FAILED;
-  override description = "not enough credits in account to run workload";
+  override description = "not enough balance in account to run workload";
 }
 
 export class AgentRequestError extends AppError {

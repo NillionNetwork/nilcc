@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - 'nilcc-api/**'
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
