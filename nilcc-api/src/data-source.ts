@@ -24,9 +24,9 @@ import { CreateArtifactsTable1758563696154 } from "migrations/1758563696154-Crea
 import { MetalInstanceArtifactVersions1758645450546 } from "migrations/1758645450546-MetalInstanceArtifactVersions";
 import { ArtifactVersionMandatory1758656531192 } from "migrations/1758656531192-ArtifactVersionMandatory";
 import { WorkloadHeartbeats1765485856928 } from "migrations/1765485856928-WorkloadHeartbeats";
-import { WalletAuth1772193140109 } from "migrations/1772193140109-WalletAuth";
-import { Payments1772193140110 } from "migrations/1772193140110-Payments";
-import { ApiKeys1773000000000 } from "migrations/1773000000000-ApiKeys";
+import { Payments1772193140109 } from "migrations/1772193140109-Payments";
+import { ApiKeys1772193140110 } from "migrations/1772193140110-ApiKeys";
+import { WalletAuth1773000000000 } from "migrations/1773000000000-WalletAuth";
 import { UsdBasedPricing1774000000000 } from "migrations/1774000000000-UsdBasedPricing";
 import { DataSource } from "typeorm";
 import { ApiKeyEntity } from "#/api-key/api-key.entity";
@@ -76,9 +76,9 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       MetalInstanceArtifactVersions1758645450546,
       ArtifactVersionMandatory1758656531192,
       WorkloadHeartbeats1765485856928,
-      WalletAuth1772193140109,
-      Payments1772193140110,
-      ApiKeys1773000000000,
+      Payments1772193140109,
+      ApiKeys1772193140110,
+      WalletAuth1773000000000,
       UsdBasedPricing1774000000000,
     ],
     synchronize: false,

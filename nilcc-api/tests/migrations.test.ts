@@ -12,7 +12,7 @@ describe("UsdBasedPricing1774000000000", () => {
 
     expect(queryRunner.query).toHaveBeenCalledWith(
       expect.stringContaining(
-        'SET "deposited_amount_usd" = CAST("credited_amount" AS bigint) * 1000000',
+        'SET "deposited_amount_usd" = COALESCE("credited_amount", 0)::bigint * 1000000::bigint',
       ),
     );
   });
