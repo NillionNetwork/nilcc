@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ApiKeys1773000000000 implements MigrationInterface {
-  name = "ApiKeys1773000000000";
+export class ApiKeys1772193140110 implements MigrationInterface {
+  name = "ApiKeys1772193140110";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
