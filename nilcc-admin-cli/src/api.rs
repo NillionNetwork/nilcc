@@ -40,6 +40,16 @@ impl ApiClient {
         Self::handle_response(response)
     }
 
+    pub fn put<T, O>(&self, path: &str, request: &T) -> Result<O, RequestError>
+    where
+        T: Serialize,
+        O: DeserializeOwned,
+    {
+        let url = self.make_url(path);
+        let response = self.client.put(url).json(request).send()?;
+        Self::handle_response(response)
+    }
+
     fn handle_response<O>(response: Response) -> Result<O, RequestError>
     where
         O: DeserializeOwned,
