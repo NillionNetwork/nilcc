@@ -28,6 +28,7 @@ import { Payments1772193140109 } from "migrations/1772193140109-Payments";
 import { ApiKeys1772193140110 } from "migrations/1772193140110-ApiKeys";
 import { WalletAuth1773000000000 } from "migrations/1773000000000-WalletAuth";
 import { UsdBasedPricing1774000000000 } from "migrations/1774000000000-UsdBasedPricing";
+import { ApiKeyIdVarchar1775000000000 } from "migrations/1775000000000-ApiKeyIdVarchar";
 import { DataSource } from "typeorm";
 import { ApiKeyEntity } from "#/api-key/api-key.entity";
 import { NonceEntity } from "#/auth/nonce.entity";
@@ -80,6 +81,7 @@ export async function buildDataSource(config: EnvVars): Promise<DataSource> {
       ApiKeys1772193140110,
       WalletAuth1773000000000,
       UsdBasedPricing1774000000000,
+      ApiKeyIdVarchar1775000000000,
     ],
     synchronize: false,
     logging: false,

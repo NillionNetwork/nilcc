@@ -13,7 +13,7 @@ export class WalletAuth1773000000000 implements MigrationInterface {
     await queryRunner.query(`
       INSERT INTO api_keys (id, account_id, type, active, created_at, updated_at)
       SELECT
-        CAST(api_token AS UUID),
+        api_token,
         id,
         'account-admin',
         true,
@@ -21,7 +21,6 @@ export class WalletAuth1773000000000 implements MigrationInterface {
         NOW()
       FROM accounts
       WHERE api_token IS NOT NULL
-        AND api_token ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     `);
 
     await queryRunner.query("ALTER TABLE accounts DROP COLUMN api_token");

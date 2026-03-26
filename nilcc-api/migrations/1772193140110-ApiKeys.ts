@@ -6,7 +6,7 @@ export class ApiKeys1772193140110 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE api_keys (
-        id UUID PRIMARY KEY,
+        id VARCHAR PRIMARY KEY,
         account_id VARCHAR NOT NULL,
         type VARCHAR NOT NULL,
         active BOOLEAN NOT NULL DEFAULT true,
