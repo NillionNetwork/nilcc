@@ -5,9 +5,11 @@ import { OpenApiSpecCommonErrorResponses } from "#/common/openapi";
 import { PathsV1 } from "#/common/paths";
 import type { ControllerOptions } from "#/common/types";
 import { payloadValidator } from "#/common/zod-utils";
+import { transactionMiddleware } from "#/data-source";
 import {
   CreateWorkloadTierRequest,
   DeleteWorkloadTierRequest,
+  UpdateWorkloadTierRequest,
   WorkloadTier,
 } from "./workload-tier.dto";
 import { workloadTierMapper } from "./workload-tier.mapper";
@@ -70,6 +72,41 @@ export function list(options: ControllerOptions) {
       const tiers = await bindings.services.workloadTier.list(bindings);
       tiers.sort((a, b) => a.cost - b.cost);
       return c.json(tiers.map(workloadTierMapper.entityToResponse));
+    },
+  );
+}
+
+export function update(options: ControllerOptions) {
+  const { app, bindings } = options;
+  app.put(
+    PathsV1.workloadTiers.update,
+    describeRoute({
+      tags: ["workload-tier"],
+      summary: "Update a workload tier",
+      description: "This updates a workload tier.",
+      responses: {
+        200: {
+          description: "The workload tier was updated successfully",
+          content: {
+            "application/json": {
+              schema: resolver(WorkloadTier),
+            },
+          },
+        },
+        ...OpenApiSpecCommonErrorResponses,
+      },
+    }),
+    adminAuthentication(bindings),
+    payloadValidator(UpdateWorkloadTierRequest),
+    transactionMiddleware(bindings.dataSource),
+    async (c) => {
+      const payload = c.req.valid("json");
+      const tier = await bindings.services.workloadTier.update(
+        bindings,
+        payload,
+        c.get("txQueryRunner"),
+      );
+      return c.json(workloadTierMapper.entityToResponse(tier));
     },
   );
 }

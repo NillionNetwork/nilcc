@@ -1,9 +1,16 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
-import { EntityAlreadyExists, isUniqueConstraint } from "#/common/errors";
+import {
+  EntityAlreadyExists,
+  EntityNotFound,
+  isUniqueConstraint,
+} from "#/common/errors";
 import { usdToMicrodollars } from "#/common/nil";
 import type { AppBindings } from "#/env";
-import type { CreateWorkloadTierRequest } from "./workload-tier.dto";
+import type {
+  CreateWorkloadTierRequest,
+  UpdateWorkloadTierRequest,
+} from "./workload-tier.dto";
 import { WorkloadTierEntity } from "./workload-tier.entity";
 
 export class WorkloadTierService {
@@ -43,6 +50,34 @@ export class WorkloadTierService {
   async remove(bindings: AppBindings, id: string): Promise<void> {
     const repository = this.getRepository(bindings);
     await repository.delete({ id });
+  }
+
+  async update(
+    bindings: AppBindings,
+    request: UpdateWorkloadTierRequest,
+    tx: QueryRunner,
+  ): Promise<WorkloadTierEntity> {
+    const repository = this.getRepository(bindings, tx);
+    const tier = await repository.findOneBy({ id: request.tierId });
+    if (tier === null) {
+      throw new EntityNotFound("workload tier");
+    }
+
+    tier.name = request.name;
+    tier.cpus = request.cpus;
+    tier.gpus = request.gpus;
+    tier.memory = request.memoryMb;
+    tier.disk = request.diskGb;
+    tier.cost = usdToMicrodollars(request.cost);
+
+    try {
+      return await repository.save(tier);
+    } catch (e: unknown) {
+      if (isUniqueConstraint(e)) {
+        throw new EntityAlreadyExists("workload tier");
+      }
+      throw e;
+    }
   }
 
   async list(bindings: AppBindings): Promise<WorkloadTierEntity[]> {

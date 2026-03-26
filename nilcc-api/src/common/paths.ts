@@ -57,6 +57,7 @@ export const PathsV1 = {
   workloadTiers: {
     create: PathSchema.parse("/api/v1/workload-tiers/create"),
     list: PathSchema.parse("/api/v1/workload-tiers/list"),
+    update: PathSchema.parse("/api/v1/workload-tiers/update"),
     delete: PathSchema.parse("/api/v1/workload-tiers/delete"),
   },
   metalInstance: {

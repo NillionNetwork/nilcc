@@ -4,5 +4,6 @@ import * as WorkloadTierController from "./workload-tier.controllers";
 export function buildWorkloadTierRouter(options: ControllerOptions): void {
   WorkloadTierController.create(options);
   WorkloadTierController.list(options);
+  WorkloadTierController.update(options);
   WorkloadTierController.remove(options);
 }

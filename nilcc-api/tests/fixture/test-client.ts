@@ -42,6 +42,7 @@ import {
 } from "#/workload-event/workload-event.dto";
 import {
   type CreateWorkloadTierRequest,
+  type UpdateWorkloadTierRequest,
   WorkloadTier,
 } from "#/workload-tier/workload-tier.dto";
 
@@ -172,6 +173,14 @@ export class AdminClient extends TestClient {
   createTier(request: CreateWorkloadTierRequest): RequestPromise<WorkloadTier> {
     const promise = this.request(PathsV1.workloadTiers.create, {
       method: "POST",
+      body: request,
+    });
+    return new RequestPromise(promise, WorkloadTier);
+  }
+
+  updateTier(request: UpdateWorkloadTierRequest): RequestPromise<WorkloadTier> {
+    const promise = this.request(PathsV1.workloadTiers.update, {
+      method: "PUT",
       body: request,
     });
     return new RequestPromise(promise, WorkloadTier);
