@@ -7,7 +7,7 @@ services:
       - "35432:5432"
 
   localstack:
-    image: localstack/localstack
+    image: localstack/localstack:4.14.0
     ports:
       - "14566:4566"
 

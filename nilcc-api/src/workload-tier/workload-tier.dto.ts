@@ -49,6 +49,32 @@ export type CreateWorkloadTierRequest = z.infer<
   typeof CreateWorkloadTierRequest
 >;
 
+export const UpdateWorkloadTierRequest = z
+  .object({
+    tierId: Uuid.openapi({ description: "The identifier of the tier." }),
+    name: z.string().openapi({ description: "The name of the tier." }),
+    cpus: z
+      .number()
+      .openapi({ description: "The number of CPUs included in the tier." }),
+    gpus: z
+      .number()
+      .openapi({ description: "The number of GPUs included in the tier." }),
+    memoryMb: z.number().openapi({
+      description: "The amount of MB of RAM included in the tier.",
+    }),
+    diskGb: z.number().openapi({
+      description: "The amount of GB of disk included in the tier.",
+    }),
+    cost: z
+      .number()
+      .positive()
+      .openapi({ description: "The cost per minute in USD for the tier." }),
+  })
+  .openapi({ description: "A request to update a tier." });
+export type UpdateWorkloadTierRequest = z.infer<
+  typeof UpdateWorkloadTierRequest
+>;
+
 export const DeleteWorkloadTierRequest = z
   .object({
     tierId: z.string().openapi({ description: "The tier identifier." }),

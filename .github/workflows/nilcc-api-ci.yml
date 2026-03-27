@@ -27,7 +27,7 @@ jobs:
           package_json_file: nilcc-api/package.json
       - run: pnpm install
       - run: pnpm exec biome ci
-      - run: tsc
+      - run: pnpm exec tsc
 
   test:
     needs: check

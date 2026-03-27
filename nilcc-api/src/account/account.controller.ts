@@ -3,9 +3,9 @@ import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
 import {
   accountIdentityAdminAuthentication,
+  accountIdentityAuthentication,
   adminAuthentication,
   assertCanManageIdentityAccount,
-  jwtAuthentication,
 } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
 import { microdollarsToUsd } from "#/common/nil";
@@ -169,7 +169,7 @@ export function me(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    jwtAuthentication(bindings),
+    accountIdentityAuthentication(bindings),
     async (c) => {
       const account = c.get("account");
       const outputAccount = accountMapper.entityToResponse(account);

@@ -27,12 +27,52 @@ pub mod accounts {
     }
 }
 
+pub mod api_keys {
+    use super::*;
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct CreateApiKeyRequest {
+        pub account_id: Uuid,
+        pub r#type: String,
+        pub active: bool,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UpdateApiKeyRequest {
+        pub id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub r#type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub active: Option<bool>,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct DeleteApiKeyRequest {
+        pub id: Uuid,
+    }
+}
+
 pub mod tiers {
     use super::*;
 
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct CreateTierRequest {
+        pub name: String,
+        pub cost: f64,
+        pub cpus: u64,
+        pub gpus: u64,
+        pub memory_mb: u64,
+        pub disk_gb: u64,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UpdateTierRequest {
+        pub tier_id: Uuid,
         pub name: String,
         pub cost: f64,
         pub cpus: u64,

@@ -11,7 +11,7 @@ import type { ApiKeyType } from "./api-key.dto";
 
 @Entity({ name: "api_keys" })
 export class ApiKeyEntity {
-  @PrimaryColumn({ type: "uuid" })
+  @PrimaryColumn({ type: "varchar" })
   id: string;
 
   @Column({ type: "varchar" })

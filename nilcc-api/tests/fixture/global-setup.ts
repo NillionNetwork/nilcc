@@ -1,4 +1,6 @@
+import { connect } from "node:net";
 import { dirname } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import dockerCompose from "docker-compose";
 import type { TestProject } from "vitest/node";
@@ -31,18 +33,19 @@ export async function setup(_project: TestProject) {
     for (; retry < MAX_RETRIES; retry++) {
       const result = await dockerCompose.ps(composeOptions);
       if (
-        result.data.services.every((service) => service.state.includes("Up"))
+        result.data.services.every((service) => service.state.includes("Up")) &&
+        (await allEndpointsReady())
       ) {
         break;
       }
-      await new Promise((f) => setTimeout(f, 200));
+      await sleep(200);
     }
     if (retry >= MAX_RETRIES) {
       console.error("Error starting containers: timeout");
       process.exit(1);
     }
     // We need sleep 1 sec to be sure that the AboutResponse.started is at least 1 sec earlier than the tests start.
-    await new Promise((f) => setTimeout(f, 2000));
+    await sleep(2000);
     console.log("Containers started successfully.");
   } catch (error) {
     console.error("Error starting containers: ", error);
@@ -65,4 +68,70 @@ export async function teardown(_project: TestProject) {
     console.error("Error removing containers: ", error);
     process.exit(1);
   }
+}
+
+async function allEndpointsReady(): Promise<boolean> {
+  const checks = [
+    waitForTcpPort("127.0.0.1", 35432),
+    waitForHttp("http://127.0.0.1:14566/_localstack/health"),
+    waitForJsonRpc("http://127.0.0.1:38545"),
+    waitForHttp("http://127.0.0.1:35435"),
+    waitForHttp("http://127.0.0.1:35436"),
+  ];
+
+  const results = await Promise.all(checks);
+  return results.every(Boolean);
+}
+
+async function waitForHttp(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(1000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForJsonRpc(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_chainId",
+        params: [],
+        id: 1,
+      }),
+      signal: AbortSignal.timeout(1000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForTcpPort(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port });
+
+    socket.setTimeout(1000);
+
+    socket.once("connect", () => {
+      socket.end();
+      resolve(true);
+    });
+
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
 }

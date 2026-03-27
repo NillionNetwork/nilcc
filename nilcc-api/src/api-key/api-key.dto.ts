@@ -5,7 +5,7 @@ export type ApiKeyType = z.infer<typeof ApiKeyType>;
 
 export const ApiKey = z
   .object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
     accountId: z.string().uuid(),
     type: ApiKeyType,
     active: z.boolean(),
@@ -26,7 +26,7 @@ export type CreateApiKeyRequest = z.infer<typeof CreateApiKeyRequest>;
 
 export const UpdateApiKeyRequest = z
   .object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
     type: ApiKeyType.optional(),
     active: z.boolean().optional(),
   })
@@ -38,7 +38,7 @@ export type UpdateApiKeyRequest = z.infer<typeof UpdateApiKeyRequest>;
 
 export const DeleteApiKeyRequest = z
   .object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
   })
   .openapi({ ref: "DeleteApiKeyRequest" });
 export type DeleteApiKeyRequest = z.infer<typeof DeleteApiKeyRequest>;

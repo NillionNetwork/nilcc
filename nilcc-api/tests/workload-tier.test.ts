@@ -1,5 +1,8 @@
 import { describe } from "vitest";
-import type { CreateWorkloadTierRequest } from "#/workload-tier/workload-tier.dto";
+import type {
+  CreateWorkloadTierRequest,
+  UpdateWorkloadTierRequest,
+} from "#/workload-tier/workload-tier.dto";
 import { createTestFixtureExtension } from "./fixture/it";
 
 describe("WorkloadTier", () => {
@@ -38,5 +41,41 @@ describe("WorkloadTier", () => {
     await clients.admin.deleteTier(tier.tierId).submit();
     expect(await clients.user.listTiers().submit()).toEqual([]);
     expect(await clients.admin.listTiers().submit()).toEqual([]);
+  });
+
+  it("should update an existing workload tier", async ({ expect, clients }) => {
+    const created = await clients.admin
+      .createTier({
+        name: "tier-to-update",
+        cpus: 1,
+        memoryMb: 1024,
+        gpus: 0,
+        diskGb: 10,
+        cost: 1,
+      })
+      .submit();
+
+    const request: UpdateWorkloadTierRequest = {
+      tierId: created.tierId,
+      name: "tier-updated",
+      cpus: 4,
+      memoryMb: 8192,
+      gpus: 1,
+      diskGb: 40,
+      cost: 7.5,
+    };
+
+    const updated = await clients.admin.updateTier(request).submit();
+
+    expect(updated).toEqual({
+      tierId: created.tierId,
+      name: request.name,
+      cpus: request.cpus,
+      memoryMb: request.memoryMb,
+      gpus: request.gpus,
+      diskGb: request.diskGb,
+      cost: request.cost,
+    });
+    expect(await clients.user.listTiers().submit()).toEqual([updated]);
   });
 });

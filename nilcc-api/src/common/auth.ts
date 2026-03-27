@@ -71,6 +71,27 @@ export function userAuthentication(bindings: AppBindings) {
   };
 }
 
+export function accountIdentityAuthentication(bindings: AppBindings) {
+  return async (c: Context, next: Next) => {
+    const auth = await resolveAuthentication(c, bindings);
+    if (!auth || auth.principal === AuthPrincipal.GLOBAL_ADMIN) {
+      return c.json(authError("unauthorized"), 401);
+    }
+
+    if (
+      auth.principal === AuthPrincipal.ACCOUNT_API_KEY &&
+      auth.apiKeyType !== "account-admin"
+    ) {
+      return c.json(authError("unauthorized"), 401);
+    }
+
+    c.set("auth", auth);
+    c.set("account", auth.account);
+    await next();
+    return;
+  };
+}
+
 export function jwtAuthentication(bindings: AppBindings) {
   return async (c: Context, next: Next) => {
     const token = extractBearerToken(c);

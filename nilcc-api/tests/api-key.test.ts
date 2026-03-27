@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import { describe } from "vitest";
+import { ApiKeyEntity } from "#/api-key/api-key.entity";
 import { PathsV1 } from "#/common/paths";
 import { createTestFixtureExtension } from "./fixture/it";
 
@@ -221,6 +222,71 @@ describe("API keys", () => {
       },
     });
     expect(tierInactiveResponse.status).toBe(401);
+  });
+
+  it("authenticates and manages legacy non-UUID api keys", async ({
+    expect,
+    clients,
+    app,
+    bindings,
+  }) => {
+    const me = await clients.user.myAccount().submit();
+    const legacyKeyId = "sandbox-legacy-api-key";
+    const repository = bindings.dataSource.getRepository(ApiKeyEntity);
+    const now = new Date();
+
+    await repository.save({
+      id: legacyKeyId,
+      accountId: me.accountId,
+      type: "account-admin",
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const listResponse = await app.request(
+      PathsV1.apiKeys.listByAccount.replace(":accountId", me.accountId),
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${legacyKeyId}`,
+        },
+      },
+    );
+    expect(listResponse.status).toBe(200);
+    const keys = (await listResponse.json()) as Array<{ id: string }>;
+    expect(keys.map((key) => key.id)).toContain(legacyKeyId);
+
+    const updateResponse = await app.request(PathsV1.apiKeys.update, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${legacyKeyId}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: legacyKeyId,
+        active: false,
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+
+    const tierResponse = await app.request(PathsV1.workloadTiers.list, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${legacyKeyId}`,
+      },
+    });
+    expect(tierResponse.status).toBe(401);
+
+    const deleteResponse = await app.request(PathsV1.apiKeys.delete, {
+      method: "POST",
+      headers: {
+        "x-api-key": bindings.config.adminApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: legacyKeyId }),
+    });
+    expect(deleteResponse.status).toBe(200);
   });
 
   it("denies account-admin api key from other accounts", async ({

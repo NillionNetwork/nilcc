@@ -11,3 +11,4 @@ postgres_data/
 localstack_data/
 nilcc-attester/gpu-attester/verifier.log
 .env
+.vscode/
