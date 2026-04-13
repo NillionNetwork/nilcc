@@ -1,7 +1,6 @@
 import type { Logger } from "pino";
 import { createPublicClient, http } from "viem";
 import type { AppBindings } from "#/env";
-import { BlockCursorEntity } from "./block-cursor.entity";
 import { burnWithDigestEventAbi } from "./burn-contract";
 import type { PaymentService } from "./payment.service";
 
@@ -19,7 +18,7 @@ export class PaymentPoller {
     this.log = bindings.log.child({ component: "payment-poller" });
   }
 
-  start(): void {
+  async start(): Promise<void> {
     const { rpcUrl, burnContractAddress } = this.bindings.config;
     if (!rpcUrl || !burnContractAddress) {
       this.log.info(
@@ -28,10 +27,20 @@ export class PaymentPoller {
       return;
     }
 
+    // Seed the cursor row so SELECT ... FOR UPDATE always finds a row to lock.
+    const seedBlock = (
+      BigInt(this.bindings.config.paymentStartBlock) - 1n
+    ).toString();
+    await this.bindings.dataSource.query(
+      `INSERT INTO block_cursors (id, last_processed_block, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [CURSOR_ID, seedBlock],
+    );
+
     const intervalMs = this.bindings.config.paymentPollerIntervalMs;
     this.log.info(`Starting payment poller with interval ${intervalMs}ms`);
 
-    // Run immediately, then on interval
     this.poll();
     this.intervalId = setInterval(() => this.poll(), intervalMs);
   }
@@ -74,101 +83,103 @@ export class PaymentPoller {
       transport: http(rpcUrl),
     });
 
-    // Get block cursor
-    const cursorRepo =
-      this.bindings.dataSource.getRepository(BlockCursorEntity);
-    const cursor = await cursorRepo.findOneBy({ id: CURSOR_ID });
-    const fromBlock = cursor
-      ? BigInt(cursor.lastProcessedBlock) + 1n
-      : BigInt(this.bindings.config.paymentStartBlock);
-
-    // Get current block
-    const currentBlock = await client.getBlockNumber();
-    if (fromBlock > currentBlock) {
-      this.log.debug(
-        `No new blocks to process (cursor: ${fromBlock}, current: ${currentBlock})`,
-      );
-      return;
-    }
-
-    // Clamp range
-    const toBlock =
-      currentBlock - fromBlock > BigInt(paymentPollerMaxBlockRange)
-        ? fromBlock + BigInt(paymentPollerMaxBlockRange) - 1n
-        : currentBlock;
-
-    this.log.info(
-      `Polling blocks ${fromBlock} to ${toBlock} for LogBurnWithDigest events`,
-    );
-
-    // Fetch logs
-    const logs = await client.getLogs({
-      address: burnContractAddress as `0x${string}`,
-      event: burnWithDigestEventAbi[0],
-      fromBlock,
-      toBlock,
-    });
-
-    this.log.info(`Found ${logs.length} LogBurnWithDigest events`);
-
-    // Process each log
-    let firstFailedBlock: bigint | null = null;
-    for (const log of logs) {
-      if (!log.transactionHash || !log.args.account || !log.args.amount) {
-        this.log.warn("Skipping malformed log entry");
-        continue;
-      }
-
-      try {
-        await this.paymentService.processEvent(this.bindings, {
-          txHash: log.transactionHash,
-          logIndex: log.logIndex ?? 0,
-          blockNumber: Number(log.blockNumber),
-          fromAddress: log.args.account,
-          amount: log.args.amount,
-          digest: log.args.digest ?? "0x",
-        });
-      } catch (e) {
-        if (firstFailedBlock === null) {
-          firstFailedBlock = log.blockNumber ?? fromBlock;
-        }
-        this.log.warn(
-          `Failed to process event from tx ${log.transactionHash}: ${e}`,
+    const queryRunner = this.bindings.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      // Single-writer gate across replicas: blocks until any concurrent poll commits,
+      // then reads the already-advanced cursor and processes only the new range.
+      const rows: Array<{ last_processed_block: string }> =
+        await queryRunner.query(
+          `SELECT last_processed_block FROM block_cursors
+           WHERE id = $1 FOR UPDATE`,
+          [CURSOR_ID],
         );
-      }
-    }
+      const fromBlock = BigInt(rows[0].last_processed_block) + 1n;
 
-    // Update cursor. If any event failed, only advance up to the block before
-    // the first failure so failed events are retried in the next poll.
-    let nextCursorBlock: bigint | null = toBlock;
-    if (firstFailedBlock !== null) {
-      if (firstFailedBlock <= fromBlock) {
-        // Would only happen if firstFailedBlock == fromBlock, other states should be impossible
-        nextCursorBlock = null;
-      } else {
-        nextCursorBlock = firstFailedBlock - 1n;
+      const currentBlock = await client.getBlockNumber();
+      if (fromBlock > currentBlock) {
+        this.log.debug(
+          `No new blocks to process (cursor: ${fromBlock}, current: ${currentBlock})`,
+        );
+        await queryRunner.commitTransaction();
+        return;
       }
-    }
 
-    if (nextCursorBlock === null) {
-      this.log.warn(
-        `Not advancing block cursor due to processing failure at block ${firstFailedBlock?.toString()}`,
+      const toBlock =
+        currentBlock - fromBlock > BigInt(paymentPollerMaxBlockRange)
+          ? fromBlock + BigInt(paymentPollerMaxBlockRange) - 1n
+          : currentBlock;
+
+      this.log.info(
+        `Polling blocks ${fromBlock} to ${toBlock} for LogBurnWithDigest events`,
       );
-      return;
-    }
 
-    if (cursor) {
-      cursor.lastProcessedBlock = nextCursorBlock.toString();
-      cursor.updatedAt = new Date();
-      await cursorRepo.save(cursor);
-    } else {
-      await cursorRepo.save({
-        id: CURSOR_ID,
-        lastProcessedBlock: nextCursorBlock.toString(),
-        updatedAt: new Date(),
+      const logs = await client.getLogs({
+        address: burnContractAddress as `0x${string}`,
+        event: burnWithDigestEventAbi[0],
+        fromBlock,
+        toBlock,
       });
-    }
 
-    this.log.debug(`Updated block cursor to ${nextCursorBlock}`);
+      this.log.info(`Found ${logs.length} LogBurnWithDigest events`);
+
+      let firstFailedBlock: bigint | null = null;
+      for (const log of logs) {
+        if (!log.transactionHash || !log.args.account || !log.args.amount) {
+          this.log.warn("Skipping malformed log entry");
+          continue;
+        }
+
+        try {
+          await this.paymentService.processEvent(this.bindings, {
+            txHash: log.transactionHash,
+            logIndex: log.logIndex ?? 0,
+            blockNumber: Number(log.blockNumber),
+            fromAddress: log.args.account,
+            amount: log.args.amount,
+            digest: log.args.digest ?? "0x",
+          });
+        } catch (e) {
+          if (firstFailedBlock === null) {
+            firstFailedBlock = log.blockNumber ?? fromBlock;
+          }
+          this.log.warn(
+            `Failed to process event from tx ${log.transactionHash}: ${e}`,
+          );
+        }
+      }
+
+      // If any event failed, only advance up to the block before the first failure
+      // so failed events are retried next tick.
+      let nextCursorBlock: bigint | null = toBlock;
+      if (firstFailedBlock !== null) {
+        nextCursorBlock =
+          firstFailedBlock <= fromBlock ? null : firstFailedBlock - 1n;
+      }
+
+      if (nextCursorBlock === null) {
+        this.log.warn(
+          `Not advancing block cursor due to processing failure at block ${firstFailedBlock?.toString()}`,
+        );
+        await queryRunner.commitTransaction();
+        return;
+      }
+
+      await queryRunner.query(
+        `UPDATE block_cursors
+         SET last_processed_block = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [nextCursorBlock.toString(), CURSOR_ID],
+      );
+      await queryRunner.commitTransaction();
+
+      this.log.debug(`Updated block cursor to ${nextCursorBlock}`);
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

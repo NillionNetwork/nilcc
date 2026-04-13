@@ -32,7 +32,6 @@ async function main() {
   const { app, metrics } = await buildApp(bindings);
 
   const paymentPoller = new PaymentPoller(bindings, bindings.services.payment);
-  paymentPoller.start();
 
   bindings.log.info("Starting servers ...");
   const appServer = serve(
@@ -55,7 +54,13 @@ async function main() {
     },
   );
 
+  let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
     bindings.log.info(
       "Received shutdown signal. Starting graceful shutdown...",
     );
@@ -80,6 +85,11 @@ async function main() {
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+
+  void paymentPoller.start().catch(async (error) => {
+    bindings.log.error(error, "Failed to start payment poller");
+    await shutdown();
+  });
 }
 
 main().catch((error) => {
