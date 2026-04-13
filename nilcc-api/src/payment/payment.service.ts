@@ -1,6 +1,7 @@
 import type { QueryRunner, Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import type { AccountEntity } from "#/account/account.entity";
+import { isUniqueConstraint } from "#/common/errors";
 import {
   microdollarsToUsd,
   nilToMicrodollars,
@@ -116,6 +117,10 @@ export class PaymentService {
       return payment;
     } catch (e) {
       await queryRunner.rollbackTransaction();
+      if (isUniqueConstraint(e)) {
+        bindings.log.info(`Payment already processed: ${event.txHash}`);
+        return null;
+      }
       throw e;
     } finally {
       await queryRunner.release();
