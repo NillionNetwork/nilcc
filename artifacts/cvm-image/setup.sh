@@ -102,6 +102,10 @@ apt purge -y linux-headers-*
 apt -y clean
 rm -rf /var/lib/apt/lists/* /var/log/*
 
+# Disable algif_aead for CVE-2026-31431
+echo "install algif_aead /bin/false" > /etc/modprobe.d/disable-algif.conf
+rmmod algif_aead 2>/dev/null || true
+
 # Remove /etc/fstab since we are in control of the boot process.
 rm /etc/fstab
 
