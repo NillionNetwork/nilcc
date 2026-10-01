@@ -2,8 +2,8 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
 import {
-  accountIdentityAdminAuthentication,
   accountIdentityAuthentication,
+  accountOwnerOrAdminAuthentication,
   adminAuthentication,
   assertCanManageIdentityAccount,
 } from "#/common/auth";
@@ -75,7 +75,7 @@ export function update(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     payloadValidator(UpdateAccountRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -135,7 +135,7 @@ export function read(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     pathValidator(idParamSchema),
     async (c) => {
       const params = c.req.valid("param");
@@ -204,11 +204,10 @@ export function addBalance(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    adminAuthentication(bindings),
     payloadValidator(AddBalanceRequest),
     async (c) => {
       const payload = c.req.valid("json");
-      assertCanManageIdentityAccount(c, payload.accountId);
       const account = await bindings.services.account.addBalance(
         bindings,
         payload,

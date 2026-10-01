@@ -111,7 +111,7 @@ export function jwtAuthentication(bindings: AppBindings) {
   };
 }
 
-export function accountIdentityAdminAuthentication(bindings: AppBindings) {
+export function accountOwnerOrAdminAuthentication(bindings: AppBindings) {
   return async (c: Context, next: Next) => {
     const auth = await resolveAuthentication(c, bindings);
     if (!auth) {

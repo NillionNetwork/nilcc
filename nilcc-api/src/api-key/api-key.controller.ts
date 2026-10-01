@@ -2,7 +2,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
 import {
-  accountIdentityAdminAuthentication,
+  accountOwnerOrAdminAuthentication,
   assertCanManageIdentityAccount,
 } from "#/common/auth";
 import { EntityNotFound } from "#/common/errors";
@@ -41,7 +41,7 @@ export function create(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     payloadValidator(CreateApiKeyRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -76,7 +76,7 @@ export function listByAccount(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     pathValidator(accountIdSchema),
     async (c) => {
       const params = c.req.valid("param");
@@ -109,7 +109,7 @@ export function update(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     payloadValidator(UpdateApiKeyRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
@@ -152,7 +152,7 @@ export function remove(options: ControllerOptions) {
         ...OpenApiSpecCommonErrorResponses,
       },
     }),
-    accountIdentityAdminAuthentication(bindings),
+    accountOwnerOrAdminAuthentication(bindings),
     payloadValidator(DeleteApiKeyRequest),
     transactionMiddleware(bindings.dataSource),
     async (c) => {
