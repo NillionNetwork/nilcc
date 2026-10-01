@@ -1,6 +1,7 @@
 import { type ZodType, z } from "zod";
 import {
   Account,
+  type AddBalanceRequest,
   type CreateAccountRequest,
   MyAccount,
   type UpdateAccountRequest,
@@ -166,6 +167,14 @@ export class AdminClient extends TestClient {
   getAccount(id: string): RequestPromise<Account> {
     const promise = this.request(PathsV1.account.read.replace(":id", id), {
       method: "GET",
+    });
+    return new RequestPromise(promise, Account);
+  }
+
+  addBalance(request: AddBalanceRequest): RequestPromise<Account> {
+    const promise = this.request(PathsV1.account.addBalance, {
+      method: "POST",
+      body: request,
     });
     return new RequestPromise(promise, Account);
   }
